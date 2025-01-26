@@ -3,14 +3,21 @@
  *
  *  Created on: Feb 19, 2020
  *      Author: ypmen
+ *
+ *  Fixed on: Jan 25, 2025
+ *      Author: (xd)[https://github.com/lintian233]
  */
 
+#include <csignal>
+#include <cstdint>
 #include <iostream>
+#include <stdexcept>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <variant>
 
 #include "filterbank.h"
 
@@ -85,6 +92,9 @@ Filterbank::Filterbank(const string fname) {
   ndata = 0;
   data = NULL;
   fptr = NULL;
+
+  read_header();
+  read_data();
 }
 
 Filterbank::Filterbank(const Filterbank &fil) {
@@ -749,5 +759,33 @@ void get_telescope_name(int telescope_id, std::string &s_telescope) {
   default:
     s_telescope = "Unknown";
     break;
+  }
+}
+
+variant<uint8_t *, uint16_t *, uint32_t *> Filterbank::get_data(int idx) {
+  if (idx >= ndata) {
+    throw runtime_error("index out of range in get_data");
+  }
+  if (data == nullptr) {
+    throw runtime_error("data is null in get_data");
+  }
+
+  int bias = idx * nifs * nchans;
+
+  switch (nbits) {
+  case 8: {
+    uint8_t *data8 = static_cast<uint8_t *>(data);
+    return &data8[bias];
+  }
+  case 16: {
+    uint16_t *data16 = static_cast<uint16_t *>(data);
+    return &data16[bias];
+  }
+  case 32: {
+    uint32_t *data32 = static_cast<uint32_t *>(data);
+    return &data32[bias];
+  }
+  default:
+    throw runtime_error("Unsupported nbits value in get_data");
   }
 }
