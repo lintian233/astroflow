@@ -3,6 +3,9 @@
  *
  *  Created on: Feb 19, 2020
  *      Author: ypmen
+ *
+ *  Fixed on: Jan 26, 2025
+ *      Author: (xd)[https://github.com/lintian233]
  */
 
 #ifndef FILTERBANK_H_
@@ -28,13 +31,12 @@ public:
   void close();
   bool read_header();
   bool read_data();
-  bool read_data(long int nstart, long int ns);
-  bool read_data(long int ns);
   bool set_data(unsigned char *dat, long int ns, int nif, int nchan);
   bool write_header();
   bool write_data();
 
   variant<uint8_t *, uint16_t *, uint32_t *> get_data(int idx);
+  template <typename T> bool read_data_impl();
 
 private:
   static void put_string(FILE *outputfile, const string &strtmp);

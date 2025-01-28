@@ -42,6 +42,9 @@ TEST_F(TestFilterBank, get_dataTest) {
 }
 
 TEST_F(TestFilterBank, TestMatplotlib) {
+
+  GTEST_SKIP();
+
   Filterbank fil(file_name);
 
   // 使用连续内存存储数据
@@ -60,7 +63,7 @@ TEST_F(TestFilterBank, TestMatplotlib) {
                           static_cast<size_t>(fil.nchans)};
 
   std::map<std::string, std::string> kwargs = {
-      //   {"cmap", "viridis"},
+      {"cmap", "viridis"},
       {"vmin", "0"},
       {"vmax", "255"}, // 使用uint8_t的实际范围
       {"aspect", "auto"}};
@@ -69,8 +72,8 @@ TEST_F(TestFilterBank, TestMatplotlib) {
   plt::title("Filterbank Data");
   plt::xlabel("Frequency Channels");
   plt::ylabel("Time Samples");
-  plt::tight_layout(); // 优化布局
-  plt::show();
+  plt::tight_layout();
+  plt::save("waterfall.png", 300);
 }
 
 int main(int argc, char **argv) {

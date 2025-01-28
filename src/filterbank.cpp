@@ -433,100 +433,33 @@ bool Filterbank::read_header() {
   return true;
 }
 
-bool Filterbank::read_data() {
-  switch (nbits) {
-  case 8: {
-    long int nchr = nsamples * nifs * nchans;
-    unsigned char *chb = new unsigned char[nchr];
-    long int icnt = fread(chb, 1, nchr, fptr);
-    data = new unsigned char[icnt];
-    for (long int i = 0; i < icnt; i++) {
-      ((unsigned char *)data)[i] = chb[i];
-    }
-    delete[] chb;
-    if (icnt != nchr) {
-      cerr << "Data ends unexpected read to EOF" << endl;
-    }
-    nsamples = icnt / nifs / nchans;
-    ndata = nsamples;
-  }; break;
-  case 16: {
-    long int nchr = nsamples * nifs * nchans;
-    short *chb = new short[nchr]; // Directly use short for 16-bit data
-    long int icnt = fread(chb, sizeof(short), nchr, fptr);
-    data = new short[icnt];
-    for (long int i = 0; i < icnt; i++) {
-      ((short *)data)[i] = chb[i];
-    }
-    delete[] chb;
-    if (icnt != nchr) {
-      cerr << "Data ends unexpected read to EOF" << endl;
-    }
-    nsamples = icnt / nifs / nchans;
-    ndata = nsamples;
-  }; break;
-  default: {
-    cerr << "Error: data type:" << nbits << endl;
-    cerr << "Error: data type unsupported" << endl;
+template <typename T> bool Filterbank::read_data_impl() {
+  long int nchr = nsamples * nifs * nchans;
+  data = new T[nchr];
+  long int icnt = fread(data, sizeof(T), nchr, fptr);
+  if (icnt != nchr) {
+    cerr << "Data ends unexpected read to EOF" << endl;
     return false;
-  }; break;
   }
-
+  nsamples = icnt / nifs / nchans;
+  ndata = nsamples;
   return true;
 }
 
-bool Filterbank::read_data(long int nstart, long int ns) {
-  long int offset = (long int)(long double)nstart * (long double)nchans *
-                    (long double)nifs * ((long double)nbits / 8.0);
-  fseek(fptr, offset, SEEK_CUR);
-  return read_data(ns);
-}
-
-bool Filterbank::read_data(long int ns) {
+bool Filterbank::read_data() {
   switch (nbits) {
   case 8: {
-    long int nchr = ns * nifs * nchans;
-    unsigned char *chb = new unsigned char[nchr];
-    long int icnt = fread(chb, 1, nchr, fptr);
-    if (icnt > ndata) {
-      if (data != NULL)
-        delete[] (unsigned char *)data;
-      data = new unsigned char[icnt];
-    }
-    for (long int i = 0; i < icnt; i++) {
-      ((unsigned char *)data)[i] = chb[i];
-    }
-    delete[] chb;
-    if (icnt != nchr) {
-      cerr << "Data ends unexpected read to EOF" << endl;
-    }
-    ndata = icnt / nifs / nchans;
-  }; break;
+    return read_data_impl<uint8_t>();
+  };
   case 16: {
-    long int nchr = ns * nifs * nchans;
-    short *chb = new short[nchr]; // 直接使用short处理16位数据
-    long int icnt = fread(chb, sizeof(short), nchr, fptr);
-    if (icnt > ndata) {
-      if (data != NULL)
-        delete[] (short *)data;
-      data = new short[icnt];
-    }
-    for (long int i = 0; i < icnt; i++) {
-      ((short *)data)[i] = chb[i];
-    }
-    delete[] chb;
-    if (icnt != nchr) {
-      cerr << "Data ends unexpected read to EOF" << endl;
-    }
-    ndata = icnt / nifs / nchans;
-  }; break;
+    return read_data_impl<uint16_t>();
+  };
   default: {
     cerr << "Error: data type:" << nbits << endl;
     cerr << "Error: data type unsupported" << endl;
     return false;
-  }; break;
+  };
   }
-
   return true;
 }
 
