@@ -59,13 +59,13 @@ TEST_F(TestFilterBank, TestMatplotlib) {
     }
   }
 
-  vector<size_t> shape = {static_cast<size_t>(fil.ndata),
+  vector<size_t> shape = {static_cast<size_t>(fil.ndata / 3),
                           static_cast<size_t>(fil.nchans)};
 
   std::map<std::string, std::string> kwargs = {
       {"cmap", "viridis"},
       {"vmin", "0"},
-      {"vmax", "255"}, // 使用uint8_t的实际范围
+      {"vmax", "10"}, // 使用uint8_t的实际范围
       {"aspect", "auto"}};
 
   plt::imshow(flat_data.data(), shape[0], shape[1], 1, kwargs);
@@ -73,7 +73,8 @@ TEST_F(TestFilterBank, TestMatplotlib) {
   plt::xlabel("Frequency Channels");
   plt::ylabel("Time Samples");
   plt::tight_layout();
-  plt::save("waterfall.png", 300);
+  // plt::save("waterfall.png", 300);
+  plt::show();
 }
 
 int main(int argc, char **argv) {

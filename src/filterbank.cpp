@@ -8,8 +8,10 @@
  *      Author: (xd)[https://github.com/lintian233]
  */
 
+#include "filterbank.h"
 #include <csignal>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <stdio.h>
@@ -18,9 +20,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <variant>
-
-#include "filterbank.h"
-
 using namespace std;
 
 #define _CHAR_SWAP_SIZE 256
@@ -721,4 +720,44 @@ variant<uint8_t *, uint16_t *, uint32_t *> Filterbank::get_data(int idx) {
   default:
     throw runtime_error("Unsupported nbits value in get_data");
   }
+}
+
+void Filterbank::info() const {
+  cout << "Filterbank Information" << endl;
+  cout << "----------------------" << endl;
+  cout << left << setw(20) << "Filename:" << filename << endl;
+  cout << left << setw(20) << "Header Size:" << header_size << " bytes" << endl;
+  cout << left << setw(20)
+       << "Use Frequency Table:" << (use_frequence_table ? "Yes" : "No")
+       << endl;
+  cout << left << setw(20) << "Telescope ID:" << telescope_id << endl;
+  cout << left << setw(20) << "Machine ID:" << machine_id << endl;
+  cout << left << setw(20) << "Data Type:" << data_type << endl;
+  cout << left << setw(20) << "Raw Data File:" << rawdatafile << endl;
+  cout << left << setw(20) << "Source Name:" << source_name << endl;
+  cout << left << setw(20) << "Barycentric:" << (barycentric ? "Yes" : "No")
+       << endl;
+  cout << left << setw(20) << "Pulsarcentric:" << (pulsarcentric ? "Yes" : "No")
+       << endl;
+  cout << left << setw(20) << "Beam Info:" << ibeam << " of " << nbeams << endl;
+  cout << left << setw(20) << "Number of Pulses:" << npuls << endl;
+  cout << left << setw(20) << "Number of Bins:" << nbins << endl;
+  cout << left << setw(20) << "Azimuth Start:" << az_start << " degrees"
+       << endl;
+  cout << left << setw(20) << "Zenith Angle Start:" << za_start << " degrees"
+       << endl;
+  cout << left << setw(20) << "Source RAJ:" << src_raj << endl;
+  cout << left << setw(20) << "Source DEJ:" << src_dej << endl;
+  cout << left << setw(20) << "Start Time (MJD):" << tstart << endl;
+  cout << left << setw(20) << "Sample Time (s):" << tsamp << endl;
+  cout << left << setw(20) << "Number of Bits:" << nbits << endl;
+  cout << left << setw(20) << "Number of Samples:" << nsamples << endl;
+  cout << left << setw(20) << "Number of IFs:" << nifs << endl;
+  cout << left << setw(20) << "Number of Channels:" << nchans << endl;
+  cout << left << setw(20) << "First Channel Freq:" << fch1 << " MHz" << endl;
+  cout << left << setw(20) << "Channel Bandwidth:" << foff << " MHz" << endl;
+  cout << left << setw(20) << "Reference DM:" << refdm << endl;
+  cout << left << setw(20) << "Period:" << period << " s" << endl;
+  cout << left << setw(20) << "Data Size:" << ndata << " bytes" << endl;
+  cout << "----------------------" << endl;
 }

@@ -37,6 +37,7 @@ public:
 
   variant<uint8_t *, uint16_t *, uint32_t *> get_data(int idx);
   template <typename T> bool read_data_impl();
+  void info() const;
 
 private:
   static void put_string(FILE *outputfile, const string &strtmp);

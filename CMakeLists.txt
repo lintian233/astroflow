@@ -10,8 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 设置构建类型（Debug 或 Release）
-set(CMAKE_BUILD_TYPE "Debug")  # 默认使用 Debug 模式
-# set(CMAKE_BUILD_TYPE "Release")  # 如果需要 Release 模式，取消注释
+#set(CMAKE_BUILD_TYPE "Debug")  # 默认使用 Debug 模式
+set(CMAKE_BUILD_TYPE "Release")  # 如果需要 Release 模式，取消注释
 
 # ------------------------ 源码文件配置 ------------------------
 # 主程序源码
@@ -59,7 +59,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -ggdb -g -pg")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -pg")
 
 # Release 模式配置
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -fopenmp -fno-math-errno")
 
 # ------------------------ 主程序配置 ------------------------
 # 包含头文件目录
