@@ -17,7 +17,6 @@
 #include <cstddef>
 #include <future>
 #include <memory>
-#include <numeric>
 #include <omp.h>
 #include <sstream>
 #include <stdexcept>
@@ -165,32 +164,7 @@ dedispered_fil_tsample(Filterbank &fil, float dm_low, float dm_high,
 /**
  * NOTE: dedispered_fil_tsample 的 openmp 版本
  *
- * @brief 对滤波器数据去色散并生成时间样本.
- *
- * 该函数对输入的滤波器数据（Filterbank）进行去色散处理，并生成一系列时间样本dm_times。
- * 去色散处理是通过计算不同色散量（DM）下的信号延迟，并对信号进行累加来实现的。
- * 函数支持多线程并行处理不同的DM步长。
- *
- * @tparam T 数据类型模板参数，通常为float或double
- * @param fil 输入的滤波器数据，包含频率表、时间采样间隔等信息
- * @param dm_low 色散量的下限
- * @param dm_high 色散量的上限
- * @param dm_step 色散量的步长，默认为1
- * @param ref_freq 参考频率，默认为通道最高频率（REF_FREQ_TOP）
- *  WARN: 暂时只能为REF_FREQ_TOP
- *
- * @param time_downsample 时间下采样因子，默认为64即每个64个fil.tsamp采一个
- * @param t_sample 时间样本的长度，默认为0.5秒
- *
- * @return std::vector<std::shared_ptr<T[]>>:
- * 返回一个指针数组，每个指针指向一个去色散后的时间样本数组
- * std::vector<std::shared_ptr<T[]>> dm_times:每个时间片的dm_time图
- *
- * @throws std::invalid_argument 如果输入参数不合法（如time_downsample <
- * 1，或dm_low > dm_high等）
- *
- * @details
- * 函数首先检查输入参数的合法性，包括time_downsample、dm_low、dm_high和dm_step。
+ * doc 可以看dedispered_fil_tsample
  */
 template <typename T>
 std::vector<std::shared_ptr<T[]>>
