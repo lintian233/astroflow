@@ -68,17 +68,26 @@ std::vector<std::shared_ptr<T[]>> dedispered_fil_tsample(
    make
    ```
 
-## 🤝 Contributing
-
-Contributions are welcome!
-
 ## 🚧 Roadmap
+
+**Ultimate Goal**: Build a modern, high-performance radio astronomy data processing pipeline centered around CMake, featuring:
+
+- Easy deployment with no manual dependency installation
+- Multi-threading (OpenMP) and CUDA support
+- Support for multiple astronomical data formats (filterbank, FITS, etc.)
+- AI integration for advanced analysis
+
+**Current Phase**: Single-pulse FRB search pipeline
 
 - [x] 1. Filterbank data format reading
 - [x] 2. Incoherent dedispersion (tiny FRB search ready)
-- [ ] 3.AI image detection for FRB search
+- [ ] 3. AI image detection for FRB search
 - [ ] 4. Boxcar time-slice pulse filtering
 - [ ] 5. Candidate generator
+
+## 🤝 Contributing
+
+Contributions are welcome!
 
 ## 📄 License
 
