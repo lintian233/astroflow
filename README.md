@@ -77,4 +77,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Made with ❤️ by [Your Name] | [GitHub](https://github.com/yourusername)
+Made with ❤️ by [lintian233] | [GitHub](https://github.com/lintian233)
