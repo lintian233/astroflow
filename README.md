@@ -33,7 +33,8 @@ int main() {
 
 ### Core Classes
 
-- **Filterbank**: Handles filterbank file I/O and metadata
+- **Filterbank**: Handles filterbank file I/O and metadata. base on [XLib](https://github.com/ypmen/XLibs/blob/master/src/formats/filterbank.cpp)
+
 - **dedispered**: Namespace containing dedispersion algorithms
 
 ### Key Functions
@@ -55,8 +56,8 @@ std::vector<std::shared_ptr<T[]>> dedispered_fil_tsample(
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/filterbank-dedispersion.git
-   cd filterbank-dedispersion
+   git clone https://github.com/lintian233/dedisperedfil.git
+   cd dedisperedfil
    ```
 
 2. Build with CMake:
@@ -69,7 +70,15 @@ std::vector<std::shared_ptr<T[]>> dedispered_fil_tsample(
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [contribution guidelines](CONTRIBUTING.md).
+Contributions are welcome!
+
+## 🚧 Roadmap
+
+- [x] 1. Filterbank data format reading
+- [x] 2. Incoherent dedispersion (tiny FRB search ready)
+- [ ] 3.AI image detection for FRB search
+- [ ] 4. Boxcar time-slice pulse filtering
+- [ ] 5. Candidate generator
 
 ## 📄 License
 
