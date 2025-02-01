@@ -1,6 +1,6 @@
 # ------------------------ 基础配置 ------------------------
 cmake_minimum_required(VERSION 3.22)
-project(filreader)
+project(astroflow)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -69,21 +69,21 @@ include_directories(include)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # 添加主程序可执行文件
-add_executable(fread ${SOURCES} ${MAIN})
+add_executable(astroflow ${SOURCES} ${MAIN})
 
 # 为主程序设置包含目录
-target_include_directories(fread PUBLIC
+target_include_directories(astroflow PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${Python3_INCLUDE_DIRS}
     ${NUMPY_INCLUDE_DIR}
 )
 
 # 为主程序链接库
-target_link_libraries(fread PRIVATE ${Python3_LIBRARIES})
+target_link_libraries(astroflow PRIVATE ${Python3_LIBRARIES})
 
 # ------------------------ 测试配置 ------------------------
 # 测试可执行文件名称
-set(TEST_EXECUTABLE_NAME fread_test)
+set(TEST_EXECUTABLE_NAME astroflow_test)
 
 # 添加测试可执行文件
 add_executable(${TEST_EXECUTABLE_NAME} ${TESTS} ${SOURCES})
