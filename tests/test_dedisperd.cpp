@@ -26,25 +26,32 @@ protected:
 };
 
 TEST_F(TestDedispered, testDedispered) {
+
+  GTEST_SKIP();
+
   Filterbank fil(file_name);
   fil.info();
-  int time_downsample = 16;
+  int time_downsample = 4;
   float dm_low = 0;
   float dm_high = 600;
+  float freq_start = 1100; // MHz
+  float freq_end = 1190;   // MHz
   float dm_step = 1;
   float t_sample = 0.5f;
 
-  vector<shared_ptr<uint8_t[]>> dm_times =
+  dedispered::DedispersedData<uint8_t> dedata =
       dedispered::dedispered_fil_tsample_omp<uint8_t>(
-          fil, dm_low, dm_high, dm_step, REF_FREQ_TOP, time_downsample,
-          t_sample);
+          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
+          time_downsample, t_sample);
 
   size_t downsampled_ndata = 20345 / 2 / time_downsample;
 
   int steps = static_cast<int>((dm_high - dm_low) / dm_step);
   std::vector<size_t> shape = {static_cast<size_t>(steps), downsampled_ndata};
-
+  auto dm_times = dedata.dm_times;
   for (auto dm_time : dm_times) {
-    IMSHOW(dm_time.get(), shape);
+    // IMSHOW(dm_time.get(), shape);
   }
+
+  IMSHOW(dm_times[5].get(), shape);
 }

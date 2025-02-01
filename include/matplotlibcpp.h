@@ -1018,6 +1018,20 @@ inline void imshow(const unsigned char *ptr, const int rows, const int columns,
   detail::imshow((void *)ptr, NPY_UINT8, rows, columns, colors, keywords, out);
 }
 
+inline void imshow(const unsigned int *ptr, const int rows, const int columns,
+                   const int colors,
+                   const std::map<std::string, std::string> &keywords = {},
+                   PyObject **out = nullptr) {
+  detail::imshow((void *)ptr, NPY_UINT32, rows, columns, colors, keywords, out);
+}
+
+inline void imshow(const short unsigned int *ptr, const int rows,
+                   const int columns, const int colors,
+                   const std::map<std::string, std::string> &keywords = {},
+                   PyObject **out = nullptr) {
+  detail::imshow((void *)ptr, NPY_UINT16, rows, columns, colors, keywords, out);
+}
+
 inline void imshow(const float *ptr, const int rows, const int columns,
                    const int colors,
                    const std::map<std::string, std::string> &keywords = {},

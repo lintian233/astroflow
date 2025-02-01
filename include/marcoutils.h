@@ -50,6 +50,7 @@ template <typename T> void imshow(const T *ptr, std::vector<size_t> shape) {
   plt::imshow(ptr, shape[0], shape[1], 1, kwargs);
   plt::tight_layout();
   plt::show();
+  // plt::save("dm_time.png", 300);
 }
 
 } // namespace MarcUtils
@@ -59,6 +60,7 @@ template <typename T> void imshow(const T *ptr, std::vector<size_t> shape) {
   std::cout << MarcUtils::format(FORMAT_STR, __VA_ARGS__) << std::endl;
 
 // Debug macros
+#define DEBUG
 #ifdef DEBUG
 #define PRINT_VEC(VEC) MarcUtils::print_vector(VEC)
 #define IMSHOW(PTR, SHAPE) MarcUtils::imshow(PTR, SHAPE)
