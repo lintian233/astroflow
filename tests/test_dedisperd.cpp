@@ -1,3 +1,5 @@
+#include "gtest/gtest.h"
+#include <cstddef>
 #include <memory>
 #define DEBUG
 
@@ -26,15 +28,13 @@ protected:
 };
 
 TEST_F(TestDedispered, testDedispered) {
-
   GTEST_SKIP();
-
   Filterbank fil(file_name);
   fil.info();
   int time_downsample = 4;
-  float dm_low = 0;
+  float dm_low = 1;
   float dm_high = 600;
-  float freq_start = 1100; // MHz
+  float freq_start = 1140; // MHz
   float freq_end = 1190;   // MHz
   float dm_step = 1;
   float t_sample = 0.5f;
@@ -45,13 +45,15 @@ TEST_F(TestDedispered, testDedispered) {
           time_downsample, t_sample);
 
   size_t downsampled_ndata = 20345 / 2 / time_downsample;
+  // size_t downsampled_ndata = 790;
+  PRINT_VAR(downsampled_ndata);
 
   int steps = static_cast<int>((dm_high - dm_low) / dm_step);
   std::vector<size_t> shape = {static_cast<size_t>(steps), downsampled_ndata};
   auto dm_times = dedata.dm_times;
   for (auto dm_time : dm_times) {
-    // IMSHOW(dm_time.get(), shape);
+    IMSHOW(dm_time.get(), shape);
   }
 
-  IMSHOW(dm_times[5].get(), shape);
+  // IMSHOW(dm_times[5].get(), shape);
 }

@@ -91,8 +91,8 @@ Filterbank::Filterbank(const string fname) {
   ndata = 0;
   data = NULL;
   fptr = NULL;
-
   read_header();
+  info();
   read_data();
 }
 
@@ -248,6 +248,7 @@ Filterbank::~Filterbank() {
       delete[] (float *)data;
       break;
     default:
+      cerr << nbits << endl;
       cerr << "Error: data type not support" << endl;
       break;
     }
@@ -453,6 +454,9 @@ bool Filterbank::read_data() {
   case 16: {
     return read_data_impl<uint16_t>();
   };
+  case 32: {
+    return read_data_impl<uint32_t>();
+  }
   default: {
     cerr << "Error: data type:" << nbits << endl;
     cerr << "Error: data type unsupported" << endl;

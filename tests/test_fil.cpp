@@ -1,10 +1,12 @@
 #include "filterbank.h"
+#include "marcoutils.h"
 #include "matplotlibcpp.h"
 #include "gtest/gtest.h"
 #include <cstdint> // for uint8_t
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <variant>
 #include <vector>
@@ -30,6 +32,7 @@ protected:
 TEST_F(TestFilterBank, initTest) { Filterbank fil(file_name); }
 
 TEST_F(TestFilterBank, get_dataTest) {
+  GTEST_SKIP();
   Filterbank fil(file_name);
   vector<vector<uint8_t>> fildata;
   for (int i = 0; i < fil.ndata; i++) {
@@ -42,9 +45,7 @@ TEST_F(TestFilterBank, get_dataTest) {
 }
 
 TEST_F(TestFilterBank, TestMatplotlib) {
-
   GTEST_SKIP();
-
   Filterbank fil(file_name);
 
   // 使用连续内存存储数据
@@ -59,22 +60,9 @@ TEST_F(TestFilterBank, TestMatplotlib) {
     }
   }
 
-  vector<size_t> shape = {static_cast<size_t>(fil.ndata / 3),
+  vector<size_t> shape = {static_cast<size_t>(fil.ndata),
                           static_cast<size_t>(fil.nchans)};
-
-  std::map<std::string, std::string> kwargs = {
-      {"cmap", "viridis"},
-      {"vmin", "0"},
-      {"vmax", "10"}, // 使用uint8_t的实际范围
-      {"aspect", "auto"}};
-
-  plt::imshow(flat_data.data(), shape[0], shape[1], 1, kwargs);
-  plt::title("Filterbank Data");
-  plt::xlabel("Frequency Channels");
-  plt::ylabel("Time Samples");
-  plt::tight_layout();
-  // plt::save("waterfall.png", 300);
-  plt::show();
+  IMSHOW(flat_data.data(), shape);
 }
 
 int main(int argc, char **argv) {

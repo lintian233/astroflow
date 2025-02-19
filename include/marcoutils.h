@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #ifndef MARCOUTILS_H_
 #define MARCOUTILS_H_
 
@@ -44,13 +45,17 @@ std::string format(const std::string &format_str, Args &&...args) {
 // Function to display an image using matplotlib
 template <typename T> void imshow(const T *ptr, std::vector<size_t> shape) {
   namespace plt = matplotlibcpp;
+  T max_val = *std::max_element(ptr, ptr + shape[0] * shape[1]);
+  T min_val = *std::min_element(ptr, ptr + shape[0] * shape[1]);
   std::map<std::string, std::string> kwargs = {
-      {"cmap", "viridis"}, {"vmin", "0"}, {"vmax", "200"}, {"aspect", "auto"}};
+      {"cmap", "viridis"},
+      {"vmin", std::to_string(min_val)},
+      {"vmax", std::to_string(max_val)},
+      {"aspect", "auto"}};
 
   plt::imshow(ptr, shape[0], shape[1], 1, kwargs);
   plt::tight_layout();
   plt::show();
-  // plt::save("dm_time.png", 300);
 }
 
 } // namespace MarcUtils

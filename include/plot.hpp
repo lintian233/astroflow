@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #ifndef PLOT_H_
 #define PLOT_H_
 
@@ -14,8 +15,14 @@ template <typename T>
 void plot_dm_time_imp(const T *ptr, std::vector<size_t> shape,
                       std::string title, bool save = true) {
   namespace plt = matplotlibcpp;
+  T max_val = *std::max_element(ptr, ptr + shape[0] * shape[1]);
+  T min_val = *std::min_element(ptr, ptr + shape[0] * shape[1]);
+
   std::map<std::string, std::string> kwargs = {
-      {"cmap", "viridis"}, {"vmin", "0"}, {"vmax", "255"}, {"aspect", "auto"}};
+      {"cmap", "viridis"},
+      {"vmin", std::to_string(min_val)},
+      {"vmax", std::to_string(max_val)},
+      {"aspect", "auto"}};
 
   plt::imshow(ptr, shape[0], shape[1], 1, kwargs);
   plt::ylabel("DM");

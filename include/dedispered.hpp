@@ -9,6 +9,8 @@
 
 #pragma once
 
+#ifndef DEDISPERED_HPP_
+#define DEDISPERED_HPP_
 #include "filterbank.h"
 #include "marcoutils.h"
 
@@ -21,7 +23,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
-
 namespace dedispered {
 
 #define REF_FREQ_END 1
@@ -45,6 +46,8 @@ template <typename T> struct DedispersedData {
 };
 
 /** NOTE: -- doc generate by deepseek-v3: 2025-01-30
+ *
+ * TODO: -- 对于Channel Bandwidth < 0 的情况没有考虑
  *
  * @brief 对滤波器数据去色散并生成时间样本
  *
@@ -91,132 +94,6 @@ template <typename T> struct DedispersedData {
  * 1. 计算每个频率通道中的色散延迟（delay）。
  * 2. 根据延迟计算目标时间点的索引（target_idx）。
  * 3. 对目标时间点的信号进行累加，得到去色散后的信号。
- */
-template <typename T>
-DedispersedData<T>
-dedispered_fil_tsample(Filterbank &fil, float dm_low, float dm_high,
-                       float freq_start, float freq_end, float dm_step = 1,
-                       int ref_freq = REF_FREQ_END, int time_downsample = 64,
-                       float t_sample = 0.5) {
-
-  float fil_freq_min = fil.frequency_table[0];
-  float fil_freq_max = fil.frequency_table[fil.nchans - 1];
-
-  if (freq_start < fil_freq_min || freq_end > fil_freq_max) {
-    throw std::invalid_argument("freq out of filterbank range");
-  }
-
-  int chan_start =
-      static_cast<int>((freq_start - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
-  int chan_end =
-      static_cast<int>((freq_end - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
-
-  chan_start = std::max(0, chan_start);
-  chan_end = std::min(fil.nchans - 1, chan_end);
-  PRINT_VAR(chan_start);
-  PRINT_VAR(chan_end);
-
-  // 参数检查
-  if (time_downsample < 1)
-    throw std::invalid_argument("time_downsample must be >= 1");
-  if (dm_low > dm_high || dm_low < 0 || dm_step <= 0) {
-    throw std::invalid_argument("Invalid DM parameters");
-  }
-  if (t_sample > fil.ndata * fil.tsamp) {
-    std::ostringstream oss;
-    oss << "t_sample must less than total_tsample: " << t_sample
-        << " total_tsample: " << fil.ndata * fil.tsamp;
-    throw std::invalid_argument(oss.str());
-  }
-
-  DedispersedData<T> result;
-  result.dm_low = dm_low;
-  result.dm_high = dm_high;
-  result.dm_step = dm_step;
-  result.tsample = t_sample;
-  result.filname = fil.filename;
-
-  T *data = static_cast<T *>(fil.data);
-  const size_t nchans = fil.nchans;
-  const float ref_freq_value = ref_freq ? fil.frequency_table[chan_end]
-                                        : fil.frequency_table[chan_start];
-
-  const int samples_per_tsample =
-      static_cast<int>(std::round(t_sample / fil.tsamp));
-
-  const size_t total_slices =
-      (fil.ndata + samples_per_tsample - 1) / samples_per_tsample - 1;
-
-  std::vector<std::shared_ptr<T[]>> dm_times;
-
-  for (size_t slice_idx = 0; slice_idx < total_slices; ++slice_idx) {
-    const size_t start = slice_idx * samples_per_tsample;
-    const size_t end =
-        std::min(start + samples_per_tsample, static_cast<size_t>(fil.ndata));
-
-    PRINT_VAR(start);
-    PRINT_VAR(end);
-    const size_t slice_duration = end - start;
-    const size_t down_ndata =
-        (slice_duration + time_downsample - 1) / time_downsample;
-
-    const int dm_steps = static_cast<int>((dm_high - dm_low) / dm_step) + 1;
-
-    if (slice_idx == 0) {
-      result.dm_ndata = dm_steps;
-      result.downtsample_ndata = down_ndata;
-      result.shape = {dm_steps, down_ndata};
-    }
-
-    std::shared_ptr<T[]> dm_array(new T[dm_steps * down_ndata](),
-                                  std::default_delete<T[]>());
-
-    std::vector<std::future<void>> futures;
-
-    auto process_dm = [&dm_array, data, &fil, start, time_downsample,
-                       down_ndata, nchans, dm_steps, dm_low, dm_step,
-                       chan_start, chan_end, ref_freq_value](int step) {
-      const float dm = dm_low + step * dm_step;
-      for (size_t ti = 0; ti < down_ndata; ++ti) {
-        T sum = 0;
-        const size_t base_idx = start + ti * time_downsample;
-
-        for (size_t ch = chan_start; ch < chan_end; ++ch) {
-          const float freq = fil.frequency_table[ch];
-          const float delay =
-              4.148808e3f * dm *
-              (1.0f / (freq * freq) - 1.0f / (ref_freq_value * ref_freq_value));
-          const int delay_samples = static_cast<int>(delay / fil.tsamp);
-
-          const int target_idx = base_idx + delay_samples;
-
-          if (target_idx >= 0 && static_cast<size_t>(target_idx) < fil.ndata) {
-            sum += data[target_idx * nchans + ch];
-          }
-        }
-        dm_array[step * down_ndata + ti] = sum;
-      }
-    };
-
-    for (int step = 0; step < dm_steps; ++step) {
-      futures.push_back(std::async(std::launch::async, process_dm, step));
-    }
-    for (auto &f : futures)
-      f.get();
-
-    dm_times.push_back(dm_array);
-  }
-
-  result.dm_times = std::move(dm_times);
-  return result;
-}
-
-/**
- * NOTE: dedispered_fil_tsample 的 openmp 版本
- *
- * doc 可以看dedispered_fil_tsample
  */
 template <typename T>
 DedispersedData<T>
@@ -342,3 +219,6 @@ dedispered_fil_tsample_omp(Filterbank &fil, float dm_low, float dm_high,
 }
 
 } // namespace dedispered
+//
+
+#endif // DEDISPERED_HPP_

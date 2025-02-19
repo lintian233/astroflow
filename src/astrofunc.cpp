@@ -1,5 +1,4 @@
 #include "astrofunc.h"
-#include "marcoutils.h"
 
 using DedispersedData = std::variant<dedispered::DedispersedData<uint8_t>,
                                      dedispered::DedispersedData<uint16_t>,
@@ -37,20 +36,7 @@ void single_pulsar_search(Filterbank &fil, float dm_low, float dm_high,
 
   auto de_vistor = [](auto &&arg) {
     using T = std::decay_t<decltype(arg)>; // Get the actual type
-    std::cout << "Processing DedispersedData with type: " << typeid(T).name()
-              << "\n";
-
-    /*
-    // Access dm_times
-    for (const auto &ptr : arg.dm_times) {
-      PRINT_VAR(arg.dm_times.size());
-      auto *data = ptr.get();
-      IMSHOW(data, arg.shape);
-    }
-    */
-    // IMSHOW(arg.dm_times[5].get(), arg.shape);
-    plot_dedispered_data(arg, true);
-    // Access other members
+    plot_dedispered_data(arg, false);
     std::cout << "DM range: [" << arg.dm_low << ", " << arg.dm_high << "]\n";
     std::cout << "DM step: " << arg.dm_step << "\n";
     std::cout << "File name: " << arg.filname << "\n";
