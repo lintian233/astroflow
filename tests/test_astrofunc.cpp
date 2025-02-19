@@ -1,4 +1,3 @@
-
 #include "astrofunc.h"
 #include "filterbank.h"
 #include "marcoutils.h"
@@ -22,15 +21,15 @@ protected:
 TEST_F(TestAstroFunc, testSinglePulsarSearch) {
 
   Filterbank fil(file_name);
-  // fil.info();
+  fil.info();
 
-  int time_downsample = 1;
+  int time_downsample = 4;
   float dm_low = 0;
   float dm_high = 800;
   float freq_start = 1140; // MHz
   float freq_end = 1190;   // MHz
   float dm_step = 1;
-  float t_sample = 0.2f;
+  float t_sample = 0.5f;
   single_pulsar_search(fil, dm_low, dm_high, freq_start, freq_end, dm_step,
                        time_downsample, t_sample);
 }

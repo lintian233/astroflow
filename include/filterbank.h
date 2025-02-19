@@ -45,6 +45,7 @@ private:
   static int get_nsamples(const char *filename, int headersize, int nbits,
                           int nifs, int nchans);
   static long long sizeof_file(const char name[]);
+  void reverse_channanl_data();
 
 public:
   string filename;

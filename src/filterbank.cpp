@@ -9,6 +9,7 @@
  */
 
 #include "filterbank.h"
+#include <algorithm>
 #include <csignal>
 #include <cstdint>
 #include <iomanip>
@@ -92,8 +93,8 @@ Filterbank::Filterbank(const string fname) {
   data = NULL;
   fptr = NULL;
   read_header();
-  info();
   read_data();
+  reverse_channanl_data();
 }
 
 Filterbank::Filterbank(const Filterbank &fil) {
@@ -764,4 +765,59 @@ void Filterbank::info() const {
   cout << left << setw(20) << "Period:" << period << " s" << endl;
   cout << left << setw(20) << "Data Size:" << ndata << " bytes" << endl;
   cout << "----------------------" << endl;
+}
+
+void Filterbank::reverse_channanl_data() {
+  if (foff >= 0)
+    return;
+  if (data == nullptr)
+    return;
+
+  // Reverse frequency table
+  std::reverse(frequency_table, frequency_table + nchans);
+
+  // Update header parameters if not using explicit frequency table
+  if (!use_frequence_table) {
+    fch1 = frequency_table[0];
+    foff = std::abs(foff);
+  }
+
+  // Reverse channels for each time sample and IF
+  const long total_channels_per_sample = nifs * nchans;
+
+  switch (nbits) {
+  case 8: {
+    uint8_t *ptr = static_cast<uint8_t *>(data);
+    for (long i = 0; i < ndata; ++i) {
+      for (int j = 0; j < nifs; ++j) {
+        auto *start = ptr + i * total_channels_per_sample + j * nchans;
+        std::reverse(start, start + nchans);
+      }
+    }
+    break;
+  }
+  case 16: {
+    uint16_t *ptr = static_cast<uint16_t *>(data);
+    for (long i = 0; i < ndata; ++i) {
+      for (int j = 0; j < nifs; ++j) {
+        auto *start = ptr + i * total_channels_per_sample + j * nchans;
+        std::reverse(start, start + nchans);
+      }
+    }
+    break;
+  }
+  case 32: {
+    uint32_t *ptr = static_cast<uint32_t *>(data);
+    for (long i = 0; i < ndata; ++i) {
+      for (int j = 0; j < nifs; ++j) {
+        auto *start = ptr + i * total_channels_per_sample + j * nchans;
+        std::reverse(start, start + nchans);
+      }
+    }
+    break;
+  }
+  default:
+    throw std::runtime_error(
+        "Unsupported nbits value in reverse_channanl_data");
+  }
 }
