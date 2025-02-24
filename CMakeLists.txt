@@ -15,7 +15,7 @@ set(CMAKE_CUDA_ARCHITECTURES 75)
 # 添加库
 
 # demo
-file(GLOB DEMO "src/demo/*.cpp")
+file(GLOB DEMO "src/demo/*")
 
 include_directories(include)
 
