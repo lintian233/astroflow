@@ -4,7 +4,6 @@
 #ifndef MARCOUTILS_H_
 #define MARCOUTILS_H_
 
-#include "matplotlibcpp.h"
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -42,22 +41,6 @@ std::string format(const std::string &format_str, Args &&...args) {
   return oss.str();
 }
 
-// Function to display an image using matplotlib
-template <typename T> void imshow(const T *ptr, std::vector<size_t> shape) {
-  namespace plt = matplotlibcpp;
-  T max_val = *std::max_element(ptr, ptr + shape[0] * shape[1]);
-  T min_val = *std::min_element(ptr, ptr + shape[0] * shape[1]);
-  std::map<std::string, std::string> kwargs = {
-      {"cmap", "viridis"},
-      {"vmin", std::to_string(min_val)},
-      {"vmax", std::to_string(max_val)},
-      {"aspect", "auto"}};
-
-  plt::imshow(ptr, shape[0], shape[1], 1, kwargs);
-  plt::tight_layout();
-  plt::show();
-}
-
 } // namespace MarcUtils
 
 // Macro for formatted printing
@@ -68,7 +51,6 @@ template <typename T> void imshow(const T *ptr, std::vector<size_t> shape) {
 #define DEBUG
 #ifdef DEBUG
 #define PRINT_VEC(VEC) MarcUtils::print_vector(VEC)
-#define IMSHOW(PTR, SHAPE) MarcUtils::imshow(PTR, SHAPE)
 #define PRINT_VAR(VAR) (std::cout << #VAR << ": " << (VAR) << std::endl)
 #else
 #define PRINT_VEC(VEC)                                                         \

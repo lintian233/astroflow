@@ -2,8 +2,7 @@
  * Project astroflow
  */
 
-
-#include "cpucal.h"
+#include "cpucal.hpp"
 
 /**
  * cpucal implementation
