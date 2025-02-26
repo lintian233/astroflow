@@ -1,8 +1,11 @@
+#pragma once
+
 #ifndef _CORECAL_H
 #define _CORECAL_H
 
 #include "cpucal.hpp"
 #include "data.h"
+#include <memory>
 
 using deddata =
     std::variant<dedisperseddata<uint8_t>, dedisperseddata<uint16_t>,
