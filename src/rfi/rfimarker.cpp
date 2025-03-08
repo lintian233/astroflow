@@ -2,8 +2,7 @@
  * Project astroflow
  */
 
-
-#include "RfiMarker.h"
+#include "rfimarker.h"
 
 /**
  * RfiMarker implementation

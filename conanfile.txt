@@ -3,8 +3,9 @@ pybind11/2.13.6
 gtest/1.16.0
 
 [tool_requires]
-cmake/3.22.6
+cmake/3.31.6
 
 [generators]
 CMakeToolchain
 CMakeDeps
+
