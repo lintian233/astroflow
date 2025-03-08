@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(astroflow)
 
+include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
 # 启用CUDA支持
 enable_language(CUDA)
 find_package(pybind11 REQUIRED)
@@ -12,7 +13,6 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CUDA_ARCHITECTURES 75)  
-# 添加库
 
 # demo
 file(GLOB DEMO "src/demo/*")

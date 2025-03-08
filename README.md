@@ -3,8 +3,22 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/)
 
-## 📦 Contributing
+## 📦 quickstart
+```bash
+   #git clone this project
+   git clone https://github.com/lintian233/astroflow.git
+   cd astroflow
+   
+   # create your own branch
+   git checkout dev
+   git checkout -b [new-branch-name]
 
+   #build project
+   source configure.sh
+```
+
+
+## manual configuration
 1. Clone the repository:
 
    ```bash
@@ -18,7 +32,7 @@
 
    ```bash
    #conda env is recommend
-   conda create -n astroflow python=3.12 numpy matplotlib
+   conda create -n astroflow python=3.12 numpy matplotlib gcc gxx cuda-toolkit
    conda activate astroflow
    
    pip install conan
@@ -31,6 +45,7 @@
    # you need has cudatoolkit
    mkdir build && cd build
    conan install .. --output-folder=. --build=missing
+   source conanbuild.sh
    cmake .. -DCMAKE_BUILD_TYPE=Release
    make
    ```
