@@ -69,9 +69,6 @@ cd ..
 ```bash
 # Validate CUDA extensions
 python python/adder.py
-
-# Run visualization demo
-python python/visualization/demo_plot.py
 ```
 
 ## 📦 Core Dependencies
