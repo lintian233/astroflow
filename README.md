@@ -18,14 +18,17 @@ A high-performance astronomy data processing framework combining C++ computation
 ## 🚀 Quick Start
 ```bash
 # Clone repository and create feature branch
-git clone https://github.com/lintian233/astroflow.git
+git clone https//github.com/lintian233/astroflow.git
 cd astroflow
 git checkout -b your-feature origin/dev
 
 # Run automated configuration
 source configure.sh
+
+# Test if installed
+python python/adder.py
 ```
-⚠️ **Note**: The configuration script will:
+⚠️ **Note** The configuration script will:
 1. Create a Conda virtual environment
 2. Install CUDA toolkit and build dependencies
 3. Configure Conan package management
