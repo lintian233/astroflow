@@ -18,7 +18,7 @@ A high-performance astronomy data processing framework combining C++ computation
 ## 🚀 Quick Start
 ```bash
 # Clone repository and create feature branch
-git clone https//github.com/lintian233/astroflow.git
+git clone https://github.com/lintian233/astroflow.git
 cd astroflow
 git checkout -b your-feature origin/dev
 
