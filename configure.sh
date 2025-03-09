@@ -45,7 +45,8 @@ else
     fi
 fi
 
-PYTHON_BIN_DIR=$(dirname $(which python))
+PYTHON_BIN_DIR=$CONDA_PREFIX/bin
+echo "PYTHON_BIN_DIR: $PYTHON_BIN_DIR"
 export PATH="$PYTHON_BIN_DIR:$PATH"
 export CC=$(which gcc)
 export CXX=$(which g++)
