@@ -50,6 +50,22 @@ export PATH="$PYTHON_BIN_DIR:$PATH"
 export CC=$(which gcc)
 export CXX=$(which g++)
 
+echo "Verifying Conan configuration:"
+conan --version
+
+# 初始化Conan profile（如果不存在）
+if ! conan profile list | grep -q "default"; then
+    echo "Initializing Conan profile for first-time use..."
+    if ! conan profile detect --force; then
+        echo "Error: Failed to initialize Conan profile" >&2
+        exit 1
+    fi
+fi
+
+# 显示当前profile配置
+echo "Current Conan profiles:"
+conan profile list
+
 build_dir="build"
 if [ -d "$build_dir" ]; then
     if [ ! -w "$build_dir" ]; then
