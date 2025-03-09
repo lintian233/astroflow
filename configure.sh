@@ -53,7 +53,6 @@ export CXX=$(which g++)
 echo "Verifying Conan configuration:"
 conan --version
 
-# 初始化Conan profile（如果不存在）
 if ! conan profile list | grep -q "default"; then
     echo "Initializing Conan profile for first-time use..."
     if ! conan profile detect --force; then
@@ -62,9 +61,8 @@ if ! conan profile list | grep -q "default"; then
     fi
 fi
 
-# 显示当前profile配置
 echo "Current Conan profiles:"
-conan profile list
+conan profile show
 
 build_dir="build"
 if [ -d "$build_dir" ]; then
