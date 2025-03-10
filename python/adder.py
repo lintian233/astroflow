@@ -1,3 +1,5 @@
+#type: ignore
+
 import demo
 
 import numpy as np
