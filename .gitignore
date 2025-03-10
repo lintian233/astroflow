@@ -4,3 +4,4 @@ build/*
 CMakeUserPresets.json
 *.so
 python/*.so
+tests/*.fil
