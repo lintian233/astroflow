@@ -10,10 +10,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <future>
 #include <memory>
 #include <omp.h>
-#include <sstream>
 #include <stdexcept>
 #include <vector>
 
