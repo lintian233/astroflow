@@ -6,7 +6,6 @@ if ! command -v conda >/dev/null 2>&1; then
     exit 127
 fi
 
-# 检查conda目录的写权限
 CONDA_PREFIX=$(conda info --base)
 if [ ! -w "$CONDA_PREFIX" ]; then
     echo "Error: No write permission for conda installation at $CONDA_PREFIX" >&2
