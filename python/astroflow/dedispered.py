@@ -148,7 +148,7 @@ def dedisper_fil_uint16(
     njobs: int = 64,
 ) -> _astroflow_core.DedisperedDataUint16:
     """
-    see also dedisper_fil_uint16
+    see also dedisper_fil_uint8
     """
     return _astroflow_core._dedisper_fil_uint16(
         file_path,

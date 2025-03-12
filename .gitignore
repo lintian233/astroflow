@@ -10,3 +10,6 @@ tests/**/*.fil
 /python/*png
 /python/**/*pyc
 *pyc
+/python/__pycache__/*
+
+
