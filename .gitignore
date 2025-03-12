@@ -6,3 +6,5 @@ CMakeUserPresets.json
 python/*.so
 tests/**/*.fil
 !tests/FRB180417.fil
+*png
+/python/*png
