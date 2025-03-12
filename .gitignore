@@ -8,3 +8,5 @@ tests/**/*.fil
 !tests/FRB180417.fil
 *png
 /python/*png
+/python/**/*pyc
+*pyc
