@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(astroflow)
 
-set(TARGET_NAME demo)
+set(TARGET_NAME _astroflow_core)
 include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
 
 # 启用CUDA支持
@@ -24,25 +24,29 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -ggdb -g -pg")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -pg")
 
 # Release 模式配置
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -fopenmp -fno-math-errno")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -march=native -fopenmp -fno-math-errno")
 
-file(GLOB DEMO "src/demo/*.cpp" "src/demo/*.cu")
+file(GLOB SRC_BIND "src/bindpy/*.cpp" "src/bindpy/*.cu")
 file(GLOB TESTS "tests/*.cpp")
 file(GLOB SRC_DATA CONFIGURE_DEPENDS "src/data/*.cpp" "src/data/*.cu")
 file(GLOB SRC_CORE CONFIGURE_DEPENDS "src/core/*.cpp" "src/core/*.cu")
 file(GLOB SRC_DETE CONFIGURE_DEPENDS "src/detection/*.cpp" "src/detection/*.cu")
 file(GLOB SRC_RFI CONFIGURE_DEPENDS "src/rfi/*.cpp" "src/rfi/*.cu")
+file(GLOB SRC_API CONFIGURE_DEPENDS "src/api/*.cpp" "src/api/*.cu")
 
-set(SRC_FILES ${SRC_DATA} ${SRC_CORE} ${SRC_UTILS} ${SRC_DETE} ${SRC_RFI})
+set(SRC_FILES ${SRC_DATA} ${SRC_CORE} ${SRC_UTILS} ${SRC_DETE} ${SRC_RFI} ${SRC_API})
 
 include_directories(include)
 
-add_library(${TARGET_NAME} SHARED  ${SRC_FILES} ${DEMO})
+add_library(${TARGET_NAME} SHARED  ${SRC_FILES} ${SRC_BIND})
 
 # 链接依赖
 target_link_libraries(${TARGET_NAME}
-    PRIVATE pybind11::module
+    PRIVATE 
+        pybind11::module
 )
+
+target_compile_definitions(${TARGET_NAME} PRIVATE PYBIND11_NUMPY_DTYPE)
 
 # 设置CUDA包含路径
 target_include_directories(${TARGET_NAME} PRIVATE
@@ -74,6 +78,7 @@ target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
 # 链接 GoogleTest 
 target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
     gtest::gtest
+    pybind11::module
 )
 
 include(GoogleTest)

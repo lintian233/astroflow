@@ -12,9 +12,7 @@
 using namespace std;
 class FilterBankTest : public ::testing::Test {
 protected:
-  // 获取当前文件所录
   std::filesystem::path current_path = std::filesystem::current_path();
-  // 构建测试文件路径
   std::filesystem::path file_path =
       current_path / ".." / ".." / "tests" / "FRB180417.fil";
   string file_name = file_path.string();

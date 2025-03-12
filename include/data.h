@@ -4,9 +4,11 @@
 
 #ifndef _DATA_H
 #define _DATA_H
+
 #include <memory>
 #include <string>
 #include <vector>
+
 class data {};
 
 template <typename T> struct dedisperseddata {

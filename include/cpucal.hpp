@@ -77,14 +77,17 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
                    float t_sample = 0.5) {
 
   // Set maximum number of OpenMP threads
-  const int max_threads = 15;
-  omp_set_num_threads(max_threads);
 
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
 
   if (freq_start < fil_freq_min || freq_end > fil_freq_max) {
-    throw std::invalid_argument("freq out of filterbank range");
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Frequency range [%.3f-%.3f MHz] out of filterbank range "
+             "[%.3f-%.3f MHz]",
+             freq_start, freq_end, fil_freq_min, fil_freq_max);
+    throw std::invalid_argument(error_msg);
   }
 
   int chan_start =
