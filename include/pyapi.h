@@ -4,12 +4,7 @@
 #include "data.h"
 #include <cstdint>
 #include <memory>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 #include <string>
-
-namespace py = pybind11;
 
 template <typename T>
 dedisperseddata<T>
@@ -24,7 +19,6 @@ dedispered_fil(std::string filename, float dm_low, float dm_high,
                                        time_downsample, t_sample);
 }
 
-// 显式模板实例化
 template dedisperseddata<uint8_t> dedispered_fil<uint8_t>(std::string, float,
                                                           float, float, float,
                                                           float, int, float,

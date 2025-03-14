@@ -32,9 +32,8 @@ file(GLOB SRC_DATA CONFIGURE_DEPENDS "src/data/*.cpp" "src/data/*.cu")
 file(GLOB SRC_CORE CONFIGURE_DEPENDS "src/core/*.cpp" "src/core/*.cu")
 file(GLOB SRC_DETE CONFIGURE_DEPENDS "src/detection/*.cpp" "src/detection/*.cu")
 file(GLOB SRC_RFI CONFIGURE_DEPENDS "src/rfi/*.cpp" "src/rfi/*.cu")
-file(GLOB SRC_API CONFIGURE_DEPENDS "src/api/*.cpp" "src/api/*.cu")
 
-set(SRC_FILES ${SRC_DATA} ${SRC_CORE} ${SRC_UTILS} ${SRC_DETE} ${SRC_RFI} ${SRC_API})
+set(SRC_FILES ${SRC_DATA} ${SRC_CORE} ${SRC_UTILS} ${SRC_DETE} ${SRC_RFI})
 
 include_directories(include)
 
@@ -46,14 +45,10 @@ target_link_libraries(${TARGET_NAME}
         pybind11::module
 )
 
-target_compile_definitions(${TARGET_NAME} PRIVATE PYBIND11_NUMPY_DTYPE)
-
 target_include_directories(${TARGET_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
-#显式为CUDA目标添加包含目录
 if(CMAKE_CUDA_COMPILER)
     target_include_directories(${TARGET_NAME} PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -83,14 +78,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_executable(${TEST_EXECUTABLE_NAME} ${TESTS} ${SRC_FILES})
 
 target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
 # 链接 GoogleTest 
 target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
     gtest::gtest
-    pybind11::module
 )
 
 include(GoogleTest)

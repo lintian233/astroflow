@@ -81,5 +81,5 @@ cd "$build_dir" && \
 conan install .. --output-folder=. --build=missing && \
 source conanbuild.sh && \
 cmake .. -DCMAKE_BUILD_TYPE=Release && \
-make && \
+make -j 8 && \
 cd ..
