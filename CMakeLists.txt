@@ -48,10 +48,21 @@ target_link_libraries(${TARGET_NAME}
 
 target_compile_definitions(${TARGET_NAME} PRIVATE PYBIND11_NUMPY_DTYPE)
 
-# 设置CUDA包含路径
 target_include_directories(${TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
+
+#显式为CUDA目标添加包含目录
+if(CMAKE_CUDA_COMPILER)
+    target_include_directories(${TARGET_NAME} PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+    target_compile_options(${TARGET_NAME} PRIVATE
+        -I${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+endif()
 
 # 设置Python模块输出路径
 set_target_properties(${TARGET_NAME} PROPERTIES
@@ -72,6 +83,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_executable(${TEST_EXECUTABLE_NAME} ${TESTS} ${SRC_FILES})
 
 target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 

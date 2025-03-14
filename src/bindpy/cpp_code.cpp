@@ -27,3 +27,4 @@ std::vector<float> VectorAdder::add_vectors(const std::vector<float> &a,
 
   return result;
 }
+

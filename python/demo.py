@@ -27,10 +27,10 @@ file_path = r"/home/lingh/work/astroflow/tests/FRB20241124A.fil"
 time_downsample = 1
 dm_low = 0
 dm_high = 800
-freq_start = 1130
-freq_end = 1300
-dm_step = 1
-t_sample = 0.5
+freq_start = 1050
+freq_end = 1110
+dm_step = 0.1
+t_sample = 0.2
 
 data = astroflow.dedisper_fil_uint8(
     file_path,

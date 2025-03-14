@@ -11,5 +11,8 @@ tests/**/*.fil
 /python/**/*pyc
 *pyc
 /python/__pycache__/*
-
-
+.vsocde/*
+.vscode
+.ccls-cache
+compile_commands.json
+.clangd
