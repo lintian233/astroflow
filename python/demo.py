@@ -22,15 +22,15 @@ import matplotlib.pyplot as plt
 # for i in range(10):
 #     print(original[i])
 
-file_path = r"/home/lingh/work/astroflow/tests/FRB20241124A.fil"
+file_path = r"/home/lintian/work/cuda/astroflow/tests/FRB20241124A.fil"
 
 time_downsample = 1
 dm_low = 0
 dm_high = 800
-freq_start = 1130
-freq_end = 1300
+freq_start = 1050
+freq_end = 1110
 dm_step = 1
-t_sample = 0.5
+t_sample = 0.4
 
 data = astroflow.dedisper_fil_uint8(
     file_path,
@@ -44,6 +44,7 @@ data = astroflow.dedisper_fil_uint8(
     njobs=120,
 )
 
+print("Data shape:", data.shape)
 
 def plot_dedispered_data(dm_data, title):
     time_axis = np.linspace(0, data.tsample * dm_data.shape[1], dm_data.shape[1])

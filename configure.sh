@@ -35,7 +35,7 @@ else
             --override-channels \
             --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
             --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-            python=3.12 conan numpy matplotlib gcc gxx cuda-toolkit -y
+            python=3.13.2 conan numpy matplotlib gcc gxx cuda-toolkit -y
         echo "Environment created. Activating it..."
         conda activate "$ENV_NAME"
     else
@@ -81,5 +81,5 @@ cd "$build_dir" && \
 conan install .. --output-folder=. --build=missing && \
 source conanbuild.sh && \
 cmake .. -DCMAKE_BUILD_TYPE=Release && \
-make && \
+make -j 8 && \
 cd ..

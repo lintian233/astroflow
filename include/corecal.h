@@ -5,6 +5,7 @@
 
 #include "cpucal.hpp"
 #include "data.h"
+#include "gpucal.h"
 #include <memory>
 
 using deddata =

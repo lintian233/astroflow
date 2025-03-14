@@ -32,9 +32,8 @@ file(GLOB SRC_DATA CONFIGURE_DEPENDS "src/data/*.cpp" "src/data/*.cu")
 file(GLOB SRC_CORE CONFIGURE_DEPENDS "src/core/*.cpp" "src/core/*.cu")
 file(GLOB SRC_DETE CONFIGURE_DEPENDS "src/detection/*.cpp" "src/detection/*.cu")
 file(GLOB SRC_RFI CONFIGURE_DEPENDS "src/rfi/*.cpp" "src/rfi/*.cu")
-file(GLOB SRC_API CONFIGURE_DEPENDS "src/api/*.cpp" "src/api/*.cu")
 
-set(SRC_FILES ${SRC_DATA} ${SRC_CORE} ${SRC_UTILS} ${SRC_DETE} ${SRC_RFI} ${SRC_API})
+set(SRC_FILES ${SRC_DATA} ${SRC_CORE} ${SRC_UTILS} ${SRC_DETE} ${SRC_RFI})
 
 include_directories(include)
 
@@ -46,12 +45,19 @@ target_link_libraries(${TARGET_NAME}
         pybind11::module
 )
 
-target_compile_definitions(${TARGET_NAME} PRIVATE PYBIND11_NUMPY_DTYPE)
-
-# 设置CUDA包含路径
 target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
+
+if(CMAKE_CUDA_COMPILER)
+    target_include_directories(${TARGET_NAME} PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+    target_compile_options(${TARGET_NAME} PRIVATE
+        -I${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+endif()
 
 # 设置Python模块输出路径
 set_target_properties(${TARGET_NAME} PROPERTIES
@@ -78,7 +84,6 @@ target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
 # 链接 GoogleTest 
 target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
     gtest::gtest
-    pybind11::module
 )
 
 include(GoogleTest)

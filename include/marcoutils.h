@@ -22,6 +22,16 @@ template <typename T> void print_vector(const std::vector<T> &vec) {
   std::cout << "]" << std::endl;
 }
 
+// Function to print the random elements of a array
+template <typename T> void print_array(const T *arr, size_t size) {
+  std::cout << "[ ";
+  for (size_t i = 0; i < size && i < 10; ++i) {
+    int random = rand() % size;
+    std::cout << arr[random] << " ";
+  }
+  std::cout << "]" << std::endl;
+}
+
 // Function to format a string with given arguments
 template <typename... Args>
 std::string format(const std::string &format_str, Args &&...args) {
@@ -50,18 +60,14 @@ std::string format(const std::string &format_str, Args &&...args) {
 // Debug macros
 #define DEBUG
 #ifdef DEBUG
+#define PRINT_ARR(ARR, SIZE) MarcUtils::print_array(ARR, SIZE)
 #define PRINT_VEC(VEC) MarcUtils::print_vector(VEC)
 #define PRINT_VAR(VAR) (std::cout << #VAR << ": " << (VAR) << std::endl)
 #else
-#define PRINT_VEC(VEC)                                                         \
-  do {                                                                         \
-  } while (0)
-#define IMSHOW(PTR, SHAPE)                                                     \
-  do {                                                                         \
-  } while (0)
-#define PRINT_VAR(VAR)                                                         \
-  do {                                                                         \
-  } while (0)
+#define PRINT_ARR(ARR, SIZE)
+#define PRINT_VEC(VEC)
+#define IMSHOW(PTR, SHAPE)
+#define PRINT_VAR(VAR)
 #endif // DEBUG
 
 #endif // MARCOUTILS_H_
