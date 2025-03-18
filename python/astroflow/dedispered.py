@@ -1,7 +1,7 @@
-import _astroflow_core  # type: ignore
+import _astroflow_core  as _astro_core # type: ignore
 
 
-def dedisper_fil_uint8(
+def dedispered_fil(
     file_path: str,
     dm_low: float,
     dm_high: float,
@@ -11,7 +11,7 @@ def dedisper_fil_uint8(
     time_downsample: int = 64,
     t_sample: float = 0.5,
     njobs: int = 64,
-) -> _astroflow_core.DedisperedDataUint8:
+) -> _astro_core.DedisperedData:
     """
     Perform dedispersion on filterbank data using uint8 precision with OpenMP parallelization.
 
@@ -53,10 +53,6 @@ def dedisper_fil_uint8(
         Must satisfy: t_sample ≈ N * tsamp * time_downsample, where:
         - N is integer number of input samples
         - tsamp is original sampling time from filterbank header
-
-    njobs : int, optional, default: 64
-        Number of OpenMP threads for parallel processing.
-        Recommended value: Number of physical CPU cores × 2
 
     Returns
     -------
@@ -115,7 +111,6 @@ def dedisper_fil_uint8(
     ...     dm_step=0.5,
     ...     time_downsample=128,
     ...     t_sample=1.0,
-    ...     njobs=32
     ... )
     >>> print(f"DM trials: {result.dm_ndata}")
     DM trials: 201
@@ -123,7 +118,8 @@ def dedisper_fil_uint8(
     Time samples: 1200
     >>> dm_series = result.dm_times[0]  # First DM trial
     """
-    return _astroflow_core._dedisper_fil_uint8(
+    #check gpu availability
+    return _astro_core._dedisper_fil_uint8(
         file_path,
         dm_low,
         dm_high,
@@ -132,32 +128,6 @@ def dedisper_fil_uint8(
         dm_step,
         time_downsample,
         t_sample,
-        njobs,
+        target=1, # 0 for CPU, 1 for GPU
     )
 
-
-def dedisper_fil_uint16(
-    file_path: str,
-    dm_low: float,
-    dm_high: float,
-    freq_start: float,
-    freq_end: float,
-    dm_step: float = 1,
-    time_downsample: int = 64,
-    t_sample: float = 0.5,
-    njobs: int = 64,
-) -> _astroflow_core.DedisperedDataUint16:
-    """
-    see also dedisper_fil_uint8
-    """
-    return _astroflow_core._dedisper_fil_uint16(
-        file_path,
-        dm_low,
-        dm_high,
-        freq_start,
-        freq_end,
-        dm_step,
-        time_downsample,
-        t_sample,
-        njobs,
-    )

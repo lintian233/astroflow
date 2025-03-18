@@ -1,8 +1,8 @@
 #include "corecal.h"
 
-deddata dedisperse_data(Filterbank &fil, float dm_low, float dm_high,
-                        float freq_start, float freq_end, float dm_step,
-                        int time_downsample, float t_sample) {
+dedisperseddata dedisperse_data(Filterbank &fil, float dm_low, float dm_high,
+                                float freq_start, float freq_end, float dm_step,
+                                int time_downsample, float t_sample) {
   switch (fil.nbits) {
   case 8:
     return cpucal::dedispered_fil_omp<uint8_t>(fil, dm_low, dm_high, freq_start,

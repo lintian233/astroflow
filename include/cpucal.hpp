@@ -70,7 +70,7 @@ namespace cpucal {
  * 3. 对目标时间点的信号进行累加，得到去色散后的信号。
  */
 template <typename T>
-dedisperseddata<T>
+dedisperseddata
 dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
                    float freq_start, float freq_end, float dm_step = 1,
                    int ref_freq = REF_FREQ_END, int time_downsample = 64,
@@ -117,7 +117,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
   const float ref_freq_value = ref_freq ? fil.frequency_table[chan_end]
                                         : fil.frequency_table[chan_start];
 
-  dedisperseddata<T> result;
+  dedisperseddata result;
   // 预计算所有DM值和通道的延迟样本数
   std::vector<std::vector<int>> delay_table(dm_steps);
 #pragma omp parallel for
@@ -138,7 +138,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
       static_cast<int>(std::round(t_sample / fil.tsamp));
   const size_t total_slices =
       (fil.ndata + samples_per_tsample - 1) / samples_per_tsample;
-  std::vector<std::shared_ptr<T[]>> dm_times;
+  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
 
   // 主循环
   for (size_t slice_idx = 0; slice_idx < total_slices; ++slice_idx) {
@@ -151,12 +151,13 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
         (slice_duration + time_downsample - 1) / time_downsample;
     if (slice_idx == 0) {
       result.downtsample_ndata = down_ndata;
-      result.shape = {dm_steps, down_ndata};
+      result.shape = {static_cast<size_t>(dm_steps),
+                      static_cast<size_t>(down_ndata)};
       PRINT_VAR(down_ndata);
     }
-    auto dm_array = std::shared_ptr<T[]>(
-        new (std::align_val_t{4096}) T[dm_steps * down_ndata](),
-        [](T *p) { operator delete[](p, std::align_val_t{4096}); });
+    auto dm_array = std::shared_ptr<uint32_t[]>(
+        new (std::align_val_t{4096}) uint32_t[dm_steps * down_ndata](),
+        [](uint32_t *p) { operator delete[](p, std::align_val_t{4096}); });
 
 // 并行处理DM步
 #pragma omp parallel for schedule(dynamic)
@@ -167,7 +168,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
       // 处理时间维度
       for (size_t ti = 0; ti < down_ndata; ++ti) {
         const size_t base_idx = start + ti * time_downsample;
-        T sum = 0;
+        uint32_t sum = 0;
 
 // SIMD优化循环
 #pragma omp simd reduction(+ : sum)

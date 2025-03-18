@@ -1,3 +1,3 @@
-from .dedispered import dedisper_fil_uint8, dedisper_fil_uint16
+from .dedispered import dedispered_fil 
 
-__all__ = ["dedisper_fil_uint8", "dedisper_fil_uint16"]
+__all__ = ["dedispered_fil"]

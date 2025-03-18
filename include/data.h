@@ -11,8 +11,8 @@
 
 class data {};
 
-template <typename T> struct dedisperseddata {
-  std::vector<std::shared_ptr<T[]>> dm_times;
+struct dedisperseddata {
+  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
 
   //[DM,downtsample]
   std::vector<size_t> shape;

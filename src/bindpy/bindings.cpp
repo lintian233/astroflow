@@ -42,22 +42,22 @@ void process_data(py::array_t<uint16_t> arr) {
   }
 }
 
-template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name) {
-  using Data = dedisperseddata<T>;
+  using Data = dedisperseddata;
   py::class_<Data>(m, class_name)
       .def(py::init<>())
-      .def_property_readonly("dm_times",
-                             [](const Data &data) {
-                               std::vector<py::array_t<T>> py_arrays;
-                               for (const auto &ptr : data.dm_times) {
-                                 int size = data.shape[0] * data.shape[1];
-                                 // 直接映射C++内存到NumPy数组
-                                 auto arr = py::array_t<T>({size}, ptr.get());
-                                 py_arrays.push_back(arr);
-                               }
-                               return py::cast(py_arrays);
-                             })
+      .def_property_readonly(
+          "dm_times",
+          [](const Data &data) {
+            std::vector<py::array_t<uint32_t>> py_arrays;
+            for (const auto &ptr : data.dm_times) {
+              vector<size_t> shape = {data.shape[0], data.shape[1]};
+              vector<size_t> strides = {data.shape[1], 1};
+              auto arr = py::array_t<uint32_t>(shape, strides, ptr.get());
+              py_arrays.push_back(arr);
+            }
+            return py::cast(py_arrays);
+          })
       .def_readonly("shape", &Data::shape)
       .def_readonly("dm_ndata", &Data::dm_ndata)
       .def_readonly("downtsample_ndata", &Data::downtsample_ndata)
@@ -68,6 +68,63 @@ void bind_dedispersed_data(py::module &m, const char *class_name) {
       .def_readonly("filname", &Data::filname);
 }
 
+void bind_filterbank(py::module &m) {
+  py::class_<Filterbank>(m, "Filterbank")
+      .def(py::init<>())
+      .def(py::init<const std::string &>())
+      .def("info", &Filterbank::info)
+      .def_readonly("filename", &Filterbank::filename)
+      .def_readonly("nchans", &Filterbank::nchans)
+      .def_readonly("nifs", &Filterbank::nifs)
+      .def_readonly("nbits", &Filterbank::nbits)
+      .def_readonly("fch1", &Filterbank::fch1)
+      .def_readonly("foff", &Filterbank::foff)
+      .def_readonly("tstart", &Filterbank::tstart)
+      .def_readonly("tsamp", &Filterbank::tsamp)
+      .def_readonly("ndata", &Filterbank::ndata)
+      .def_property_readonly("data", [](const Filterbank &fil) -> py::object {
+        int nbits = fil.nbits;
+        int nifs = fil.nifs;
+        int nchans = fil.nchans;
+        switch (nbits) {
+        case 8: {
+          uint8_t *data8 = static_cast<uint8_t *>(fil.data);
+          vector<size_t> shape = {static_cast<size_t>(fil.ndata),
+                                  static_cast<size_t>(nifs),
+                                  static_cast<size_t>(nchans)};
+          vector<size_t> strides = {static_cast<size_t>(nifs * nchans),
+                                    static_cast<size_t>(nchans), 1};
+          auto arr = py::array_t<uint8_t>(shape, strides, data8);
+          return arr;
+        }
+        case 16: {
+          uint16_t *data16 = static_cast<uint16_t *>(fil.data);
+          vector<size_t> shape = {static_cast<size_t>(fil.ndata),
+                                  static_cast<size_t>(nifs),
+                                  static_cast<size_t>(nchans)};
+          vector<size_t> strides = {static_cast<size_t>(nifs * nchans),
+                                    static_cast<size_t>(nchans), 1};
+          auto arr = py::array_t<uint16_t>(shape, strides, data16);
+          return arr;
+        }
+        case 32: {
+          uint32_t *data32 = static_cast<uint32_t *>(fil.data);
+          vector<size_t> shape = {static_cast<size_t>(fil.ndata),
+                                  static_cast<size_t>(nifs),
+                                  static_cast<size_t>(nchans)};
+          vector<size_t> strides = {static_cast<size_t>(nifs * nchans),
+                                    static_cast<size_t>(nchans), 1};
+          auto arr = py::array_t<uint32_t>(shape, strides, data32);
+          return arr;
+        }
+        default: {
+          throw py::value_error("Unsupported nbits value: " +
+                                std::to_string(nbits));
+        }
+        }
+      });
+}
+
 PYBIND11_MODULE(_astroflow_core, m) {
 
   py::class_<VectorAdder>(m, "VectorAdder")
@@ -76,23 +133,12 @@ PYBIND11_MODULE(_astroflow_core, m) {
   m.def("get_data", &get_data, py::return_value_policy::move);
   m.def("process_data", &process_data);
 
-  bind_dedispersed_data<uint8_t>(m, "DedisperedDataUint8");
-  bind_dedispersed_data<uint16_t>(m, "DedisperedDataUint16");
-  bind_dedispersed_data<uint32_t>(m, "DedisperedDataUint32");
+  bind_dedispersed_data(m, "DedispersedData");
+  bind_filterbank(m);
 
-  m.def("_dedisper_fil_uint16",
-        py::overload_cast<std::string, float, float, float, float, float, int,
-                          float, int>(&dedispered_fil<uint16_t>),
-        py::arg("filename"), py::arg("dm_low"), py::arg("dm_high"),
-        py::arg("freq_start"), py::arg("freq_end"), py::arg("dm_step") = 1,
-        py::arg("time_downsample") = 64, py::arg("t_sample") = 0.5,
-        py::arg("njobs") = 64);
-
-  m.def("_dedisper_fil_uint8",
-        py::overload_cast<std::string, float, float, float, float, float, int,
-                          float, int>(&dedispered_fil<uint8_t>),
-        py::arg("filename"), py::arg("dm_low"), py::arg("dm_high"),
-        py::arg("freq_start"), py::arg("freq_end"), py::arg("dm_step") = 1,
-        py::arg("time_downsample") = 64, py::arg("t_sample") = 0.5,
-        py::arg("njobs") = 64);
+  m.def("_dedispered_fil", &dedispered_fil, py::arg("filename"),
+        py::arg("dm_low"), py::arg("dm_high"), py::arg("freq_start"),
+        py::arg("freq_end"), py::arg("dm_step") = 1,
+        py::arg("time_downsample") = 2, py::arg("t_sample") = 0.5,
+        py::arg("target") = GPU_TARGET);
 }

@@ -14,7 +14,7 @@ namespace gpucal {
 #define REF_FREQ_START 0
 
 template <typename T>
-dedisperseddata<T>
+dedisperseddata
 dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
                     float freq_start, float freq_end, float dm_step = 1,
                     int ref_freq = REF_FREQ_END, int time_downsample = 64,

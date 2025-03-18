@@ -18,10 +18,10 @@
 
 namespace gpucal {
 template <typename T>
-__global__ void dedispersion_kernel(T *output, T *input, int *delay_table,
-                                    int dm_steps, int time_downsample,
-                                    int ndata, int nchans, int chan_start,
-                                    int chan_end, int start, int down_ndata) {
+__global__ void
+dedispersion_kernel(uint32_t *output, T *input, int *delay_table, int dm_steps,
+                    int time_downsample, int ndata, int nchans, int chan_start,
+                    int chan_end, int start, int down_ndata) {
   int dmidx = blockIdx.y;
   int down_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (dmidx >= dm_steps)
@@ -30,7 +30,7 @@ __global__ void dedispersion_kernel(T *output, T *input, int *delay_table,
     return;
 
   int base_idx = down_idx * time_downsample + start;
-  T sum = 0;
+  uint32_t sum = 0;
   for (int chan = chan_start; chan < chan_end; ++chan) {
     int target_idx =
         base_idx +
@@ -74,10 +74,11 @@ pre_calculate_dedispersion_kernel(int *delay_table, float dm_low, float dm_high,
 }
 
 template <typename T>
-dedisperseddata<T>
-dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
-                    float freq_start, float freq_end, float dm_step,
-                    int ref_freq, int time_downsample, float t_sample) {
+dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
+                                    float dm_high, float freq_start,
+                                    float freq_end, float dm_step, int ref_freq,
+                                    int time_downsample, float t_sample) {
+
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
 
@@ -167,18 +168,21 @@ dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
   const int down_ndata_t =
       (samples_per_tsample + time_downsample - 1) / time_downsample;
 
-  T *d_input, *d_output;
+  T *d_input;
+  uint32_t *d_output;
   T *data = static_cast<T *>(fil.data);
 
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint32_t)));
+  CHECK_CUDA(
+      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
 
   CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
-  dedisperseddata<T> result;
+  dedisperseddata result;
 
-  std::vector<std::shared_ptr<T[]>> dm_times;
+  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
 
   for (size_t slice_idx = 0; slice_idx < total_slices; ++slice_idx) {
     const size_t start = slice_idx * samples_per_tsample;
@@ -195,11 +199,13 @@ dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
       PRINT_VAR(result.shape[0]);
       PRINT_VAR(result.shape[1]);
     }
-    CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(T)));
+    CHECK_CUDA(
+        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
 
     int THREADS_PER_BLOCK = 256;
     dim3 threads(THREADS_PER_BLOCK);
     dim3 grids(down_ndata + threads.x - 1 / threads.x, dm_steps);
+
     dedispersion_kernel<T><<<grids, threads>>>(
         d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
         nchans, chan_start, chan_end, start, down_ndata);
@@ -207,12 +213,12 @@ dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    auto dm_array = std::shared_ptr<T[]>(
-        new (std::align_val_t{4096}) T[dm_steps * down_ndata_t](),
-        [](T *p) { operator delete[](p, std::align_val_t{4096}); });
+    auto dm_array = std::shared_ptr<uint32_t[]>(
+        new (std::align_val_t{4096}) uint32_t[dm_steps * down_ndata_t](),
+        [](uint32_t *p) { operator delete[](p, std::align_val_t{4096}); });
 
     CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                          dm_steps * down_ndata * sizeof(T),
+                          dm_steps * down_ndata * sizeof(uint32_t),
                           cudaMemcpyDeviceToHost));
 
     dm_times.emplace_back(std::move(dm_array));
@@ -233,13 +239,21 @@ dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
   return result;
 }
 
-template dedisperseddata<uint8_t>
-dedispered_fil_cuda<uint8_t>(Filterbank &, float, float, float, float, float,
-                             int, int, float);
-template dedisperseddata<uint16_t>
-dedispered_fil_cuda<uint16_t>(Filterbank &, float, float, float, float, float,
-                              int, int, float);
-template dedisperseddata<uint32_t>
-dedispered_fil_cuda<uint32_t>(Filterbank &, float, float, float, float, float,
-                              int, int, float);
+template dedisperseddata
+dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
+                             float freq_start, float freq_end, float dm_step,
+                             int ref_freq, int time_downsample, float t_sample);
+
+template dedisperseddata
+dedispered_fil_cuda<uint16_t>(Filterbank &fil, float dm_low, float dm_high,
+                              float freq_start, float freq_end, float dm_step,
+                              int ref_freq, int time_downsample,
+                              float t_sample);
+
+template dedisperseddata
+dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
+                              float freq_start, float freq_end, float dm_step,
+                              int ref_freq, int time_downsample,
+                              float t_sample);
+
 } // namespace gpucal
