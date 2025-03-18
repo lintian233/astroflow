@@ -1,5 +1,14 @@
 import _astroflow_core  as _astro_core # type: ignore
 
+class SearchConfig:
+    def __init__(self, dm_low: float, dm_high: float, dm_step: float, freq_start: float, freq_end: float, time_downsample: int, t_sample: float):
+        self.dm_low = dm_low
+        self.dm_high = dm_high
+        self.dm_step = dm_step
+        self.freq_start = freq_start
+        self.freq_end = freq_end
+        self.time_downsample = time_downsample
+        self.t_sample = t_sample
 
 def dedispered_fil(
     file_path: str,
@@ -10,7 +19,6 @@ def dedispered_fil(
     dm_step: float = 1,
     time_downsample: int = 64,
     t_sample: float = 0.5,
-    njobs: int = 64,
 ) -> _astro_core.DedisperedData:
     """
     Perform dedispersion on filterbank data using uint8 precision with OpenMP parallelization.
@@ -101,7 +109,7 @@ def dedispered_fil(
 
     Examples
     --------
-    >>> from astroflow import dedisper_fil_uint8
+    >>> from astroflow import dedispered_fil
     >>> result = dedisper_fil_uint8(
     ...     "observation.fil",
     ...     dm_low=100.0,
@@ -119,7 +127,7 @@ def dedispered_fil(
     >>> dm_series = result.dm_times[0]  # First DM trial
     """
     #check gpu availability
-    return _astro_core._dedisper_fil_uint8(
+    return _astro_core._dedispered_fil(
         file_path,
         dm_low,
         dm_high,

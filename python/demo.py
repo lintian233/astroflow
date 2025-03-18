@@ -10,11 +10,11 @@ import os
 
 time_downsample = 1
 dm_low = 0
-dm_high = 2000
-freq_start = 1131
-freq_end = 1464
+dm_high = 300
+freq_start = 1055
+freq_end = 1448
 dm_step = 1
-t_sample = 1
+t_sample = 0.5
 
 def timeit(func):
     def wrapper(*args, **kwargs):
@@ -26,7 +26,7 @@ def timeit(func):
     return wrapper
 
 
-timeit_astroflow = timeit(astroflow.dedisper_fil_uint8)
+timeit_astroflow = timeit(astroflow.dedispered_fil)
 
 
 def plot_dedispered_data(dm_data, title, data, tsample, dm_low, dm_high, dpi=100):
@@ -36,9 +36,9 @@ def plot_dedispered_data(dm_data, title, data, tsample, dm_low, dm_high, dpi=100
     plt.figure(figsize=(12, 8), dpi=dpi)
     X, Y = np.meshgrid(time_axis, dm_axis)
     im = plt.pcolormesh(X, Y, dm_data, shading="auto", cmap="viridis")
+    print(dm_data.shape)
+    print(np.max(dm_data))
     #将dm_data中的0值替换为nan
-    dm_data = np.where(dm_data == 0, np.mean(dm_data), dm_data)
-    print(np.percentile(dm_data,99), np.max(dm_data))
     plt.xlabel("Time (tsample)", fontsize=12, labelpad=10)
     plt.ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
     plt.title(title, fontsize=14, pad=15)
@@ -65,7 +65,7 @@ def draw_dm_times(data, dirname, max_workers=None):
     plot_args = [
         (
             dm.reshape(data.shape[0], data.shape[1]),
-            f"{dirname}/{basename}-DM-{data.dm_low}-{data.dm_high}-{data.dm_step}-Trial-{idx+1}",
+            f"{dirname}/{basename}-DM-{data.dm_low}-{data.dm_high}-{data.dm_step}-Trial-{idx+1}-tsample-{data.tsample}",
             data.tsample,
             data.dm_low,
             data.dm_high
@@ -81,6 +81,7 @@ def draw_dm_times(data, dirname, max_workers=None):
 
 def dedispered_dir(dir):
     all_files = os.listdir(dir)
+    print(f"Processing directory {dir}")
     for file in all_files:
         if not file.endswith(".fil"):
             continue
@@ -95,9 +96,10 @@ def dedispered_dir(dir):
             dm_step,
             time_downsample,
             t_sample,
-            njobs=120,
         )
-        file_dir = "ql/" + file.split(".")[0]
+        # 使用原始目录名+文件名创建子目录
+        base_dir = os.path.basename(dir)
+        file_dir = os.path.join(base_dir, os.path.splitext(file)[0])
         draw_dm_times(data, file_dir)
 
 
@@ -111,16 +113,12 @@ def dedispred_single(file):
         dm_step,
         time_downsample,
         t_sample,
-        njobs=120,
     )
     #data.__class__ = astroflow.DedispersedData
     print(data.__class__)
-    data0 = data.dm_times[0]
-    data0 = data0.reshape(data.shape[0], data.shape[1])
-    data1 = data.dm_times[1]
-    data1 = data1.reshape(data.shape[0], data.shape[1])
-    file = os.path.basename(file)
     draw_dm_times(data, "ql/" + file.split(".")[0])
 
+
 if __name__ == "__main__":
-   dedispred_single("/home/lingh/work/astroflow/tests/FRB20171116.fil")
+   #dedispred_single("/home/lingh/work/astroflow/tests/FRB20241124A.fil")
+   dedispered_dir("/data/QL/predata/7373_B0329_SpecData_25-03-17_17-26-03")

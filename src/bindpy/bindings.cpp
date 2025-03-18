@@ -42,22 +42,25 @@ void process_data(py::array_t<uint16_t> arr) {
   }
 }
 
+template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name) {
   using Data = dedisperseddata;
   py::class_<Data>(m, class_name)
       .def(py::init<>())
-      .def_property_readonly(
-          "dm_times",
-          [](const Data &data) {
-            std::vector<py::array_t<uint32_t>> py_arrays;
-            for (const auto &ptr : data.dm_times) {
-              vector<size_t> shape = {data.shape[0], data.shape[1]};
-              vector<size_t> strides = {data.shape[1], 1};
-              auto arr = py::array_t<uint32_t>(shape, strides, ptr.get());
-              py_arrays.push_back(arr);
-            }
-            return py::cast(py_arrays);
-          })
+      .def_property_readonly("dm_times",
+                             [](const Data &data) -> py::object {
+                               std::vector<py::array_t<T>> py_arrays;
+                               for (const auto &ptr : data.dm_times) {
+                                 // vector<size_t> shape = {data.shape[0],
+                                 // data.shape[1]}; vector<size_t> strides =
+                                 // {data.shape[1], 1};
+                                 vector<size_t> shape = {data.shape[0] *
+                                                         data.shape[1]};
+                                 auto arr = py::array_t<T>(shape, ptr.get());
+                                 py_arrays.push_back(arr);
+                               }
+                               return py::cast(py_arrays);
+                             })
       .def_readonly("shape", &Data::shape)
       .def_readonly("dm_ndata", &Data::dm_ndata)
       .def_readonly("downtsample_ndata", &Data::downtsample_ndata)
@@ -133,7 +136,7 @@ PYBIND11_MODULE(_astroflow_core, m) {
   m.def("get_data", &get_data, py::return_value_policy::move);
   m.def("process_data", &process_data);
 
-  bind_dedispersed_data(m, "DedispersedData");
+  bind_dedispersed_data<uint32_t>(m, "DedisperedData");
   bind_filterbank(m);
 
   m.def("_dedispered_fil", &dedispered_fil, py::arg("filename"),

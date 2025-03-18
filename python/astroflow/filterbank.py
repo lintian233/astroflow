@@ -1,1 +1,3 @@
-import ._astroflow_core as _astro_core
+#type: ignore
+import _astroflow_core as _astro_core
+

@@ -171,7 +171,8 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   T *d_input;
   uint32_t *d_output;
   T *data = static_cast<T *>(fil.data);
-
+  // print class T
+  PRINT_VAR(sizeof(T));
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint32_t)));
   CHECK_CUDA(
@@ -236,6 +237,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
   PRINT_VAR(result.filname);
   PRINT_VAR(result.dm_times.size());
+  PRINT_ARR(result.dm_times[0].get(), 10);
   return result;
 }
 
