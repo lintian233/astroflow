@@ -16,3 +16,7 @@ tests/**/*.fil
 .ccls-cache
 compile_commands.json
 .clangd
+*.pth
+*swp
+*.gz
+*.fits

@@ -1,14 +1,11 @@
-import _astroflow_core  as _astro_core # type: ignore
+import umap
+import numpy as np
 
-class SearchConfig:
-    def __init__(self, dm_low: float, dm_high: float, dm_step: float, freq_start: float, freq_end: float, time_downsample: int, t_sample: float):
-        self.dm_low = dm_low
-        self.dm_high = dm_high
-        self.dm_step = dm_step
-        self.freq_start = freq_start
-        self.freq_end = freq_end
-        self.time_downsample = time_downsample
-        self.t_sample = t_sample
+from sklearn.datasets import load_iris
+from joblib import dump, load
+
+import _astroflow_core as _astro_core  # type: ignore
+
 
 def dedispered_fil(
     file_path: str,
@@ -126,7 +123,7 @@ def dedispered_fil(
     Time samples: 1200
     >>> dm_series = result.dm_times[0]  # First DM trial
     """
-    #check gpu availability
+    # check gpu availability
     return _astro_core._dedispered_fil(
         file_path,
         dm_low,
@@ -136,6 +133,5 @@ def dedispered_fil(
         dm_step,
         time_downsample,
         t_sample,
-        target=1, # 0 for CPU, 1 for GPU
+        target=1,  # 0 for CPU, 1 for GPU
     )
-

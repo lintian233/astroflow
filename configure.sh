@@ -14,7 +14,7 @@ fi
 
 echo "Detected conda installation: $(which conda)"
 
-ENV_NAME="dev-astroflow"
+ENV_NAME="dev-astroflow-ml"
 
 # Check if the conda environment exists
 if conda env list | grep -q "^$ENV_NAME\s"; then
@@ -35,7 +35,7 @@ else
             --override-channels \
             --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
             --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-            python=3.13.2 conan numpy matplotlib gcc gxx cuda-toolkit -y
+            python=3.12 conan numpy matplotlib gcc gxx cuda-toolkit -y
         echo "Environment created. Activating it..."
         conda activate "$ENV_NAME"
     else
