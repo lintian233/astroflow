@@ -78,6 +78,30 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample) {
+  /* int num_devices;
+  cudaGetDeviceCount(&num_devices);
+  std::cout << "Number of GPUs available: " << num_devices << std::endl;
+  // print name of all available GPUs
+  for (int i = 0; i < num_devices; ++i) {
+    cudaDeviceProp device_prop;
+    cudaGetDeviceProperties(&device_prop, i);
+    std::cout << "GPU " << i << ": " << device_prop.name << std::endl;
+  }
+
+  if (num_devices == 0) {
+    throw std::runtime_error("No CUDA devices found");
+  }
+  int device_id = 0;
+  if (num_devices > 2) {
+    device_id = 3;
+  }
+
+  CHECK_CUDA(cudaSetDevice(device_id));
+
+  // 获取当前设备的名称
+  cudaDeviceProp device_prop;
+  CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
+  std::cout << "Selected GPU: " << device_prop.name << std::endl; */
 
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
@@ -185,7 +209,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
   std::vector<std::shared_ptr<uint32_t[]>> dm_times;
 
-  for (size_t slice_idx = 0; slice_idx < total_slices; ++slice_idx) {
+  for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
     const size_t start = slice_idx * samples_per_tsample;
     const size_t end =
         std::min(start + samples_per_tsample, static_cast<size_t>(fil.ndata));

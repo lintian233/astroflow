@@ -38,7 +38,7 @@ class Config:
 def plot_dedispered_data(dm_data, title, tsample, dm_low, dm_high, dpi=100):
     time_axis = np.linspace(0, tsample * dm_data.shape[1], dm_data.shape[1])
     dm_axis = np.linspace(dm_low, dm_high, dm_data.shape[0])
-    plt.figure(figsize=(8, 12), dpi=dpi)
+    plt.figure(figsize=(12, 8), dpi=dpi)
     X, Y = np.meshgrid(time_axis, dm_axis)
     im = plt.pcolormesh(X, Y, dm_data, shading="auto", cmap="viridis")
     plt.xlabel("Time (tsample)", fontsize=12, labelpad=10)

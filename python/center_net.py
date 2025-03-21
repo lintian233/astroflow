@@ -61,7 +61,7 @@ def dedispred_single_file(
         config.t_sample,
     )
     dmt_data = [dmt.reshape(data.shape[0], data.shape[1]) for dmt in data.dm_times]
-    dmt_data = np.array(dmt_data[:-1])
+    dmt_data = np.array(dmt_data)
     return dmt_data
 
 
@@ -93,10 +93,14 @@ def plot_all_img(dmt_data, dir_path, config: Config):
         pool.map(plot_worker, plot_args)
 
 
-def plot_candidate(dm_data, filepath, config: Config, title=None, dpi=150):
+def plot_candidate(
+    dm_data, filepath, config: Config, title=None, dpi=150, if_clip=True
+):
     dm_low = config.dm_low
     dm_high = config.dm_high
     tsample = config.t_sample
+    if if_clip:
+        dm_data = np.clip(dm_data, *np.percentile(dm_data, (0.02, 99.9)))
     time_axis = np.linspace(0, tsample * dm_data.shape[1], dm_data.shape[1])
     dm_axis = np.linspace(dm_low, dm_high, dm_data.shape[0])
     plt.figure(figsize=(12, 8), dpi=dpi)
@@ -130,15 +134,9 @@ def detect_frb(file, config: Config, output_dir, model, device):
             hm = hm.to(device)
             wh = wh.to(device)
             offset = offset.to(device)
-            top_conf, top_boxes = get_res(hm, wh, offset, confidence=0.3)
+            top_conf, top_boxes = get_res(hm, wh, offset, confidence=0.35)
             if top_boxes is not None:
                 print("FRB detected!")
                 title = f"{file_basename}_{idx}"
                 plot_candidate(dmt, detect_dir, config, title=title + "_candidate")
                 plot_img(pdmt, detect_dir, config, title=title + "_detect")
-
-
-#     file_name = "/home/lingh/work/astroflow/tests/qltest.fil"
-#     dmt_data = dedispred_single(file_name)
-#     device = "cuda" if torch.cuda.is_available() else "cpu"
-#     detect_frb(dmt_data, device=device)
