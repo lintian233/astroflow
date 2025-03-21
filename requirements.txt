@@ -1,0 +1,10 @@
+joblib==1.4.2
+matplotlib==3.10.1
+numpy==2.2.4
+opencv_python==4.11.0.86
+Pillow==11.1.0
+scikit_learn==1.6.1
+seaborn==0.13.2
+torch==2.6.0
+torchvision==0.21.0
+umap_learn==0.5.7
