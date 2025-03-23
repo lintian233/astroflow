@@ -1,10 +1,12 @@
-import umap
+import os
 import numpy as np
 
-from sklearn.datasets import load_iris
-from joblib import dump, load
+from typing import List
 
 import _astroflow_core as _astro_core  # type: ignore
+
+from .utils import timeit, Config
+from .dmtime import DmTime
 
 
 def dedispered_fil(
@@ -16,7 +18,7 @@ def dedispered_fil(
     dm_step: float = 1,
     time_downsample: int = 64,
     t_sample: float = 0.5,
-) -> _astro_core.DedisperedData:
+) -> List[DmTime]:
     """
     Perform dedispersion on filterbank data using uint8 precision with OpenMP parallelization.
 
@@ -107,7 +109,7 @@ def dedispered_fil(
     Examples
     --------
     >>> from astroflow import dedispered_fil
-    >>> result = dedisper_fil_uint8(
+    >>> result = dedisper_fil(
     ...     "observation.fil",
     ...     dm_low=100.0,
     ...     dm_high=200.0,
@@ -117,14 +119,8 @@ def dedispered_fil(
     ...     time_downsample=128,
     ...     t_sample=1.0,
     ... )
-    >>> print(f"DM trials: {result.dm_ndata}")
-    DM trials: 201
-    >>> print(f"Time samples: {result.downtsample_ndata}")
-    Time samples: 1200
-    >>> dm_series = result.dm_times[0]  # First DM trial
     """
-    # check gpu availability
-    return _astro_core._dedispered_fil(
+    data = _astro_core._dedispered_fil(
         file_path,
         dm_low,
         dm_high,
@@ -135,3 +131,24 @@ def dedispered_fil(
         t_sample,
         target=1,  # 0 for CPU, 1 for GPU
     )
+    basename = os.path.basename(file_path).split(".")[0]
+    result = []
+    for idx, dmt in enumerate(data.dm_times[:-1]):
+        dmt = dmt.reshape(data.shape[0], data.shape[1])
+        tstart = idx * t_sample
+        tend = (idx + 1) * t_sample
+        result.append(
+            DmTime(
+                tstart=tstart,
+                tend=tend,
+                dm_low=dm_low,
+                dm_high=dm_high,
+                dm_step=dm_step,
+                freq_start=freq_start,
+                freq_end=freq_end,
+                data=dmt,
+                name=basename,
+            )
+        )
+
+    return result

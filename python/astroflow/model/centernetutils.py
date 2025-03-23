@@ -1,3 +1,4 @@
+# type: ignore
 import numpy as np
 import torch, cv2
 from torch import nn

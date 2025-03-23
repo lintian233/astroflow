@@ -64,7 +64,7 @@ set_target_properties(${TARGET_NAME} PROPERTIES
     SUFFIX ".so"
 )
 
-#TEST
+
 #------------------------------------------------------------------#
 # 测试可执行文件名称
 set(TEST_EXECUTABLE_NAME astroflow_test)
