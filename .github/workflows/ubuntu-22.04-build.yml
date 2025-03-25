@@ -28,13 +28,6 @@ jobs:
         apt-get install -y cmake make
         nvcc --version
 
-    - name: Install GCC 13
-      run: |
-        apt-get update
-        apt-get install -y gcc-13 g++-13
-        update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 110
-        update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 110
-
     - name: Setup Miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
@@ -72,9 +65,7 @@ jobs:
         conan install .. --output-folder=. --build=missing
         source conanbuild.sh
         cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_C_COMPILER=gcc-13 \
-          -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_BUILD_TYPE=Release
 
     - name: Build project
       working-directory: ./build
