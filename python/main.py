@@ -5,19 +5,49 @@ from astroflow import Config
 import argparse
 
 
-def main():
-    config = Config(
-        dm_low=0,
-        dm_high=300,
-        freq_start=1312,
-        freq_end=1448,
-        dm_step=1,
-        time_downsample=1,
-        t_sample=0.5,
+def parse_args():
+    arg_parser = argparse.ArgumentParser(
+        description="Run single pulsar search on a directory of filterbank files"
     )
-    fil_dir = "/data/QL/predata/7400_FRB20250316Spec_25-03-20_21-40-40"
-    output_dir = "."
-    single_pulsar_search_dir(fil_dir, output_dir, config)
+    arg_parser.add_argument(
+        "fil_dir", type=str, help="Directory containing filterbank files"
+    )
+    arg_parser.add_argument("output_dir", type=str, help="Output directory")
+    arg_parser.add_argument(
+        "--dm_low", type=float, default=5, help="Lowest DM to search"
+    )
+    arg_parser.add_argument(
+        "--dm_high", type=float, default=1000, help="Highest DM to search"
+    )
+    arg_parser.add_argument("--dm_step", type=float, default=1, help="DM step size")
+    arg_parser.add_argument(
+        "--freq_start", type=float, default=1312, help="Start frequency in MHz"
+    )
+    arg_parser.add_argument(
+        "--freq_end", type=float, default=1448, help="End frequency in MHz"
+    )
+    arg_parser.add_argument(
+        "--time_downsample", type=int, default=1, help="Time downsampling factor"
+    )
+    arg_parser.add_argument(
+        "--t_sample", type=float, default=0.5, help="Sampling time in ms"
+    )
+
+    return arg_parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    config = Config(
+        dm_low=args.dm_low,
+        dm_high=args.dm_high,
+        freq_start=args.freq_start,
+        freq_end=args.freq_end,
+        dm_step=args.dm_step,
+        time_downsample=args.time_downsample,
+        t_sample=args.t_sample,
+    )
+    single_pulsar_search_dir(args.fil_dir, args.output_dir, config)
 
 
 main()

@@ -48,10 +48,12 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
 
     all_files = os.listdir(files_dir)
     base_dir = os.path.basename(files_dir)
+    base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
+    base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
 
     plotter = PlotterManager()
 
-    frb_detector = CenterNetFrbDetector(confidence=0.3)
+    frb_detector = CenterNetFrbDetector(confidence=0.4)
     plotter = PlotterManager(64)
     for file in all_files:
         if not file.endswith(".fil"):
