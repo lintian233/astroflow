@@ -65,9 +65,7 @@ jobs:
         conan install .. --output-folder=. --build=missing
         source conanbuild.sh
         cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_C_COMPILER=gcc-13 \
-          -DCMAKE_CXX_COMPILER=g++-13
+          -DCMAKE_BUILD_TYPE=Release
 
     - name: Build project
       working-directory: ./build
