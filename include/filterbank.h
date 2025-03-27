@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <stdio.h>
 #include <string>
 #include <variant>
@@ -39,7 +38,6 @@ public:
   variant<uint8_t *, uint16_t *, uint32_t *> get_data(int idx);
   template <typename T> bool read_data_impl();
   void info() const;
-  template <typename T> std::shared_ptr<T[]> get_shared_ptr_data();
 
 private:
   static void put_string(FILE *outputfile, const string &strtmp);

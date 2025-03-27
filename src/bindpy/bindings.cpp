@@ -1,6 +1,5 @@
 #include "cpp_code.h"
 #include "data.h"
-#include "filterbank.h"
 #include "pyapi.h"
 #include <cstdint>
 #include <memory>
@@ -49,22 +48,20 @@ void bind_dedispersed_data(py::module &m, const char *class_name) {
   using Data = dedisperseddata;
   py::class_<Data>(m, class_name)
       .def(py::init<>())
-      .def_property_readonly(
-          "dm_times",
-          [](const Data &data) -> py::object {
-            std::vector<py::array_t<T>> py_arrays;
-            for (const auto &ptr : data.dm_times) {
-              auto capsule =
-                  py::capsule(new std::shared_ptr<T[]>(ptr), [](void *p) {
-                    delete static_cast<std::shared_ptr<T[]> *>(p);
-                  });
-              vector<size_t> shape = {data.shape[0] * data.shape[1]};
-              vector<size_t> strides = {sizeof(T)};
-              auto arr = py::array_t<T>(shape, strides, ptr.get(), capsule);
-              py_arrays.push_back(arr);
-            }
-            return py::cast(py_arrays);
-          })
+      .def_property_readonly("dm_times",
+                             [](const Data &data) -> py::object {
+                               std::vector<py::array_t<T>> py_arrays;
+                               for (const auto &ptr : data.dm_times) {
+                                 // vector<size_t> shape = {data.shape[0],
+                                 // data.shape[1]}; vector<size_t> strides =
+                                 // {data.shape[1], 1};
+                                 vector<size_t> shape = {data.shape[0] *
+                                                         data.shape[1]};
+                                 auto arr = py::array_t<T>(shape, ptr.get());
+                                 py_arrays.push_back(arr);
+                               }
+                               return py::cast(py_arrays);
+                             })
       .def_readonly("shape", &Data::shape)
       .def_readonly("dm_ndata", &Data::dm_ndata)
       .def_readonly("downtsample_ndata", &Data::downtsample_ndata)
@@ -81,23 +78,11 @@ void bind_spectrum(py::module &m, const char *class_name) {
       .def_property_readonly(
           "data",
           [](const Spectrum<T> &spec) -> py::object {
-            auto data_ptr = spec.data;
-
-            if (data_ptr.get() == nullptr) {
-              throw std::runtime_error("Spectrum data is null");
-            }
-
-            auto capsule =
-                py::capsule(new std::shared_ptr<T[]>(data_ptr), [](void *p) {
-                  delete static_cast<std::shared_ptr<T[]> *>(p);
-                });
-
             vector<size_t> shape = {static_cast<size_t>(spec.ntimes),
                                     static_cast<size_t>(spec.nchans)};
-
-            vector<size_t> strides = {sizeof(T) * spec.nchans, sizeof(T)};
-
-            return py::array_t<T>(shape, strides, data_ptr.get(), capsule);
+            vector<size_t> strides = {static_cast<size_t>(spec.nchans), 1};
+            auto arr = py::array_t<T>(shape, strides, spec.data.get());
+            return arr;
           })
       .def_readonly("ntimes", &Spectrum<T>::ntimes)
       .def_readonly("nchans", &Spectrum<T>::nchans)
@@ -123,54 +108,40 @@ void bind_filterbank(py::module &m) {
       .def_readonly("tstart", &Filterbank::tstart)
       .def_readonly("tsamp", &Filterbank::tsamp)
       .def_readonly("ndata", &Filterbank::ndata)
-      .def_property_readonly("data", [](Filterbank &fil) -> py::object {
+      .def_property_readonly("data", [](const Filterbank &fil) -> py::object {
         int nbits = fil.nbits;
         int nifs = fil.nifs;
         int nchans = fil.nchans;
         switch (nbits) {
         case 8: {
-          std::shared_ptr<uint8_t[]> data_ptr(
-              fil.get_shared_ptr_data<uint8_t>());
-
-          auto capsule = py::capsule(
-              new std::shared_ptr<uint8_t[]>(data_ptr), [](void *p) {
-                delete static_cast<std::shared_ptr<uint8_t[]> *>(p);
-              });
-
+          uint8_t *data8 = static_cast<uint8_t *>(fil.data);
           vector<size_t> shape = {static_cast<size_t>(fil.ndata),
                                   static_cast<size_t>(nifs),
                                   static_cast<size_t>(nchans)};
-          vector<size_t> strides = {
-              static_cast<size_t>(nifs * nchans) * sizeof(uint8_t),
-              static_cast<size_t>(nchans) * sizeof(uint8_t), sizeof(uint8_t)};
-          return py::array_t<uint8_t>(shape, strides, data_ptr.get(), capsule);
+          vector<size_t> strides = {static_cast<size_t>(nifs * nchans),
+                                    static_cast<size_t>(nchans), 1};
+          auto arr = py::array_t<uint8_t>(shape, strides, data8);
+          return arr;
         }
         case 16: {
-          auto data_ptr = fil.get_shared_ptr_data<uint16_t>();
-          auto capsule = py::capsule(new auto(data_ptr), [](void *p) {
-            delete static_cast<std::shared_ptr<uint16_t[]> *>(p);
-          });
-
+          uint16_t *data16 = static_cast<uint16_t *>(fil.data);
           vector<size_t> shape = {static_cast<size_t>(fil.ndata),
                                   static_cast<size_t>(nifs),
                                   static_cast<size_t>(nchans)};
-          vector<size_t> strides = {
-              static_cast<size_t>(nifs * nchans) * sizeof(uint16_t),
-              static_cast<size_t>(nchans) * sizeof(uint16_t), sizeof(uint16_t)};
-          return py::array_t<uint16_t>(shape, strides, data_ptr.get(), capsule);
+          vector<size_t> strides = {static_cast<size_t>(nifs * nchans),
+                                    static_cast<size_t>(nchans), 1};
+          auto arr = py::array_t<uint16_t>(shape, strides, data16);
+          return arr;
         }
         case 32: {
-          auto data_ptr = fil.get_shared_ptr_data<uint32_t>();
-          auto capsule = py::capsule(new auto(data_ptr), [](void *p) {
-            delete static_cast<std::shared_ptr<uint32_t[]> *>(p);
-          });
+          uint32_t *data32 = static_cast<uint32_t *>(fil.data);
           vector<size_t> shape = {static_cast<size_t>(fil.ndata),
                                   static_cast<size_t>(nifs),
                                   static_cast<size_t>(nchans)};
-          vector<size_t> strides = {
-              static_cast<size_t>(nifs * nchans) * sizeof(uint32_t),
-              static_cast<size_t>(nchans) * sizeof(uint32_t), sizeof(uint32_t)};
-          return py::array_t<uint32_t>(shape, strides, data_ptr.get(), capsule);
+          vector<size_t> strides = {static_cast<size_t>(nifs * nchans),
+                                    static_cast<size_t>(nchans), 1};
+          auto arr = py::array_t<uint32_t>(shape, strides, data32);
+          return arr;
         }
         default: {
           throw py::value_error("Unsupported nbits value: " +

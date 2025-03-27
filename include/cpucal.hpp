@@ -226,6 +226,8 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 
   chan_start = std::max(0, chan_start);
   chan_end = std::min(fil->nchans - 1, chan_end);
+  PRINT_VAR(chan_start);
+  PRINT_VAR(chan_end);
 
   /* int *dm_delays_table = new int[nchans];
 #pragma omp parallel for schedule(dynamic)
@@ -249,7 +251,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   result.nchans = chan_end - chan_start;
   result.freq_start = fil->frequency_table[chan_start];
   result.freq_end = fil->frequency_table[chan_end];
-  result.data = std::shared_ptr<T[]>(new T[t_len * (result.nchans)](),
+  result.data = std::shared_ptr<T[]>(new T[t_len * (result.nchans + 1)](),
                                      [](T *p) { delete[] p; });
 
   int *dm_delays_table = new int[result.nchans];
@@ -273,10 +275,10 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
       const int target_idx =
           t_start_idx + ti + dm_delays_table[ch - chan_start];
       if (target_idx >= 0 && target_idx < fil->ndata) {
-        result.data[ti * result.nchans + ch - chan_start] =
+        result.data[ti * result.nchans + ch] =
             origin_data[target_idx * fil->nchans + ch];
       } else {
-        result.data[ti * result.nchans + ch - chan_start] = 0;
+        result.data[ti * result.nchans + ch] = 0;
       }
     }
   }
