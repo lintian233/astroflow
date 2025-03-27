@@ -3,8 +3,9 @@ import unittest
 import os
 import matplotlib.pyplot as plt
 
-from astroflow import dedispered_fil_with_dm
-from astroflow import Spectrum, Filterbank
+from _astroflow_core import Filterbank, Spectrum8, Spectrum16  # type: ignore
+from _astroflow_core import _dedispered_fil_with_dm_uint8  # type: ignore
+from _astroflow_core import _dedispered_fil_with_dm_uint16  # type: ignore
 
 
 class TestDedispered(unittest.TestCase):
@@ -13,8 +14,8 @@ class TestDedispered(unittest.TestCase):
         tstart = 0
         tend = 2
         dm = 474.14
-        spectrum = dedispered_fil_with_dm(fil, tstart, tend, dm)
-        assert isinstance(spectrum, Spectrum)
+        spectrum = _dedispered_fil_with_dm_uint8(fil, tstart, tend, dm)
+        assert isinstance(spectrum, Spectrum8)
         return
         fig, axs = plt.subplots(
             2,
@@ -30,7 +31,7 @@ class TestDedispered(unittest.TestCase):
         data = spectrum.data
         time_axis = np.linspace(tstart, tend, spectrum.ntimes)
         freq_axis = fil.fch1 + np.arange(spectrum.nchans) * fil.foff
-        time_series = data.sum(axis=1)
+        time_series = data.sum(axis=1)  # 通道积分
         axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
         axs[0].set_ylabel("Integrated Power")
         axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)

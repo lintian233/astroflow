@@ -7,37 +7,6 @@ import _astroflow_core as _astro_core  # type: ignore
 
 from .utils import timeit, Config
 from .dmtime import DmTime
-from .filterbank import Filterbank, Spectrum
-
-
-def dedispered_fil_with_dm(
-    fil: Filterbank,
-    tstart: float,
-    tend: float,
-    dm: float,
-    freq_start: float = -1,
-    freq_end: float = -1,
-) -> Spectrum:
-    if freq_start == freq_end == -1:
-        freq_start = fil.fch1
-        freq_end = fil.fch1 + (fil.nchans - 1) * fil.foff
-    nbits = fil.nbits
-    if nbits == 8:
-        data = _astro_core._dedispered_fil_with_dm_uint8(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end
-        )
-    elif nbits == 16:
-        data = _astro_core._dedispered_fil_with_dm_uint16(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end
-        )
-    elif nbits == 32:
-        data = _astro_core._dedispered_fil_with_dm_uint32(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end
-        )
-    else:
-        raise ValueError(f"Unsupported number of bits: {nbits}")
-
-    return Spectrum(data)
 
 
 def dedispered_fil(
