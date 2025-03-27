@@ -42,7 +42,7 @@ def plot_ded_spectrum(
     )
     plt.rcParams["image.origin"] = "lower"
 
-    vmin, vmax = np.percentile(spectrum.data, [0, 100])
+    vmin, vmax = np.percentile(spectrum.data, [0, 99])
     print(f"vmin: {vmin}, vmax: {vmax}")
     data = spectrum.data
     time_axis = np.linspace(tstart, tend, spectrum.ntimes)

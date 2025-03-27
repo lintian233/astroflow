@@ -59,7 +59,7 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
     plotter = PlotterManager()
 
     frb_detector = CenterNetFrbDetector(confidence=0.4)
-    plotter = PlotterManager(32)
+    plotter = PlotterManager(6)
     for file in all_files:
         if not file.endswith(".fil"):
             continue
