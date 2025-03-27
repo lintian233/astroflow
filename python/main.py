@@ -4,6 +4,8 @@ from astroflow import Config
 
 import argparse
 
+# python python/main.py /data/QL/predata/7410_Crab_Base_H_25-03-24_17-06-13/ --dm_low 1 --dm_high 100 --dm_step 0.5 --freq_start 1250 --freq_end 1430 ./ql
+
 
 def parse_args():
     arg_parser = argparse.ArgumentParser(

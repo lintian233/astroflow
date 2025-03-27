@@ -81,7 +81,7 @@ void bind_spectrum(py::module &m, const char *class_name) {
             vector<size_t> shape = {static_cast<size_t>(spec.ntimes),
                                     static_cast<size_t>(spec.nchans)};
             vector<size_t> strides = {static_cast<size_t>(spec.nchans), 1};
-            auto arr = py::array_t<T>(shape, strides, spec.data);
+            auto arr = py::array_t<T>(shape, strides, spec.data.get());
             return arr;
           })
       .def_readonly("ntimes", &Spectrum<T>::ntimes)
@@ -89,7 +89,9 @@ void bind_spectrum(py::module &m, const char *class_name) {
       .def_readonly("tstart", &Spectrum<T>::tstart)
       .def_readonly("tend", &Spectrum<T>::tend)
       .def_readonly("dm", &Spectrum<T>::dm)
-      .def_readonly("nbits", &Spectrum<T>::nbits);
+      .def_readonly("nbits", &Spectrum<T>::nbits)
+      .def_readonly("freq_start", &Spectrum<T>::freq_start)
+      .def_readonly("freq_end", &Spectrum<T>::freq_end);
 }
 
 void bind_filterbank(py::module &m) {
@@ -171,9 +173,14 @@ PYBIND11_MODULE(_astroflow_core, m) {
 
   m.def("_dedispered_fil_with_dm_uint8",
         &cpucal::dedispered_fil_with_dm<uint8_t>, py::arg("fil"),
-        py::arg("tstart"), py::arg("tend"), py::arg("dm"));
-
+        py::arg("tstart"), py::arg("tend"), py::arg("dm"),
+        py::arg("freq_start"), py::arg("freq_end"));
   m.def("_dedispered_fil_with_dm_uint16",
         &cpucal::dedispered_fil_with_dm<uint16_t>, py::arg("fil"),
-        py::arg("tstart"), py::arg("tend"), py::arg("dm"));
+        py::arg("tstart"), py::arg("tend"), py::arg("dm"),
+        py::arg("freq_start"), py::arg("freq_end"));
+  m.def("_dedispered_fil_with_dm_uint32",
+        &cpucal::dedispered_fil_with_dm<uint32_t>, py::arg("fil"),
+        py::arg("tstart"), py::arg("tend"), py::arg("dm"),
+        py::arg("freq_start"), py::arg("freq_end"));
 }

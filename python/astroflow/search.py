@@ -37,14 +37,19 @@ def single_pulsar_search(
     os.makedirs(save_path, exist_ok=True)
 
     for idx, data in enumerate(dmtimes):
-        if detector.detect(data):
-            print(f"Found FRB in {file_basename} at {data}")
+        candidate = detector.detect(data)
+        for candinfo in candidate:
+            print(f"Found FRB in {file_basename} at {candinfo}")
             plotter.plot_candidate(data, detect_dir)
-            plotter.plot_dmtime(data, save_path)
-        plotter.plot_dmtime(data, save_path)
+            plotter.plot_spectrogram(file, candinfo, detect_dir)
 
 
 def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) -> None:
+
+    if files_dir[-1] == "/":
+        files_dir = files_dir[:-1]
+    if output_dir[-1] == "/":
+        output_dir = output_dir[:-1]
 
     all_files = os.listdir(files_dir)
     base_dir = os.path.basename(files_dir)
@@ -54,7 +59,7 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
     plotter = PlotterManager()
 
     frb_detector = CenterNetFrbDetector(confidence=0.4)
-    plotter = PlotterManager(64)
+    plotter = PlotterManager(32)
     for file in all_files:
         if not file.endswith(".fil"):
             continue
