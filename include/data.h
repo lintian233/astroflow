@@ -29,13 +29,15 @@ struct dedisperseddata {
 };
 
 template <typename T> struct Spectrum {
-  T *data;
+  std::shared_ptr<T[]> data;
   size_t nchans;
   size_t ntimes;
   float tstart;
   float tend;
   float dm;
   int nbits;
+  float freq_start;
+  float freq_end;
 };
 
 #endif //_DATA_H
