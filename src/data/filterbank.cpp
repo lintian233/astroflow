@@ -821,3 +821,18 @@ void Filterbank::reverse_channanl_data() {
         "Unsupported nbits value in reverse_channanl_data");
   }
 }
+
+template <typename T> std::shared_ptr<T[]> Filterbank::get_shared_ptr_data() {
+  if (data == nullptr) {
+    throw std::runtime_error("data is null in get_shared_ptr_data");
+  }
+  std::shared_ptr<T[]> ptr = std::shared_ptr<T[]>(new T[ndata * nifs * nchans]);
+  memcpy(ptr.get(), data, sizeof(T) * ndata * nifs * nchans);
+  return ptr;
+}
+
+template std::shared_ptr<uint8_t[]> Filterbank::get_shared_ptr_data<uint8_t>();
+template std::shared_ptr<uint16_t[]>
+Filterbank::get_shared_ptr_data<uint16_t>();
+template std::shared_ptr<uint32_t[]>
+Filterbank::get_shared_ptr_data<uint32_t>();

@@ -29,7 +29,6 @@ def plot_ded_spectrum(
     basename = os.path.basename(file_path)
     title = f"{basename}-{tstart}s-{tend}s-{dm}pc-cm3"
     fil = Filterbank(file_path)
-    print(fil.data[0, :, :].dtype)
 
     spectrum = dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end)
 
@@ -43,7 +42,7 @@ def plot_ded_spectrum(
     )
     plt.rcParams["image.origin"] = "lower"
 
-    vmin, vmax = np.percentile(spectrum.data, [0, 99])
+    vmin, vmax = np.percentile(spectrum.data, [0, 100])
     print(f"vmin: {vmin}, vmax: {vmax}")
     data = spectrum.data
     time_axis = np.linspace(tstart, tend, spectrum.ntimes)
