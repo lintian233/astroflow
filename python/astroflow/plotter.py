@@ -13,7 +13,7 @@ from .dedispered import dedispered_fil_with_dm
 
 
 class PlotterManager:
-    def __init__(self, max_worker=8):
+    def __init__(self, max_worker=32):
         self.max_worker = max_worker
         self.pool = multiprocessing.Pool(self.max_worker)
 
@@ -49,6 +49,7 @@ def preprocess_img(img):
 
 
 def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
+    # print_red
     print(f"Plotting {file_path} with {candinfo}")
     basename = os.path.basename(file_path).split(".")[0]
     fil = Filterbank(file_path)
@@ -57,10 +58,9 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     toa = candinfo[1]
     freq_start = candinfo[2]
     freq_end = candinfo[3]
-    time_size = 0.1
-    tstart = toa - time_size
-    tend = toa + time_size
-    tstart = tstart if tstart > 0 else 0
+
+    tstart = toa - 0.25
+    tend = toa + 0.25
     tstart = np.round(tstart, 3)
     tend = np.round(tend, 3)
     title = f"{basename}-spectrum-{toa}s-{tstart}s-{tend}s-{dm}pc-cm3"
