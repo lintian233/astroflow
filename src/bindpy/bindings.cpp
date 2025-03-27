@@ -1,5 +1,4 @@
 #include "cpp_code.h"
-#include "data.h"
 #include "pyapi.h"
 #include <cstdint>
 #include <memory>
@@ -71,26 +70,6 @@ void bind_dedispersed_data(py::module &m, const char *class_name) {
       .def_readonly("tsample", &Data::tsample)
       .def_readonly("filname", &Data::filname);
 }
-template <typename T>
-void bind_spectrum(py::module &m, const char *class_name) {
-  py::class_<Spectrum<T>>(m, class_name)
-      .def(py::init<>())
-      .def_property_readonly(
-          "data",
-          [](const Spectrum<T> &spec) -> py::object {
-            vector<size_t> shape = {static_cast<size_t>(spec.ntimes),
-                                    static_cast<size_t>(spec.nchans)};
-            vector<size_t> strides = {static_cast<size_t>(spec.nchans), 1};
-            auto arr = py::array_t<T>(shape, strides, spec.data);
-            return arr;
-          })
-      .def_readonly("ntimes", &Spectrum<T>::ntimes)
-      .def_readonly("nchans", &Spectrum<T>::nchans)
-      .def_readonly("tstart", &Spectrum<T>::tstart)
-      .def_readonly("tend", &Spectrum<T>::tend)
-      .def_readonly("dm", &Spectrum<T>::dm)
-      .def_readonly("nbits", &Spectrum<T>::nbits);
-}
 
 void bind_filterbank(py::module &m) {
   py::class_<Filterbank>(m, "Filterbank")
@@ -159,21 +138,10 @@ PYBIND11_MODULE(_astroflow_core, m) {
 
   bind_dedispersed_data<uint32_t>(m, "DedisperedData");
   bind_filterbank(m);
-  bind_spectrum<uint8_t>(m, "Spectrum8");
-  bind_spectrum<uint16_t>(m, "Spectrum16");
-  bind_spectrum<uint32_t>(m, "Spectrum32");
 
   m.def("_dedispered_fil", &dedispered_fil, py::arg("filename"),
         py::arg("dm_low"), py::arg("dm_high"), py::arg("freq_start"),
         py::arg("freq_end"), py::arg("dm_step") = 1,
         py::arg("time_downsample") = 2, py::arg("t_sample") = 0.5,
         py::arg("target") = GPU_TARGET);
-
-  m.def("_dedispered_fil_with_dm_uint8",
-        &cpucal::dedispered_fil_with_dm<uint8_t>, py::arg("fil"),
-        py::arg("tstart"), py::arg("tend"), py::arg("dm"));
-
-  m.def("_dedispered_fil_with_dm_uint16",
-        &cpucal::dedispered_fil_with_dm<uint16_t>, py::arg("fil"),
-        py::arg("tstart"), py::arg("tend"), py::arg("dm"));
 }

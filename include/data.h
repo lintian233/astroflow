@@ -28,14 +28,4 @@ struct dedisperseddata {
   std::string filname;
 };
 
-template <typename T> struct Spectrum {
-  T *data;
-  size_t nchans;
-  size_t ntimes;
-  float tstart;
-  float tend;
-  float dm;
-  int nbits;
-};
-
 #endif //_DATA_H

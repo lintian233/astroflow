@@ -195,50 +195,5 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
   return result;
 }
-
-template <typename T>
-Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
-                                   float dm) {
-
-  omp_set_num_threads(32);
-
-  size_t nchans = fil->nchans;
-  int t_start_idx = static_cast<int>(tstart / fil->tsamp);
-  int t_end_idx = static_cast<int>(tend / fil->tsamp);
-  int t_len = t_end_idx - t_start_idx;
-
-  int *dm_delays_table = new int[nchans];
-#pragma omp parallel for schedule(dynamic)
-  for (int ch = 0; ch < nchans; ++ch) {
-    const float freq = fil->frequency_table[ch];
-    const float delay =
-        4148.808f * dm *
-        (1.0f / (freq * freq) - 1.0f / (fil->frequency_table[nchans - 1] *
-                                        fil->frequency_table[nchans - 1]));
-
-    dm_delays_table[ch] = static_cast<int>(std::round(delay / fil->tsamp));
-  }
-  Spectrum<T> result;
-  result.nbits = fil->nbits;
-  result.nchans = nchans;
-  result.ntimes = t_len;
-  result.tstart = tstart;
-  result.tend = tend;
-  result.dm = dm;
-  result.data = new T[nchans * t_len]();
-  T *origin_data = static_cast<T *>(fil->data);
-
-#pragma omp parallel for schedule(dynamic)
-  for (int ti = 0; ti < t_len; ++ti) {
-#pragma omp simd
-    for (int ch = 0; ch < nchans; ++ch) {
-      const int target_idx = t_start_idx + ti + dm_delays_table[ch];
-      if (target_idx >= 0 && target_idx < fil->ndata) {
-        result.data[ti * nchans + ch] = origin_data[target_idx * nchans + ch];
-      }
-    }
-  }
-  return result;
-}
 } // namespace cpucal
 #endif //_CPUCAL_H
