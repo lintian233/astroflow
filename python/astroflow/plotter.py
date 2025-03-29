@@ -113,7 +113,6 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
         dpi=dpi,
         bbox_inches="tight",
         format="png",
-        pil_kwargs={"compress_level": 0},
     )
     plt.close()
     print(f"Saved {save_path}/{title}.png")
@@ -123,7 +122,14 @@ def plot_dmtime(dmt: DmTime, save_path, dpi=50):
     img = preprocess_img(dmt.data)
     plt.imshow(img)
     plt.title(dmt.__str__())
-    plt.savefig(f"{save_path}/{dmt.__str__()}.png", dpi=dpi, bbox_inches="tight")
+    # 禁用PNG压缩并保持原始数据精度
+    plt.savefig(
+        f"{save_path}/{dmt.__str__()}.png",
+        dpi=dpi,
+        format="png",
+        hbox_inches="tight",
+        pil_kwargs={"compress_level": 0},
+    )
     plt.close()
 
 
@@ -146,8 +152,14 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     )
 
     ax_main = fig.add_subplot(gs[1, 0])
-    X, Y = np.meshgrid(time_axis, dm_axis)
-    im = ax_main.pcolormesh(X, Y, dm_data_clip, shading="auto", cmap="viridis")
+    # 使用imshow并设置正确的坐标范围和方向
+    im = ax_main.imshow(
+        dm_data_clip,  # 转置矩阵以对齐坐标轴
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=[time_axis[0], time_axis[-1], dm_axis[0], dm_axis[-1]],
+    )
     ax_main.set_xlabel("Time (s)", fontsize=12, labelpad=10)
     ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
 
@@ -166,9 +178,13 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     cax = fig.add_axes([0.25, 0.92, 0.5, 0.02])
     fig.colorbar(im, cax=cax, orientation="horizontal")
 
-    plt.tight_layout()
     if if_show:
         plt.show()
-    plt.savefig(f"{save_path}/{dmt.__str__()}.png", dpi=dpi, bbox_inches="tight")
+    plt.savefig(
+        f"{save_path}/{dmt.__str__()}.png",
+        dpi=dpi,
+        format="png",
+        bbox_inches="tight",
+    )
     plt.close()
     # print(f"Saved {save_path}/{dmt.__str__()}.png in {time.time() - start_time:.2f}s")

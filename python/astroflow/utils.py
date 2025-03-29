@@ -47,7 +47,6 @@ def plot_dedispered_data(dm_data, title, tsample, dm_low, dm_high, dpi=100):
     cbar = plt.colorbar(im, pad=0.02)
     cbar.set_label("Signal Strength (arb. units)", rotation=270, labelpad=15)
     filename = f"{title.lower().replace(' ', '_')}.png"
-    plt.tight_layout()
     plt.savefig(filename, dpi=dpi)
     plt.close()
 

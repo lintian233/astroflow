@@ -1,4 +1,5 @@
 import os
+import tqdm
 
 from .utils import Config
 from .dedispered import dedispered_fil
@@ -60,7 +61,7 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
 
     frb_detector = CenterNetFrbDetector(confidence=0.4)
     plotter = PlotterManager(6)
-    for file in all_files:
+    for file in tqdm.tqdm(all_files):
         if not file.endswith(".fil"):
             continue
 

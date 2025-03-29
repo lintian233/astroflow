@@ -182,7 +182,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaMemcpy(delay_table, d_delay_table,
                         dm_steps * (chan_end - chan_start + 1) * sizeof(int),
                         cudaMemcpyDeviceToHost));
-  PRINT_ARR(delay_table, dm_steps * (chan_end - chan_start + 1));
+  // PRINT_ARR(delay_table, dm_steps * (chan_end - chan_start + 1));
 
   const int samples_per_tsample =
       static_cast<int>(std::round(t_sample / fil.tsamp));
@@ -196,7 +196,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   uint32_t *d_output;
   T *data = static_cast<T *>(fil.data);
   // print class T
-  PRINT_VAR(sizeof(T));
+  // PRINT_VAR(sizeof(T));
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint32_t)));
   CHECK_CUDA(
@@ -216,13 +216,13 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
     const size_t slice_duration = end - start;
     const size_t down_ndata =
         (slice_duration + time_downsample - 1) / time_downsample;
-    PRINT_VAR(start);
+    // PRINT_VAR(start);
     if (slice_idx == 0) {
       result.downtsample_ndata = down_ndata;
       result.shape = {dm_steps, down_ndata};
-      PRINT_VAR(down_ndata);
-      PRINT_VAR(result.shape[0]);
-      PRINT_VAR(result.shape[1]);
+      // PRINT_VAR(down_ndata);
+      // PRINT_VAR(result.shape[0]);
+      // PRINT_VAR(result.shape[1]);
     }
     CHECK_CUDA(
         cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
@@ -259,9 +259,9 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
 
-  PRINT_VAR(result.filname);
-  PRINT_VAR(result.dm_times.size());
-  PRINT_ARR(result.dm_times[0].get(), 10);
+  // PRINT_VAR(result.filname);
+  // PRINT_VAR(result.dm_times.size());
+  // PRINT_ARR(result.dm_times[0].get(), 10);
   return result;
 }
 
