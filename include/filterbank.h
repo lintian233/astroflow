@@ -83,6 +83,7 @@ public:
   double *frequency_table;
   long int ndata;
   void *data;
+  std::shared_ptr<void> data_owner;
 
   FILE *fptr;
 };

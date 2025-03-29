@@ -95,8 +95,24 @@ Filterbank::Filterbank(const string fname) {
   read_header();
   read_data();
   reverse_channanl_data();
+  const int nbits = this->nbits;
+  data_owner = std::shared_ptr<void>(data, [nbits](void *p) {
+    switch (nbits) {
+    case 8:
+      delete[] (unsigned char *)p;
+      break;
+    case 16:
+      delete[] (short *)p;
+      break;
+    case 32:
+      delete[] (float *)p;
+      break;
+    default:
+      cerr << "Error: data type not support" << endl;
+      break;
+    }
+  });
 }
-
 Filterbank::Filterbank(const Filterbank &fil) {
   filename = fil.filename;
   header_size = fil.header_size;
@@ -160,6 +176,24 @@ Filterbank::Filterbank(const Filterbank &fil) {
   } else {
     data = NULL;
   }
+
+  const int nbits = this->nbits;
+  data_owner = std::shared_ptr<void>(data, [nbits](void *p) {
+    switch (nbits) {
+    case 8:
+      delete[] (unsigned char *)p;
+      break;
+    case 16:
+      delete[] (short *)p;
+      break;
+    case 32:
+      delete[] (float *)p;
+      break;
+    default:
+      cerr << "Error: data type not support" << endl;
+      break;
+    }
+  });
 
   fptr = NULL;
 }
@@ -228,37 +262,36 @@ Filterbank &Filterbank::operator=(const Filterbank &fil) {
     }
   }
 
+  const int nbits = this->nbits;
+  data_owner = std::shared_ptr<void>(data, [nbits](void *p) {
+    switch (nbits) {
+    case 8:
+      delete[] (unsigned char *)p;
+      break;
+    case 16:
+      delete[] (short *)p;
+      break;
+    case 32:
+      delete[] (float *)p;
+      break;
+    default:
+      cerr << "Error: data type not support" << endl;
+      break;
+    }
+  });
+
   return *this;
 }
 
 Filterbank::~Filterbank() {
-  if (frequency_table != NULL) {
+  if (frequency_table) {
     delete[] frequency_table;
-    frequency_table = NULL;
+    frequency_table = nullptr;
   }
 
-  if (data != NULL) {
-    switch (nbits) {
-    case 8:
-      delete[] (unsigned char *)data;
-      break;
-    case 16:
-      delete[] (short *)data;
-      break;
-    case 32:
-      delete[] (float *)data;
-      break;
-    default:
-      cerr << nbits << endl;
-      cerr << "Error: data type not support" << endl;
-      break;
-    }
-    data = NULL;
-  }
-
-  if (fptr != NULL) {
+  if (fptr) {
     fclose(fptr);
-    fptr = NULL;
+    fptr = nullptr;
   }
 }
 
@@ -266,24 +299,6 @@ void Filterbank::free() {
   if (frequency_table != NULL) {
     delete[] frequency_table;
     frequency_table = NULL;
-  }
-
-  if (data != NULL) {
-    switch (nbits) {
-    case 8:
-      delete[] (unsigned char *)data;
-      break;
-    case 16:
-      delete[] (short *)data;
-      break;
-    case 32:
-      delete[] (float *)data;
-      break;
-    default:
-      cerr << "Error: data type not support" << endl;
-      break;
-    }
-    data = NULL;
   }
 
   if (fptr != NULL) {
@@ -823,12 +838,17 @@ void Filterbank::reverse_channanl_data() {
 }
 
 template <typename T> std::shared_ptr<T[]> Filterbank::get_shared_ptr_data() {
-  if (data == nullptr) {
-    throw std::runtime_error("data is null in get_shared_ptr_data");
+  // 类型安全验证
+  if ((typeid(T) == typeid(uint8_t) && nbits != 8) ||
+      (typeid(T) == typeid(uint16_t) && nbits != 16) ||
+      (typeid(T) == typeid(uint32_t) && nbits != 32)) {
+    throw std::runtime_error("Template type does not match nbits value");
   }
-  std::shared_ptr<T[]> ptr = std::shared_ptr<T[]>(new T[ndata * nifs * nchans]);
-  memcpy(ptr.get(), data, sizeof(T) * ndata * nifs * nchans);
-  return ptr;
+
+  // 返回重新包装的共享指针（不转移所有权）
+  return std::shared_ptr<T[]>(data_owner,            // 使用原始所有者
+                              static_cast<T *>(data) // 类型转换后的指针
+  );
 }
 
 template std::shared_ptr<uint8_t[]> Filterbank::get_shared_ptr_data<uint8_t>();
