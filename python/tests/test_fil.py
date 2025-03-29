@@ -2,62 +2,37 @@ import _astroflow_core as astroflow  # type: ignore
 import numpy as np
 import matplotlib.pyplot as plt
 import unittest
+import os
+import your
 
 from _astroflow_core import Filterbank  # type: ignore
 
 
 class TestFilterbank(unittest.TestCase):
-    def test_read_fil(self):
-        fil = Filterbank("../tests/FRB180417.fil")
-        self.assertEqual(fil.data[:, 0, :].shape, (fil.ndata, fil.nchans))
-        raw_data = fil.data
-        assert isinstance(raw_data, np.ndarray)
-        assert raw_data.dtype == np.uint8
-        assert raw_data.shape == (fil.ndata, fil.nifs, fil.nchans)
+    def test_fil_read(self):
+        test_file = r"../tests/qltest.fil"
+        if not os.path.exists(test_file):
+            test_file = r"../tests/FRB180417.fil"
 
-        return
+        filterbank = Filterbank(test_file)
 
-        vmin, vmax = np.percentile(raw_data, [1, 99])
+        start_time = 0.0
+        end_time = 0.5
 
-        x_shape = raw_data.shape[0]
-        y_shape = raw_data.shape[2]
-        plt.figure(figsize=(20, 8), dpi=100)
-        plt.rcParams["image.origin"] = "lower"
+        your_reader = your.Your(test_file)
 
-        tstart = 2.0
-        tend = 3.0
-        start_idx = int(tstart / fil.tsamp)
-        end_idx = int(tend / fil.tsamp)
-        t_len = end_idx - start_idx
-        time_axis = np.linspace(tstart, tend, t_len)
-        freq_axis = fil.fch1 + np.arange(y_shape) * fil.foff
-        print(
-            f"t_len: {t_len}, time_axis: {time_axis.shape}, freq_axis: {freq_axis.shape}"
+        header = your_reader.your_header
+        tsamp = header.tsamp
+        total_samples = int((end_time - start_time) / tsamp)
+
+        your_raw_data = your_reader.get_data(start_time * tsamp, total_samples)
+
+        if header.foff < 0:
+            your_raw_data = your_raw_data[:, ::-1]  # 反转频率轴
+
+        # only support 1 polarization data
+        filterbank_slice = filterbank.data[:total_samples, 0, :]
+
+        self.assertTrue(
+            np.allclose(filterbank_slice, your_raw_data, atol=1e-6),
         )
-        print(f"raw_data: {raw_data.shape}")
-        print(f"start_idx: {start_idx}, end_idx: {end_idx}")
-        print(
-            f"raw_data[start_idx:end_idx, 0, :]: {raw_data[start_idx:end_idx, 0, :].shape}"
-        )
-        plt.imshow(
-            raw_data[start_idx:end_idx, 0, :].T,
-            aspect="auto",
-            origin="lower",
-            cmap="viridis",
-            vmin=vmin,
-            vmax=vmax,
-        )
-
-        plt.xlabel(f"Time (s)\nTSAMP={fil.tsamp:.6e}s")
-        plt.ylabel(f"Frequency (MHz)\nFCH1={fil.fch1:.3f} MHz, FOFF={fil.foff:.3f} MHz")
-
-        plt.savefig(
-            "test_fil.png",
-            dpi=100,
-            bbox_inches="tight",
-            facecolor="white",
-            format="png",
-            pil_kwargs={"compress_level": 0},
-        )  # Disable compression
-
-        plt.close()

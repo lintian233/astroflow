@@ -2,67 +2,52 @@ import numpy as np
 import unittest
 import os
 import matplotlib.pyplot as plt
+import your
 
 from astroflow import dedispered_fil_with_dm
 from astroflow import Spectrum, Filterbank
 
 
 class TestDedispered(unittest.TestCase):
-    def test_dedispered_fil_with_dm_uint8(self):
-        fil = Filterbank("../tests/FRB180417.fil")
-        tstart = 0
-        tend = 2
-        dm = 474.14
-        spectrum = dedispered_fil_with_dm(fil, tstart, tend, dm)
-        assert isinstance(spectrum, Spectrum)
-        return
-        fig, axs = plt.subplots(
-            2,
-            1,
-            figsize=(10, 10),
-            dpi=100,
-            gridspec_kw={"height_ratios": [1, 3]},
-            sharex=True,
-        )
-        plt.rcParams["image.origin"] = "lower"
+    def test_dedispered_fil_with_dm(self) -> None:
+        test_file = r"../tests/qltest.fil"
+        if not os.path.exists(test_file):
+            test_file = r"../tests/FRB180417.fil"
 
-        vmin, vmax = np.percentile(spectrum.data, [1, 99])
-        data = spectrum.data
-        time_axis = np.linspace(tstart, tend, spectrum.ntimes)
-        freq_axis = fil.fch1 + np.arange(spectrum.nchans) * fil.foff
-        time_series = data.sum(axis=1)
-        axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
-        axs[0].set_ylabel("Integrated Power")
-        axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
-        axs[0].set_yscale("log")
-        axs[0].grid(True, alpha=0.3)
+        filterbank = Filterbank(test_file)
 
-        # 设置imshow的显示范围和方向
-        extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
-        axs[1].imshow(
-            data.T,
-            aspect="auto",
-            origin="lower",
-            cmap="viridis",
-            vmin=vmin,
-            vmax=vmax,
-            extent=extent,
-        )
-        axs[1].set_ylabel(
-            f"Frequency (MHz)\nFCH1={fil.fch1:.3f} MHz, FOFF={fil.foff:.3f} MHz"
-        )
-        axs[1].set_xlabel(f"Time (s)\nTSAMP={fil.tsamp:.6e}s")
+        start_time = 0.0  # 起始时间(秒)
+        end_time = 0.5  # 结束时间(秒)
+        test_dm = 0.0  # 测试用色散量
 
-        axs[0].set_xlim(tstart, tend)
-        axs[1].set_xlim(tstart, tend)
-
-        plt.subplots_adjust(hspace=0.05, left=0.08, right=0.92)
-        plt.savefig(
-            "test_dedispered_fil_with_dm_uint8.png",
-            dpi=100,
-            bbox_inches="tight",
-            facecolor="white",
-            format="png",
-            pil_kwargs={"compress_level": 0},
+        processed_spectrum = dedispered_fil_with_dm(
+            filterbank, start_time, end_time, test_dm
         )
-        plt.close()
+        your_reader = your.Your(test_file)
+
+        header = your_reader.your_header
+        tsamp = header.tsamp  # 采样时间(秒)
+        total_samples = int((end_time - start_time) / tsamp)
+
+        your_raw_data = your_reader.get_data(start_time * tsamp, total_samples)
+
+        if header.foff < 0:
+            your_raw_data = your_raw_data[:, ::-1]  # 反转频率轴
+
+        filterbank_slice = filterbank.data[:total_samples, 0, :]
+
+        self.assertIsInstance(processed_spectrum, Spectrum)
+
+        self.assertTrue(
+            np.allclose(
+                processed_spectrum.data[:, :],  # 处理后的数据
+                your_raw_data[:, :-1],  # your库数据（排除最后一个频率通道）
+                atol=1e-6,
+            ),
+            "频谱数据与your库不一致",
+        )
+
+        self.assertTrue(
+            np.allclose(filterbank_slice, your_raw_data, atol=1e-6),
+            "原始数据切片不一致",
+        )
