@@ -18,6 +18,97 @@ def dedispered_fil_with_dm(
     freq_start: float = -1,
     freq_end: float = -1,
 ) -> Spectrum:
+    """
+    Dedisperse filterbank data at a specific dispersion measure (DM).
+
+    This OpenMP-accelerated function applies inverse dispersion correction to a
+    selected time range of filterbank data using a single DM value. The output
+    is a frequency-time spectrum where dispersion delays have been removed.
+
+    Parameters
+    ----------
+    fil : Filterbank
+        SIGPROC filterbank data container object.
+        Supports 8/16/32-bit quantization.
+        Only supoort single polarization data. nifs=1, nbits=8/16/32.
+
+    tstart : float
+        Start time (seconds) relative to filterbank start time.
+        Must satisfy: 0 ≤ tstart < tend < fil.tsamp * fil.ndata(fil.nsamples)
+
+    tend : float
+        End time (seconds) relative to filterbank start time.
+        Must satisfy: 0 ≤ tstart < tend < fil.tsamp * fil.ndata(fil.nsamples)
+
+    dm : float
+        Dispersion measure (pc/cm³) to apply.
+        typical values: 10-1e5 pc/cm³for pulsar observations.
+
+    freq_start : float, optional, default: -1
+        Start frequency (MHz) for dedispersion calculation.
+        When set to -1, uses fil.fch1 (lowest frequency)
+    freq_end : float, optional, default: -1
+        End frequency (MHz) for dedispersion calculation.
+        When set to -1, uses fil.fch1 + (nchans-1)*foff (highest frequency)
+
+
+    Returns
+    -------
+    Spectrum
+        Object containing dedispersed data with attributes:
+        - name: Base filename identifier
+        - data: dedispersed data ndarray: [ntimes, nchans]
+        - dm: Dispersion measure applied
+        - tstart/tend: Start/end time
+        - ntimes: Number of time samples
+        - nchans: Number of frequency channels
+        - freq_start/end: Actual frequency range used
+
+
+    Raises
+    ------
+    ValueError
+        - If fil.nbits not in {8, 16, 32}
+        - If freq_start >= freq_end (after auto-set)
+        - If tstart/tend outside valid time range
+        - If DM exceeds GPU memory capacity
+
+    Notes
+    -----
+    1. **DM Calculation**
+       - Uses exact (non-approximated) dispersion delay formula:
+         Δt = 4.148741601e3 * DM * (f**(-2) - f_ref**(-2)))
+       - f_ref is the highest frequency in selected band
+
+    Examples
+    --------
+    >>> from astroflow import Filterbank, dedispered_fil_with_dm
+    >>> fil = Filterbank("pulsar.fil")
+    >>> spec = dedispered_fil_with_dm(fil,
+    ...                               tstart=0.5,
+    ...                               tend=1.0,
+    ...                               dm=56.4)
+    >>> print(spec.data.shape)
+    (336, 500)  # 336 channels, 0.5s / 1ms tsamp = 500 samples
+
+    # Visualize dedispersed spectrum
+    >>> import matplotlib.pyplot as plt
+    >>> plt.imshow(spec.data.T,
+    ...            aspect='auto',
+    ...            extent=[spec.fch1, spec.fch1 + spec.foff*spec.data.shape[0],
+    ...                    spec.tstart, spec.tend],
+    ...            origin='lower')
+    >>> plt.colorbar(label="Intensity (arb. units)")
+    >>> plt.xlabel("Frequency (MHz)")
+    >>> plt.ylabel("Time (s)")
+
+    See Also
+    --------
+    dedispered_fil : Dedispersion over DM range
+    Filterbank : Input data container class
+
+    """
+
     if freq_start == freq_end == -1:
         freq_start = fil.fch1
         freq_end = fil.fch1 + (fil.nchans - 1) * fil.foff
@@ -50,107 +141,101 @@ def dedispered_fil(
     dm_step: float = 1,
     time_downsample: int = 64,
     t_sample: float = 0.5,
+    target: int = 1,
 ) -> List[DmTime]:
     """
-    Perform dedispersion on filterbank data using uint8 precision with OpenMP parallelization.
+    Perform GPU/OpenMP-accelerated dedispersion on filterbank data.
 
-    This function implements coherent dedispersion algorithm optimized for radio astronomy data.
-    The implementation uses delay-and-add algorithm with SIMD optimizations and parallel processing.
+    This function reads a filterbank file, dedisperses the data over a range of
+    dispersion measures (DMs), and returns a list of dedispersed data segments.
+    Each segment is a 2D array of shape [dm_trials, time_samples] containing
+    dedispersed intensity values for each DM trial.
 
     Parameters
     ----------
     file_path : str
-        Path to filterbank file (.fil) containing time-frequency data.
-        File should be in SIGPROC filterbank format with 8-bit quantization.
+        Path to filterbank file (.fil) in SIGPROC format.
+        Supports 8/16/32-bit quantization.
+        Only supoort single polarization data. nifs=1, nbits=8/16/32.
 
     dm_low : float
-        Lower bound of dispersion measure (DM) to search, in pc/cm³.
-        Must be non-negative and less than dm_high.
+        Lower bound of dispersion measure (DM) in pc/cm³.
+        Must satisfy: 0 ≤ dm_low < dm_high
 
     dm_high : float
-        Upper bound of dispersion measure (DM) to search, in pc/cm³.
-        Must be greater than dm_low.
+        Upper bound of dispersion measure (DM) in pc/cm³.
+        Must satisfy: dm_high > dm_low
 
     freq_start : float
-        Start frequency in MHz for dedispersion calculation.
-        Must be within the frequency range of the filterbank file.
+        Start frequency (MHz) for dedispersion calculation.
+        Should match channelization in filterbank header.
 
     freq_end : float
-        End frequency in MHz for dedispersion calculation.
-        Must be higher than freq_start and within file's frequency range.
+        End frequency (MHz) for dedispersion calculation.
+        Must satisfy: freq_end > freq_start
 
     dm_step : float, optional, default: 1
-        Step size for DM trials in pc/cm³.
-        Determines the resolution of DM search: (dm_high - dm_low)/dm_step + 1 trials.
+        DM trial step size (pc/cm³). Controls search resolution:
+        num_dm = floor((dm_high - dm_low) / dm_step) + 1
 
-    time_downsample : int, optional, default: 64
-        Downsampling factor for time axis (applied after dedispersion).
-        Each output sample represents sum of `time_downsample` consecutive input samples.
+    time_downsample : int, optional, default: 2
+        Temporal downsampling factor.
+        Each output sample integrates N=input_samples//downsample samples.
 
     t_sample : float, optional, default: 0.5
-        Integration time per output sample in seconds.
-        Must satisfy: t_sample ≈ N * tsamp * time_downsample, where:
-        - N is integer number of input samples
-        - tsamp is original sampling time from filterbank header
+        Effective integration time (seconds) per output sample.
+
+    target : int, optional, default: 1
+        Target device for computation:
+        - 0: CPU
+        - 1: GPU (default)
 
     Returns
     -------
-    result : dedisperseddata
-        Dedispersed data container with attributes:
-        - dm_times : list of ndarray
-            Time series for each DM trial, shape (dm_steps, time_samples)
-        - shape : tuple
-            (number_of_dm_steps, number_of_time_samples)
-        - dm_ndata : int
-            Number of DM trials (dm_steps)
-        - downtsample_ndata : int
-            Number of time samples after downsampling
-        - dm_low : float
-            Copy of input parameter
-        - dm_high : float
-            Copy of input parameter
-        - dm_step : float
-            Copy of input parameter
-        - tsample : float
-            Effective time resolution after downsampling (seconds)
-        - filname : str
-            Source filename
+    List[DmTime]
+        Time-ordered list of dedispersed data segments containing:
+        - tstart/tend: timestamps (seconds)
+        - dm_low/high: Search range parameters
+        - dm_step: Trial step size
+        - freq_start/end: Actual frequency range used
+        - data: 2D ndarray shaped [dm_trials, time_samples]
+        - name: Base filename identifier
 
     Raises
     ------
     ValueError
-        If any input parameters are invalid or out of bounds
+        For invalid parameter combinations or file inconsistencies
+    RuntimeError
+        If GPU memory allocation fails or CUDA error occurs.
 
     Notes
     -----
-    1. Dedispersion formula:
-        Δt = 4.148808 × 10**3 × DM × (v**-2 - v_ref**-2) [seconds]
-        where:
-        - DM: Dispersion Measure (pc/cm³)
-        - v: Frequency (MHz)
-        - v_ref: Reference frequency (highest frequency in band)
-
-    2. Memory requirements scale with:
-        O(dm_steps × (time_samples / time_downsample) × nchans)
-
-    3. For optimal performance:
-        - Keep working set within CPU cache
-        - Use power-of-two downsampling factors
-        - Process data in time chunks using t_sample parameter
+    1. CPU also supported: Set target=0 in _astro_core._dedispered_fil call.
+    2. For large datasets, consider breaking into smaller chunks for memory efficiency.
+    3. For optimal performance, use power-of-2 time_downsample values (32, 64, 128, etc.).
 
     Examples
     --------
     >>> from astroflow import dedispered_fil
-    >>> result = dedisper_fil(
+    >>> results = dedispered_fil(
     ...     "observation.fil",
     ...     dm_low=100.0,
     ...     dm_high=200.0,
     ...     freq_start=1350.0,
     ...     freq_end=1450.0,
     ...     dm_step=0.5,
-    ...     time_downsample=128,
+    ...     time_downsample=16,
     ...     t_sample=1.0,
     ... )
+    >>> # Visualization example
+    >>> import matplotlib.pyplot as plt
+    >>> dt = results[0]
+    >>> plt.imshow(dt.data,
+    ...            aspect='auto',
+    ...            extent=[dt.tstart, dt.tend, dt.dm_low, dt.dm_high],
+    ...            origin='lower')
+    >>> plt.xlabel("Time (s)")
+    >>> plt.ylabel("DM (pc/cm³)")
     """
     data = _astro_core._dedispered_fil(
         file_path,
@@ -161,7 +246,7 @@ def dedispered_fil(
         dm_step,
         time_downsample,
         t_sample,
-        target=1,  # 0 for CPU, 1 for GPU
+        target=target,  # 0 for CPU, 1 for GPU
     )
     basename = os.path.basename(file_path).split(".")[0]
     result = []

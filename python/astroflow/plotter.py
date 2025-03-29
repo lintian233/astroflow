@@ -154,7 +154,7 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     ax_main = fig.add_subplot(gs[1, 0])
     # 使用imshow并设置正确的坐标范围和方向
     im = ax_main.imshow(
-        dm_data_clip,  # 转置矩阵以对齐坐标轴
+        dm_data_clip,
         aspect="auto",
         origin="lower",
         cmap="viridis",
