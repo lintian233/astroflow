@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef _PYAPI_H
+#define _PYAPI_H
+
 #include "cpucal.hpp"
 #include "data.h"
 #include "gpucal.h"
@@ -7,48 +10,29 @@
 #include <memory>
 #include <string>
 
+namespace py = pybind11;
+
 #define CPU_TARGET 0
 #define GPU_TARGET 1
 
 dedisperseddata dedispered_fil(std::string filename, float dm_low,
                                float dm_high, float freq_start, float freq_end,
                                float dm_step = 1, int time_downsample = 64,
-                               float t_sample = 0.5, int target = 0) {
-  Filterbank fil(filename);
-  fil.info();
-  switch (fil.nbits) {
-  case 8: {
-    if (target == GPU_TARGET) {
-      return gpucal::dedispered_fil_cuda<uint8_t>(
-          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample);
-    } else if (target == CPU_TARGET) {
-      return cpucal::dedispered_fil_omp<uint8_t>(
-          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample);
-    }
-  }
-  case 16: {
-    if (target == GPU_TARGET) {
-      return gpucal::dedispered_fil_cuda<uint16_t>(
-          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample);
-    } else if (target == CPU_TARGET) {
-      return cpucal::dedispered_fil_omp<uint16_t>(
-          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample);
-    }
-  }
-  case 32: {
-    if (target == GPU_TARGET) {
-      return gpucal::dedispered_fil_cuda<uint32_t>(
-          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample);
-    } else if (target == CPU_TARGET) {
-      return cpucal::dedispered_fil_omp<uint32_t>(
-          fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample);
-    }
-  }
-  }
-};
+                               float t_sample = 0.5, int target = 0);
+
+template <typename T>
+dedisperseddata
+dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
+                   float dm_high, float freq_start, float freq_end,
+                   float dm_step, int time_downsample, float t_sample);
+
+template <typename T>
+void bind_dedispersed_data(py::module &m, const char *class_name);
+
+void bind_filterbank(py::module &m);
+
+template <typename T> void bind_spectrum(py::module &m, const char *class_name);
+
+void bind_header(py::module &m);
+
+#endif

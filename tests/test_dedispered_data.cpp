@@ -31,7 +31,7 @@ TEST_F(DedisperedDataTest, ReadFilterbank) {
   ASSERT_GT(fil.header_size, 0);
 }
 
-TEST_F(DedisperedDataTest, CudaPreCalDedisperseData) {
+TEST_F(DedisperedDataTest, CudaDedispersedData) {
   Filterbank fil(file_name);
   ASSERT_GT(fil.header_size, 0);
 
@@ -39,7 +39,7 @@ TEST_F(DedisperedDataTest, CudaPreCalDedisperseData) {
   float dm_low = 0;
   float dm_high = 800;
   float freq_start = 1160; // MHz
-  float freq_end = 1300;   // MHz
+  float freq_end = 1400;   // MHz
   float dm_step = 1;
   float t_sample = 0.5f;
 

@@ -3,9 +3,14 @@ import unittest
 import os
 import matplotlib.pyplot as plt
 import your
+import time
 
 from astroflow import dedispered_fil_with_dm
+from astroflow.dedispered import dedisperse_spec
 from astroflow import Spectrum, Filterbank
+from astroflow.io.data import Header
+from astroflow.io.psrfits import PsrFits
+from astroflow.plotter import PlotterManager
 
 
 class TestDedispered(unittest.TestCase):
@@ -34,7 +39,7 @@ class TestDedispered(unittest.TestCase):
         if header.foff < 0:
             your_raw_data = your_raw_data[:, ::-1]  # 反转频率轴
 
-        filterbank_slice = filterbank.data[:total_samples, 0, :]
+        filterbank_slice = filterbank.get_spectrum()[:total_samples, 0, :]
 
         self.assertIsInstance(processed_spectrum, Spectrum)
 

@@ -1,9 +1,11 @@
+#include "data.h"
 #include "gpucal.h"
 #include "marcoutils.h"
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
 #include <stdexcept>
 #include <vector_types.h>
+
 // cuda atomicAdd
 
 #define CHECK_CUDA(call)                                                       \
@@ -78,30 +80,6 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample) {
-  /* int num_devices;
-  cudaGetDeviceCount(&num_devices);
-  std::cout << "Number of GPUs available: " << num_devices << std::endl;
-  // print name of all available GPUs
-  for (int i = 0; i < num_devices; ++i) {
-    cudaDeviceProp device_prop;
-    cudaGetDeviceProperties(&device_prop, i);
-    std::cout << "GPU " << i << ": " << device_prop.name << std::endl;
-  }
-
-  if (num_devices == 0) {
-    throw std::runtime_error("No CUDA devices found");
-  }
-  int device_id = 0;
-  if (num_devices > 2) {
-    device_id = 3;
-  }
-
-  CHECK_CUDA(cudaSetDevice(device_id));
-
-  // 获取当前设备的名称
-  cudaDeviceProp device_prop;
-  CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
-  std::cout << "Selected GPU: " << device_prop.name << std::endl; */
 
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
@@ -259,9 +237,6 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
 
-  // PRINT_VAR(result.filname);
-  // PRINT_VAR(result.dm_times.size());
-  // PRINT_ARR(result.dm_times[0].get(), 10);
   return result;
 }
 
@@ -281,5 +256,199 @@ dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
                               float t_sample);
+
+template <typename T>
+dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
+                                float dm_high, float freq_start, float freq_end,
+                                float dm_step, int ref_freq,
+                                int time_downsample, float t_sample) {
+  // Calculate frequency table from header info
+  const size_t nchans = header.nchans;
+  std::vector<double> frequency_table(nchans);
+  float fch1 = header.fch1;
+  float foff = header.foff;
+
+  for (size_t i = 0; i < nchans; ++i) {
+    frequency_table[i] = fch1 + i * foff;
+  }
+
+  float freq_min = frequency_table[0];
+  float freq_max = frequency_table[nchans - 1];
+
+  // Validate parameters
+  if (freq_start < freq_min || freq_end > freq_max) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Frequency range [%.3f-%.3f MHz] out of spectrum range "
+             "[%.3f-%.3f MHz]",
+             freq_start, freq_end, freq_min, freq_max);
+    throw std::invalid_argument(error_msg);
+  }
+
+  int chan_start = static_cast<int>((freq_start - freq_min) /
+                                    (freq_max - freq_min) * (nchans - 1));
+  int chan_end = static_cast<int>((freq_end - freq_min) /
+                                  (freq_max - freq_min) * (nchans - 1));
+
+  chan_start = std::max(0, chan_start);
+  chan_end = std::min(static_cast<int>(nchans) - 1, chan_end);
+
+  if (chan_start < 0 || chan_end >= nchans) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Invalid channel range [%d-%d] for %zu channels", chan_start,
+             chan_end, nchans);
+    throw std::invalid_argument(error_msg);
+  }
+
+  if (time_downsample < 1) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Invalid time_downsample value %d, "
+             "must be greater than or equal to 1",
+             time_downsample);
+    throw std::invalid_argument(error_msg);
+  }
+
+  if (dm_low > dm_high || dm_low < 0 || dm_step <= 0) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Invalid DM range [%.3f-%.3f] with step %.3f", dm_low, dm_high,
+             dm_step);
+    throw std::invalid_argument(error_msg);
+  }
+
+  if (t_sample > header.ndata * header.tsamp) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Invalid t_sample value %.3f, must be less than %.3f", t_sample,
+             header.ndata * header.tsamp);
+    throw std::invalid_argument(error_msg);
+  }
+
+  const size_t dm_steps = static_cast<int>((dm_high - dm_low) / dm_step) + 1;
+  const float ref_freq_value =
+      ref_freq ? frequency_table[chan_end] : frequency_table[chan_start];
+
+  // Allocate and initialize delay table on GPU
+  int *d_delay_table;
+  CHECK_CUDA(cudaMallocManaged(
+      &d_delay_table, dm_steps * (chan_end - chan_start + 1) * sizeof(int)));
+
+  double *d_freq_table;
+  CHECK_CUDA(cudaMallocManaged(&d_freq_table, nchans * sizeof(double)));
+  CHECK_CUDA(cudaMemcpy(d_freq_table, frequency_table.data(),
+                        nchans * sizeof(double), cudaMemcpyHostToDevice));
+
+  // Calculate dedispersion delay table
+  dim3 block_size(64, 16);
+  dim3 grid_size((dm_steps + block_size.x - 1) / block_size.x,
+                 (chan_end - chan_start + 1 + block_size.y - 1) / block_size.y);
+
+  pre_calculate_dedispersion_kernel<<<grid_size, block_size>>>(
+      d_delay_table, dm_low, dm_high, dm_step, chan_start, chan_end,
+      d_freq_table, ref_freq_value, header.tsamp);
+
+  CHECK_CUDA(cudaGetLastError());
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  // Process data in slices
+  const int samples_per_tsample =
+      static_cast<int>(std::round(t_sample / header.tsamp));
+  const size_t total_slices =
+      (header.ndata + samples_per_tsample - 1) / samples_per_tsample;
+
+  const int down_ndata_t =
+      (samples_per_tsample + time_downsample - 1) / time_downsample;
+
+  T *d_input;
+  uint32_t *d_output;
+  PRINT_VAR(header.ndata * nchans * sizeof(T));
+  PRINT_VAR(header.ndata);
+  PRINT_VAR(nchans);
+  PRINT_VAR(sizeof(T));
+  CHECK_CUDA(cudaMalloc(&d_input, header.ndata * nchans * sizeof(T)));
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint32_t)));
+  CHECK_CUDA(
+      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
+
+  CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata * nchans * sizeof(T),
+                        cudaMemcpyHostToDevice));
+
+  dedisperseddata result;
+  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
+
+  for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
+    const size_t start = slice_idx * samples_per_tsample;
+    const size_t end = std::min(start + samples_per_tsample,
+                                static_cast<size_t>(header.ndata));
+    const size_t slice_duration = end - start;
+    const size_t down_ndata =
+        (slice_duration + time_downsample - 1) / time_downsample;
+
+    if (slice_idx == 0) {
+      result.downtsample_ndata = down_ndata;
+      result.shape = {dm_steps, down_ndata};
+    }
+
+    CHECK_CUDA(
+        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
+
+    int THREADS_PER_BLOCK = 256;
+    dim3 threads(THREADS_PER_BLOCK);
+    dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
+
+    dedispersion_kernel<T><<<grids, threads>>>(
+        d_output, d_input, d_delay_table, dm_steps, time_downsample,
+        header.ndata, nchans, chan_start, chan_end, start, down_ndata);
+
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    auto dm_array = std::shared_ptr<uint32_t[]>(
+        new (std::align_val_t{4096}) uint32_t[dm_steps * down_ndata_t](),
+        [](uint32_t *p) { operator delete[](p, std::align_val_t{4096}); });
+
+    CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
+                          dm_steps * down_ndata * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost));
+
+    dm_times.emplace_back(std::move(dm_array));
+  }
+
+  // Clean up GPU resources
+  CHECK_CUDA(cudaFree(d_input));
+  CHECK_CUDA(cudaFree(d_output));
+  CHECK_CUDA(cudaFree(d_delay_table));
+  CHECK_CUDA(cudaFree(d_freq_table));
+
+  // Fill result structure
+  result.dm_times = std::move(dm_times);
+  result.dm_low = dm_low;
+  result.dm_high = dm_high;
+  result.dm_step = dm_step;
+  result.tsample = t_sample;
+  result.filname = header.filename;
+  result.dm_ndata = dm_steps;
+
+  return result;
+}
+
+template dedisperseddata
+dedisperse_spec<uint8_t>(uint8_t *data, Header header, float dm_low,
+                         float dm_high, float freq_start, float freq_end,
+                         float dm_step, int ref_freq, int time_downsample,
+                         float t_sample);
+
+template dedisperseddata
+dedisperse_spec<uint16_t>(uint16_t *data, Header header, float dm_low,
+                          float dm_high, float freq_start, float freq_end,
+                          float dm_step, int ref_freq, int time_downsample,
+                          float t_sample);
+template dedisperseddata
+dedisperse_spec<uint32_t>(uint32_t *data, Header header, float dm_low,
+                          float dm_high, float freq_start, float freq_end,
+                          float dm_step, int ref_freq, int time_downsample,
+                          float t_sample);
 
 } // namespace gpucal

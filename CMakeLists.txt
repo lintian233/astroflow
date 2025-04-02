@@ -20,7 +20,9 @@ set(CMAKE_BUILD_TYPE "Release")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -ggdb -g -pg")
 set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -pg")
-
+set(CMAKE_CUDA_FLAGS_RELEASE "-O3 --use_fast_math")
+set(CMAKE_CUDA_FLAGS_DEBUG "-O0 -g -pg")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -fopenmp -Xcompiler -fno-math-errno")
 # Release 模式配置
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -march=native -fopenmp -fno-math-errno")
 
@@ -73,7 +75,7 @@ set(TEST_EXECUTABLE_NAME astroflow_test)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # 添加测试可执行文件
-add_executable(${TEST_EXECUTABLE_NAME} ${TESTS} ${SRC_FILES})
+add_executable(${TEST_EXECUTABLE_NAME} ${TESTS} ${SRC_FILES} ${SRC_BIND})
 
 target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
     ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
@@ -82,6 +84,7 @@ target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
 # 链接 GoogleTest 
 target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
     gtest::gtest
+    pybind11::embed
 )
 
 include(GoogleTest)

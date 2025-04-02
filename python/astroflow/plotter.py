@@ -8,7 +8,7 @@ import os
 import time
 
 from .dmtime import DmTime
-from .filterbank import Filterbank
+from .io.filterbank import Filterbank
 from .dedispered import dedispered_fil_with_dm
 
 

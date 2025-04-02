@@ -20,5 +20,11 @@ dedispered_fil_cuda(Filterbank &fil, float dm_low, float dm_high,
                     int ref_freq = REF_FREQ_END, int time_downsample = 64,
                     float t_sample = 0.5);
 
+template <typename T>
+dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
+                                float dm_high, float freq_start, float freq_end,
+                                float dm_step, int ref_freq = REF_FREQ_END,
+                                int time_downsample = 64, float t_sample= 0.5);
+
 } // namespace gpucal
 #endif //_GPUCAL_H

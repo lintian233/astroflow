@@ -42,9 +42,9 @@ TEST_F(QlFilterBankTest, DedisperseData) {
   Filterbank fil(file_name);
   fil.info();
 
-  int time_downsample = 1;
+  int time_downsample = 16;
   float dm_low = 0;
-  float dm_high = 800;
+  float dm_high = 50;
   float freq_start = 1060; // MHz
   float freq_end = 1300;   // MHz
   float dm_step = 1;

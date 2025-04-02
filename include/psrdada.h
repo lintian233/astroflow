@@ -7,6 +7,4 @@
 
 #include "data.h"
 
-class psrdada : public data {};
-
 #endif //_PSRDADA_H

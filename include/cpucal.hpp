@@ -227,17 +227,6 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   chan_start = std::max(0, chan_start);
   chan_end = std::min(fil->nchans - 1, chan_end);
 
-  /* int *dm_delays_table = new int[nchans];
-#pragma omp parallel for schedule(dynamic)
-  for (int ch = 0; ch < nchans; ++ch) {
-    const float freq = fil->frequency_table[ch];
-    const float delay =
-        4148.808f * dm *
-        (1.0f / (freq * freq) - 1.0f / (fil->frequency_table[nchans - 1] *
-                                        fil->frequency_table[nchans - 1]));
-
-    dm_delays_table[ch] = static_cast<int>(std::round(delay / fil->tsamp));
-  } */
   Spectrum<T> result;
   result.nbits = fil->nbits;
   result.ntimes = t_len;

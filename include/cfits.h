@@ -7,6 +7,4 @@
 
 #include "data.h"
 
-class cfits : public data {};
-
 #endif //_CFITS_H

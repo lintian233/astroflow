@@ -7,7 +7,74 @@ import _astroflow_core as _astro_core  # type: ignore
 
 from .utils import timeit, Config
 from .dmtime import DmTime
-from .filterbank import Filterbank, Spectrum
+from .io.filterbank import Filterbank
+from .spectrum import Spectrum
+from .io.data import Header, SpectrumBase, SpectrumType
+
+
+@timeit
+def dedisperse_spec(
+    spectrum: SpectrumBase,
+    dm_low: float,
+    dm_high: float,
+    freq_start: float,
+    freq_end: float,
+    dm_step: float = 1,
+    time_downsample: int = 64,
+    t_sample: float = 0.5,
+    target: int = 1,
+) -> List[DmTime]:
+
+    if spectrum.type == SpectrumType.FIL:
+        filename = spectrum.filename
+        dmtimes = dedispered_fil(
+            filename,
+            dm_low,
+            dm_high,
+            freq_start,
+            freq_end,
+            dm_step,
+            time_downsample,
+            t_sample,
+            target,
+        )
+        return dmtimes
+
+    spec, header = spectrum.core_data
+
+    data = _astro_core._dedisperse_spec(
+        spec,
+        header,
+        dm_low,
+        dm_high,
+        freq_start,
+        freq_end,
+        dm_step,
+        time_downsample,
+        t_sample,
+    )
+
+    basename = os.path.basename(spec.filename).split(".")[0]
+    result = []
+    for idx, dmt in enumerate(data.dm_times[:-1]):
+        dmt = dmt.reshape(data.shape[0], data.shape[1])
+        tstart = idx * t_sample
+        tend = (idx + 1) * t_sample
+        result.append(
+            DmTime(
+                tstart=tstart,
+                tend=tend,
+                dm_low=dm_low,
+                dm_high=dm_high,
+                dm_step=dm_step,
+                freq_start=freq_start,
+                freq_end=freq_end,
+                data=dmt,
+                name=basename,
+            )
+        )
+
+    return result
 
 
 def dedispered_fil_with_dm(
@@ -106,13 +173,13 @@ def dedispered_fil_with_dm(
     --------
     dedispered_fil : Dedispersion over DM range
     Filterbank : Input data container class
-
     """
-
+    header = fil.header()
     if freq_start == freq_end == -1:
-        freq_start = fil.fch1
-        freq_end = fil.fch1 + (fil.nchans - 1) * fil.foff
-    nbits = fil.nbits
+        freq_start = header.fch1
+        freq_end = header.fch1 + (header.nchans - 1) * header.foff
+
+    nbits = header.nbits
     if nbits == 8:
         data = _astro_core._dedispered_fil_with_dm_uint8(
             fil.core_instance, tstart, tend, dm, freq_start, freq_end
