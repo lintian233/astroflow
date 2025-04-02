@@ -58,7 +58,7 @@ std::string format(const std::string &format_str, Args &&...args) {
   std::cout << MarcUtils::format(FORMAT_STR, __VA_ARGS__) << std::endl;
 
 // Debug macros
-#define DEBUG
+// #define DEBUG
 #ifdef DEBUG
 #define PRINT_ARR(ARR, SIZE) MarcUtils::print_array(ARR, SIZE)
 #define PRINT_VEC(VEC) MarcUtils::print_vector(VEC)

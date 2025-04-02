@@ -223,9 +223,9 @@ dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
     throw std::runtime_error("data must be 1D");
   }
 
-  return gpucal::dedisperse_spec(data_ptr_ptr, header, dm_low, dm_high,
-                                 freq_start, freq_end, dm_step, REF_FREQ_END,
-                                 time_downsample, t_sample);
+  return gpucal::dedisperse_spec<T>(data_ptr_ptr, header, dm_low, dm_high,
+                                    freq_start, freq_end, dm_step, REF_FREQ_END,
+                                    time_downsample, t_sample);
 }
 
 template dedisperseddata
@@ -245,3 +245,33 @@ dedisperse_spec_py<uint32_t>(py::array_t<uint32_t> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,
                              float t_sample);
+
+template <typename T>
+Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
+                                       float tstart, float tend, float dm,
+                                       float freq_start, float freq_end) {
+  auto data_ptr = data.request();
+  T *data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
+
+  if (data_ptr.ndim != 1) {
+    throw std::runtime_error("data must be 1D");
+  }
+
+  return cpucal::dedisperse_spec_with_dm<T>(data_ptr_ptr, header, dm, tstart,
+                                            tend, freq_start, freq_end);
+}
+
+template Spectrum<uint8_t>
+dedisperse_spec_with_dm_py<uint8_t>(py::array_t<uint8_t> data, Header header,
+                                    float dm, float tstart, float tend,
+                                    float freq_start, float freq_end);
+
+template Spectrum<uint16_t>
+dedisperse_spec_with_dm_py<uint16_t>(py::array_t<uint16_t> data, Header header,
+                                     float dm, float tstart, float tend,
+                                     float freq_start, float freq_end);
+
+template Spectrum<uint32_t>
+dedisperse_spec_with_dm_py<uint32_t>(py::array_t<uint32_t> data, Header header,
+                                     float dm, float tstart, float tend,
+                                     float freq_start, float freq_end);

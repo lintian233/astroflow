@@ -41,7 +41,6 @@ def dedisperse_spec(
         return dmtimes
 
     spec, header = spectrum.core_data
-
     data = _astro_core._dedisperse_spec(
         spec,
         header,
@@ -54,7 +53,7 @@ def dedisperse_spec(
         t_sample,
     )
 
-    basename = os.path.basename(spec.filename).split(".")[0]
+    basename = os.path.basename(spectrum.filename).split(".")[0]
     result = []
     for idx, dmt in enumerate(data.dm_times[:-1]):
         dmt = dmt.reshape(data.shape[0], data.shape[1])
@@ -75,6 +74,30 @@ def dedisperse_spec(
         )
 
     return result
+
+
+def dedisperse_spec_with_dm(
+    spectrum: SpectrumBase,
+    tstart: float,
+    tend: float,
+    dm: float,
+    freq_start: float = -1,
+    freq_end: float = -1,
+) -> Spectrum:
+    if spectrum.type == SpectrumType.FIL:
+        fil = Filterbank(spectrum.filename)
+        return dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end)
+
+    spec, header = spectrum.core_data
+    if freq_start == freq_end == -1:
+        freq_start = header.fch1
+        freq_end = header.fch1 + (header.nchans - 1) * header.foff
+
+    data = _astro_core._dedisperse_spec_with_dm(
+        spec, header, tstart, tend, dm, freq_start, freq_end
+    )
+
+    return Spectrum(data)
 
 
 def dedispered_fil_with_dm(

@@ -19,7 +19,7 @@ class Filterbank(SpectrumBase):
         if os.path.splitext(filename)[1] not in [".fil", ".FIL"]:
             raise ValueError(f"Invalid file extension: {filename}")
 
-        self._type = SpectrumType
+        self._type = SpectrumType.FIL
         self._filename = filename
         self._nchans = None
         self._nifs = None

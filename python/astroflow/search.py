@@ -1,10 +1,14 @@
 import os
+import time
 import tqdm
 
 from .utils import Config
 from .dedispered import dedispered_fil
 from .frbdetector import CenterNetFrbDetector
 from .plotter import PlotterManager
+from .io.filterbank import Filterbank
+from .io.psrfits import PsrFits
+from .dedispered import dedisperse_spec
 
 
 def single_pulsar_search(
@@ -15,13 +19,16 @@ def single_pulsar_search(
     plotter: PlotterManager,
 ) -> None:
 
-    if not file.endswith(".fil"):
-        raise ValueError("File must be a .fil file")
-    if not os.path.exists(file):
-        raise ValueError("File does not exist")
+    origin_data = None
+    if file.endswith(".fil"):
+        origin_data = Filterbank(file)
+    elif file.endswith(".fits"):
+        origin_data = PsrFits(file)
+    else:
+        raise ValueError("Unknown file type")
 
-    dmtimes = dedispered_fil(
-        file,
+    dmtimes = dedisperse_spec(
+        origin_data,
         config.dm_low,
         config.dm_high,
         config.freq_start,
@@ -62,7 +69,7 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
     frb_detector = CenterNetFrbDetector(confidence=0.4)
     plotter = PlotterManager(6)
     for file in tqdm.tqdm(all_files):
-        if not file.endswith(".fil"):
+        if not file.endswith(".fil") and not file.endswith(".fits"):
             continue
 
         file_dir = os.path.join(output_dir, base_dir, file.split(".")[0]).lower()

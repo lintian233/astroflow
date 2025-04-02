@@ -52,4 +52,14 @@ PYBIND11_MODULE(_astroflow_core, m) {
         py::arg("freq_start"), py::arg("dm_step") = 1,
         py::arg("ref_freq") = REF_FREQ_END, py::arg("time_downsample") = 2,
         py::arg("t_sample") = 0.5);
+
+  m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint8_t>,
+        py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
+        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"));
+  m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint16_t>,
+        py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
+        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"));
+  m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint32_t>,
+        py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
+        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"));
 }

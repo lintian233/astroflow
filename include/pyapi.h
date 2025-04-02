@@ -27,6 +27,11 @@ dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                    float dm_step, int time_downsample, float t_sample);
 
 template <typename T>
+Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
+                                       float dm, float tstart, float tend,
+                                       float freq_start, float freq_end);
+
+template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name);
 
 void bind_filterbank(py::module &m);

@@ -1,4 +1,7 @@
 from astroflow import dedispered_fil_with_dm, Spectrum, Filterbank
+from astroflow.dedispered import dedisperse_spec_with_dm
+from astroflow.io.filterbank import Filterbank
+from astroflow.io.psrfits import PsrFits
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,11 +29,22 @@ def parse_args():
 def plot_ded_spectrum(
     file_path, tstart, tend, dm, output_path, freq_start=-1, freq_end=-1
 ):
+    os.makedirs(output_path, exist_ok=True)
     basename = os.path.basename(file_path)
     title = f"{basename}-{tstart}s-{tend}s-{dm}pc-cm3"
-    fil = Filterbank(file_path)
+    origin_data = None
 
-    spectrum = dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end)
+    if file_path.endswith(".fil"):
+        origin_data = Filterbank(file_path)
+    elif file_path.endswith(".fits"):
+        origin_data = PsrFits(file_path)
+    else:
+        raise ValueError("Unknown file type")
+
+    spectrum = dedisperse_spec_with_dm(
+        origin_data, tstart, tend, dm, freq_start, freq_end
+    )
+    header = origin_data.header()
 
     fig, axs = plt.subplots(
         2,
@@ -46,7 +60,7 @@ def plot_ded_spectrum(
     print(f"vmin: {vmin}, vmax: {vmax}")
     data = spectrum.data
     time_axis = np.linspace(tstart, tend, spectrum.ntimes)
-    freq_axis = freq_start + np.arange(spectrum.nchans) * fil.foff
+    freq_axis = freq_start + np.arange(spectrum.nchans) * header.foff
     time_series = data.sum(axis=1)  # 通道积分
     axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
     axs[0].set_ylabel("Integrated Power")
@@ -65,9 +79,9 @@ def plot_ded_spectrum(
         extent=extent,
     )
     axs[1].set_ylabel(
-        f"Frequency (MHz)\nFCH1={fil.fch1:.3f} MHz, FOFF={fil.foff:.3f} MHz"
+        f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
     )
-    axs[1].set_xlabel(f"Time (s)\nTSAMP={fil.tsamp:.6e}s")
+    axs[1].set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
 
     axs[0].set_xlim(tstart, tend)
     axs[1].set_xlim(tstart, tend)
@@ -86,6 +100,7 @@ def plot_ded_spectrum(
 
 if __name__ == "__main__":
     args = parse_args()
+    print(f"args: {args}")
     plot_ded_spectrum(
         args.file_path,
         args.tstart,

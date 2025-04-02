@@ -9,7 +9,8 @@ import time
 
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
-from .dedispered import dedispered_fil_with_dm
+from .dedispered import dedisperse_spec_with_dm
+from .io.psrfits import PsrFits
 
 
 class PlotterManager:
@@ -51,7 +52,16 @@ def preprocess_img(img):
 def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     print(f"Plotting {file_path} with {candinfo}")
     basename = os.path.basename(file_path).split(".")[0]
-    fil = Filterbank(file_path)
+
+    origin_data = None
+    if file_path.endswith(".fil"):
+        origin_data = Filterbank(file_path)
+    elif file_path.endswith(".fits"):
+        origin_data = PsrFits(file_path)
+    else:
+        raise ValueError("Unknown file type")
+    print(f"Loaded {file_path}")
+    header = origin_data.header()
 
     dm = candinfo[0]
     toa = candinfo[1]
@@ -64,7 +74,10 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     tstart = np.round(tstart, 3)
     tend = np.round(tend, 3)
     title = f"{basename}-spectrum-{toa}s-{tstart}s-{tend}s-{dm}pc-cm3"
-    spectrum = dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end)
+
+    spectrum = dedisperse_spec_with_dm(
+        origin_data, tstart, tend, dm, freq_start, freq_end
+    )
 
     fig, axs = plt.subplots(
         2,
@@ -79,7 +92,7 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
 
     vim, vmax = np.percentile(data, [0, 99])
     time_axis = np.linspace(tstart, tend, spectrum.ntimes)
-    freq_axis = freq_start + np.arange(spectrum.nchans) * fil.foff
+    freq_axis = freq_start + np.arange(spectrum.nchans) * header.foff
     time_series = data.sum(axis=1)
     axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
     axs[0].set_ylabel("Integrated Power")
@@ -100,9 +113,9 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
         vmax=vmax,
     )
     axs[1].set_ylabel(
-        f"Frequency (MHz)\nFCH1={fil.fch1:.3f} MHz, FOFF={fil.foff:.3f} MHz"
+        f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
     )
-    axs[1].set_xlabel(f"Time (s)\nTSAMP={fil.tsamp:.6e}s")
+    axs[1].set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
 
     axs[0].set_xlim(tstart, tend)
     axs[1].set_xlim(tstart, tend)
@@ -128,7 +141,6 @@ def plot_dmtime(dmt: DmTime, save_path, dpi=50):
         dpi=dpi,
         format="png",
         hbox_inches="tight",
-        pil_kwargs={"compress_level": 0},
     )
     plt.close()
 
@@ -152,7 +164,6 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     )
 
     ax_main = fig.add_subplot(gs[1, 0])
-    # 使用imshow并设置正确的坐标范围和方向
     im = ax_main.imshow(
         dm_data_clip,
         aspect="auto",
@@ -187,4 +198,3 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
         bbox_inches="tight",
     )
     plt.close()
-    # print(f"Saved {save_path}/{dmt.__str__()}.png in {time.time() - start_time:.2f}s")

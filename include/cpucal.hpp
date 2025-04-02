@@ -273,5 +273,100 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 
   return result;
 }
+
+template <typename T>
+Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
+                                    float tstart, float tend, float freq_start,
+                                    float freq_end) {
+  omp_set_num_threads(32);
+  PRINT_VAR(header.tsamp);
+
+  int t_start_idx = static_cast<int>(tstart / header.tsamp);
+  int t_end_idx = static_cast<int>(tend / header.tsamp);
+  int t_len = t_end_idx - t_start_idx;
+  if (t_len <= 0) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg), "Invalid time range [%.3f-%.3f s]",
+             tstart, tend);
+    throw std::invalid_argument(error_msg);
+  }
+  PRINT_VAR(t_len);
+  PRINT_VAR(t_start_idx);
+  PRINT_VAR(t_end_idx);
+
+  float *frequency_table = new float[header.nchans];
+  for (int i = 0; i < header.nchans; i++) {
+    frequency_table[i] = header.fch1 + i * header.foff;
+  }
+
+  float fil_freq_min = frequency_table[0];
+  float fil_freq_max = frequency_table[header.nchans - 1];
+  PRINT_VAR(fil_freq_min);
+  PRINT_VAR(fil_freq_max);
+
+  if (freq_start < fil_freq_min || freq_end > fil_freq_max) {
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg),
+             "Frequency range [%.3f-%.3f MHz] out of filterbank range "
+             "[%.3f-%.3f MHz]",
+             freq_start, freq_end, fil_freq_min, fil_freq_max);
+    throw std::invalid_argument(error_msg);
+  }
+  int chan_start =
+      static_cast<int>((freq_start - fil_freq_min) /
+                       (fil_freq_max - fil_freq_min) * (header.nchans - 1));
+  int chan_end =
+      static_cast<int>((freq_end - fil_freq_min) /
+                       (fil_freq_max - fil_freq_min) * (header.nchans - 1));
+
+  chan_start = std::max(0, chan_start);
+  chan_end = std::min(header.nchans - 1, chan_end);
+
+  Spectrum<T> result;
+  result.nbits = header.nbits;
+  result.ntimes = t_len;
+  result.tstart = tstart;
+  result.tend = tend;
+  result.dm = dm;
+
+  result.nchans = chan_end - chan_start;
+  result.freq_start = frequency_table[chan_start];
+  result.freq_end = frequency_table[chan_end];
+  result.data = std::shared_ptr<T[]>(new T[t_len * (result.nchans)](),
+                                     [](T *p) { delete[] p; });
+
+  int *dm_delays_table = new int[result.nchans];
+
+#pragma omp parallel for schedule(dynamic)
+  for (int ch = chan_start; ch < chan_end; ++ch) {
+    const float freq = frequency_table[ch];
+    const float delay =
+        4148.808f * dm *
+        (1.0f / (freq * freq) -
+         1.0f / (frequency_table[chan_end] * frequency_table[chan_end]));
+
+    dm_delays_table[ch - chan_start] =
+        static_cast<int>(std::round(delay / header.tsamp));
+  }
+
+#pragma omp parallel for schedule(dynamic)
+  for (int ti = 0; ti < t_len; ++ti) {
+#pragma omp simd
+    for (int ch = chan_start; ch < chan_end; ++ch) {
+      const int target_idx =
+          t_start_idx + ti + dm_delays_table[ch - chan_start];
+      if (target_idx >= 0 && target_idx < header.ndata) {
+        result.data[ti * result.nchans + ch - chan_start] =
+            spec[target_idx * header.nchans + ch];
+      } else {
+        result.data[ti * result.nchans + ch - chan_start] = 0;
+      }
+    }
+  }
+  delete[] dm_delays_table;
+  delete[] frequency_table;
+
+  return result;
+}
 } // namespace cpucal
 #endif //_CPUCAL_H

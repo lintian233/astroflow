@@ -37,7 +37,7 @@ class CenterNetFrbDetector(FrbDetector):
         dmt = (dmt - np.mean(dmt)) / np.std(dmt)
         dmt = cv2.resize(dmt, (512, 512))
 
-        dmt = np.clip(dmt, *np.percentile(dmt, (0.1, 99.9)))
+        dmt = np.clip(dmt, *np.percentile(dmt, (0.1, 99.5)))
         dmt = (dmt - np.min(dmt)) / (np.max(dmt) - np.min(dmt))
 
         dmt = seaborn.color_palette("mako", as_cmap=True)(dmt)
@@ -63,11 +63,11 @@ class CenterNetFrbDetector(FrbDetector):
             top_conf, top_boxes = get_res(hm, wh, offset, confidence=self.confidence)
             if top_boxes is None:
                 return result
-            for box in top_boxes:  # box: [left, top, right, bottom]
+            for box in top_boxes:  # box: [left, top, right, bottom] #type: ignore
                 left, top, right, bottom = box.astype(int)
-                dm_steps = dmt.data.shape[0]
+                print(f"left: {left}, top: {top}, right: {right}, bottom: {bottom}")
                 t_len = dmt.tend - dmt.tstart
-                dm = ((top + bottom) / 2) * (dm_steps / 512) + dmt.dm_low
+                dm = ((top + bottom) / 2) * ((dmt.dm_high - dmt.dm_low) / 512) + dmt.dm_low
                 dm_flag = dm >= 15
                 toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                 toa = np.round(toa, 3)
