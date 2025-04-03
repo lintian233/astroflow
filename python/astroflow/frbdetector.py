@@ -33,19 +33,31 @@ class CenterNetFrbDetector(FrbDetector):
         return model
 
     def _preprocess_dmt(self, dmt):
-        dmt = (dmt - np.min(dmt)) / (np.max(dmt) - np.min(dmt))
-        dmt = (dmt - np.mean(dmt)) / np.std(dmt)
-        dmt = cv2.resize(dmt, (512, 512))
+        dmt = dmt.astype(np.float32)
+        mean_val, std_val = cv2.meanStdDev(dmt)
+        mean_val = float(mean_val[0,0])
+        std_val = float(std_val[0,0])
+        if std_val:
+            # MinMax normalize
+            dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
-        dmt = np.clip(dmt, *np.percentile(dmt, (0.1, 99.5)))
-        dmt = (dmt - np.min(dmt)) / (np.max(dmt) - np.min(dmt))
+        dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
 
-        dmt = seaborn.color_palette("mako", as_cmap=True)(dmt)
-        dmt = dmt[..., :3]
+        lo, hi = np.percentile(dmt, (0.1, 99.5))
+        np.clip(dmt, lo, hi, out=dmt)
 
-        dmt -= [0.485, 0.456, 0.406]
-        dmt /= [0.229, 0.224, 0.225]
+        dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
+        if not hasattr(self, "_mako_cmap"):
+            self._mako_cmap = seaborn.color_palette("mako", as_cmap=True)
+
+        dmt = self._mako_cmap(dmt)[..., :3]
+
+        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        dmt = dmt.astype(np.float32)
+        dmt = cv2.subtract(dmt, mean)
+        dmt = cv2.divide(dmt, std)
         return dmt
 
     @override

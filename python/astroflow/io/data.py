@@ -97,8 +97,6 @@ class SpectrumBase(ABC):
             header.foff = -header.foff
             spectrum = spectrum[:, ::-1]
 
-
-
         if header.nbits not in [8, 16, 32]:
             raise ValueError(f"Unsupported number of bits: {header.nbits}")
         if header.nbits == 8 and spectrum.dtype != np.uint8:
