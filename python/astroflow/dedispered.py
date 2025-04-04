@@ -221,7 +221,7 @@ def dedispered_fil_with_dm(
     return Spectrum(data)
 
 
-@timeit
+# @timeit
 def dedispered_fil(
     file_path: str,
     dm_low: float,

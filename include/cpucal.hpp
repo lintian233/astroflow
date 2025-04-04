@@ -90,18 +90,19 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
     throw std::invalid_argument(error_msg);
   }
 
-  int chan_start =
-      static_cast<int>((freq_start - fil_freq_min) /
+  size_t chan_start =
+      static_cast<size_t>((freq_start - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
-  int chan_end =
-      static_cast<int>((freq_end - fil_freq_min) /
+  size_t chan_end =
+      static_cast<size_t>((freq_end - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
 
-  chan_start = std::max(0, chan_start);
-  chan_end = std::min(fil.nchans - 1, chan_end);
+  chan_start = std::max(static_cast<size_t>(0), chan_start);
+  chan_end = std::min(static_cast<size_t>(fil.nchans - 1), chan_end);
   PRINT_VAR(chan_start);
   PRINT_VAR(chan_end);
-  if (chan_start < 0 || chan_end >= fil.nchans)
+  if (chan_start >= fil.nchans || chan_end >= fil.nchans ||
+      chan_start >= chan_end)
     throw std::invalid_argument("Invalid chan parameters");
   if (time_downsample < 1)
     throw std::invalid_argument("time_downsample must be >= 1");
@@ -112,7 +113,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
   T *data = static_cast<T *>(fil.data);
   const size_t nchans = fil.nchans;
-  const int dm_steps = static_cast<int>((dm_high - dm_low) / dm_step) + 1;
+  const size_t dm_steps = static_cast<size_t>((dm_high - dm_low) / dm_step) + 1;
 
   const float ref_freq_value = ref_freq ? fil.frequency_table[chan_end]
                                         : fil.frequency_table[chan_start];
@@ -121,10 +122,10 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
   // 预计算所有DM值和通道的延迟样本数
   std::vector<std::vector<int>> delay_table(dm_steps);
 #pragma omp parallel for
-  for (int step = 0; step < dm_steps; ++step) {
+  for (size_t step = 0; step < dm_steps; ++step) {
     const float dm = dm_low + step * dm_step;
     std::vector<int> delays(chan_end - chan_start);
-    for (int ch = chan_start; ch < chan_end; ++ch) {
+    for (size_t ch = chan_start; ch < chan_end; ++ch) {
       const float freq = fil.frequency_table[ch];
       const float delay =
           4148.808f * dm *
@@ -134,8 +135,8 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
     delay_table[step] = std::move(delays);
   }
 
-  const int samples_per_tsample =
-      static_cast<int>(std::round(t_sample / fil.tsamp));
+  const size_t samples_per_tsample =
+      static_cast<size_t>(std::round(t_sample / fil.tsamp));
   const size_t total_slices =
       (fil.ndata + samples_per_tsample - 1) / samples_per_tsample;
   std::vector<std::shared_ptr<uint64_t[]>> dm_times;
@@ -161,7 +162,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
 // 并行处理DM步
 #pragma omp parallel for schedule(dynamic)
-    for (int step = 0; step < dm_steps; ++step) {
+    for (size_t step = 0; step < dm_steps; ++step) {
       const auto &delays = delay_table[step];
       const size_t step_offset = step * down_ndata;
 
@@ -172,9 +173,9 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
 // SIMD优化循环
 #pragma omp simd reduction(+ : sum)
-        for (int ch = 0; ch < chan_end - chan_start; ++ch) {
-          const int target_idx = base_idx + delays[ch];
-          if (target_idx >= 0 && static_cast<size_t>(target_idx) < fil.ndata) {
+        for (size_t ch = 0; ch < chan_end - chan_start; ++ch) {
+          size_t target_idx = base_idx + delays[ch];
+          if (target_idx < fil.ndata) {
             sum += data[target_idx * nchans + (ch + chan_start)];
           }
         }
@@ -202,9 +203,9 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 
   omp_set_num_threads(32);
 
-  int t_start_idx = static_cast<int>(tstart / fil->tsamp);
-  int t_end_idx = static_cast<int>(tend / fil->tsamp);
-  int t_len = t_end_idx - t_start_idx;
+  size_t t_start_idx = static_cast<size_t>(tstart / fil->tsamp);
+  size_t t_end_idx = static_cast<size_t>(tend / fil->tsamp);
+  size_t t_len = t_end_idx - t_start_idx;
 
   float fil_freq_min = fil->frequency_table[0];
   float fil_freq_max = fil->frequency_table[fil->nchans - 1];
@@ -217,15 +218,15 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
              freq_start, freq_end, fil_freq_min, fil_freq_max);
     throw std::invalid_argument(error_msg);
   }
-  int chan_start =
-      static_cast<int>((freq_start - fil_freq_min) /
+  size_t chan_start =
+      static_cast<size_t>((freq_start - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
-  int chan_end =
-      static_cast<int>((freq_end - fil_freq_min) /
+  size_t chan_end =
+      static_cast<size_t>((freq_end - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
 
-  chan_start = std::max(0, chan_start);
-  chan_end = std::min(fil->nchans - 1, chan_end);
+  chan_start = std::max(static_cast<size_t>(0), chan_start);
+  chan_end = std::min(static_cast<size_t>(fil->nchans - 1), chan_end);
 
   Spectrum<T> result;
   result.nbits = fil->nbits;
@@ -244,7 +245,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   int *dm_delays_table = new int[result.nchans];
 
 #pragma omp parallel for schedule(dynamic)
-  for (int ch = chan_start; ch < chan_end; ++ch) {
+  for (size_t ch = chan_start; ch < chan_end; ++ch) {
     const float freq = fil->frequency_table[ch];
     const float delay =
         4148.808f * dm *
@@ -256,12 +257,12 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   }
 
 #pragma omp parallel for schedule(dynamic)
-  for (int ti = 0; ti < t_len; ++ti) {
+  for (size_t ti = 0; ti < t_len; ++ti) {
 #pragma omp simd
-    for (int ch = chan_start; ch < chan_end; ++ch) {
-      const int target_idx =
+    for (size_t ch = chan_start; ch < chan_end; ++ch) {
+      size_t target_idx =
           t_start_idx + ti + dm_delays_table[ch - chan_start];
-      if (target_idx >= 0 && target_idx < fil->ndata) {
+      if (target_idx < fil->ndata) {
         result.data[ti * result.nchans + ch - chan_start] =
             origin_data[target_idx * fil->nchans + ch];
       } else {
@@ -281,9 +282,9 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   omp_set_num_threads(32);
   PRINT_VAR(header.tsamp);
 
-  int t_start_idx = static_cast<int>(tstart / header.tsamp);
-  int t_end_idx = static_cast<int>(tend / header.tsamp);
-  int t_len = t_end_idx - t_start_idx;
+  size_t t_start_idx = static_cast<size_t>(tstart / header.tsamp);
+  size_t t_end_idx = static_cast<size_t>(tend / header.tsamp);
+  size_t t_len = t_end_idx - t_start_idx;
   if (t_len <= 0) {
     char error_msg[256];
     snprintf(error_msg, sizeof(error_msg), "Invalid time range [%.3f-%.3f s]",
@@ -295,7 +296,7 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   PRINT_VAR(t_end_idx);
 
   float *frequency_table = new float[header.nchans];
-  for (int i = 0; i < header.nchans; i++) {
+  for (size_t i = 0; i < header.nchans; i++) {
     frequency_table[i] = header.fch1 + i * header.foff;
   }
 
@@ -312,15 +313,15 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
              freq_start, freq_end, fil_freq_min, fil_freq_max);
     throw std::invalid_argument(error_msg);
   }
-  int chan_start =
-      static_cast<int>((freq_start - fil_freq_min) /
+  size_t chan_start =
+      static_cast<size_t>((freq_start - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (header.nchans - 1));
-  int chan_end =
-      static_cast<int>((freq_end - fil_freq_min) /
+  size_t chan_end =
+      static_cast<size_t>((freq_end - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (header.nchans - 1));
 
-  chan_start = std::max(0, chan_start);
-  chan_end = std::min(header.nchans - 1, chan_end);
+  chan_start = std::max(static_cast<size_t>(0), chan_start);
+  chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
 
   Spectrum<T> result;
   result.nbits = header.nbits;
@@ -338,7 +339,7 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   int *dm_delays_table = new int[result.nchans];
 
 #pragma omp parallel for schedule(dynamic)
-  for (int ch = chan_start; ch < chan_end; ++ch) {
+  for (size_t ch = chan_start; ch < chan_end; ++ch) {
     const float freq = frequency_table[ch];
     const float delay =
         4148.808f * dm *
@@ -350,12 +351,12 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   }
 
 #pragma omp parallel for schedule(dynamic)
-  for (int ti = 0; ti < t_len; ++ti) {
+  for (size_t ti = 0; ti < t_len; ++ti) {
 #pragma omp simd
-    for (int ch = chan_start; ch < chan_end; ++ch) {
-      const int target_idx =
+    for (size_t ch = chan_start; ch < chan_end; ++ch) {
+      size_t target_idx =
           t_start_idx + ti + dm_delays_table[ch - chan_start];
-      if (target_idx >= 0 && target_idx < header.ndata) {
+      if (target_idx < header.ndata) {
         result.data[ti * result.nchans + ch - chan_start] =
             spec[target_idx * header.nchans + ch];
       } else {

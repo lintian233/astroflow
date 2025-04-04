@@ -21,29 +21,26 @@
 namespace gpucal {
 template <typename T>
 __global__ void
-dedispersion_kernel(uint64_t *output, T *input, int *delay_table, int dm_steps,
-                    int time_downsample, int ndata, int nchans, int chan_start,
-                    int chan_end, int start, int down_ndata) {
-  int dmidx = blockIdx.y;
-  int down_idx = blockIdx.x * blockDim.x + threadIdx.x;
+dedispersion_kernel(uint64_t *output, T *input, int *delay_table, size_t dm_steps,
+                    int time_downsample, size_t ndata, size_t nchans, size_t chan_start,
+                    size_t chan_end, size_t start, size_t down_ndata) {
+  size_t dmidx = blockIdx.y;
+  size_t down_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (dmidx >= dm_steps)
     return;
   if (down_idx >= down_ndata)
     return;
 
-  int base_idx = down_idx * time_downsample + start;
+  size_t base_idx = down_idx * time_downsample + start;
   uint64_t sum = 0;
-  for (int chan = chan_start; chan < chan_end; ++chan) {
-    int target_idx =
+  for (size_t chan = chan_start; chan < chan_end; ++chan) {
+    size_t target_idx =
         base_idx +
         delay_table[dmidx * (chan_end - chan_start + 1) + chan - chan_start];
-    /* if (down_idx == 4000 && dmidx == 200) {
-      printf(
-          "chan %d, target_idx %d, delay %d\n", chan, target_idx,
-          delay_table[dmidx * (chan_end - chan_start + 1) + chan - chan_start]);
-    } */
-    if (target_idx > 0 && static_cast<size_t>(target_idx) < ndata) {
+    if (target_idx > 0 && target_idx < ndata) {
       sum += input[chan + target_idx * nchans];
+    } else {
+      sum += 0;
     }
   }
   /* if (down_idx == 4000) {
@@ -54,15 +51,15 @@ dedispersion_kernel(uint64_t *output, T *input, int *delay_table, int dm_steps,
 
 __global__ void
 pre_calculate_dedispersion_kernel(int *delay_table, float dm_low, float dm_high,
-                                  float dm_step, int chan_start, int chan_end,
+                                  float dm_step, size_t chan_start, size_t chan_end,
                                   double *freq_table, float ref_freq_value,
                                   double tsamp) {
 
-  int dmidx = blockDim.x * blockIdx.x + threadIdx.x;
+  size_t dmidx = blockDim.x * blockIdx.x + threadIdx.x;
   float dm = dm_low + (blockDim.x * blockIdx.x + threadIdx.x) * (dm_step);
   if (dm > dm_high)
     return;
-  int chan = blockDim.y * blockIdx.y + threadIdx.y + chan_start;
+  size_t chan = blockDim.y * blockIdx.y + threadIdx.y + chan_start;
   if (chan > chan_end)
     return;
 
@@ -92,20 +89,20 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
              freq_start, freq_end, fil_freq_min, fil_freq_max);
     throw std::invalid_argument(error_msg);
   }
-  int chan_start =
-      static_cast<int>((freq_start - fil_freq_min) /
+  size_t chan_start =
+      static_cast<size_t>((freq_start - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
-  int chan_end =
-      static_cast<int>((freq_end - fil_freq_min) /
+  size_t chan_end =
+      static_cast<size_t>((freq_end - fil_freq_min) /
                        (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
 
-  chan_start = std::max(0, chan_start);
-  chan_end = std::min(fil.nchans - 1, chan_end);
+  chan_start = std::max(static_cast<size_t>(0), chan_start);
+  chan_end = std::min(static_cast<size_t>(fil.nchans - 1), chan_end);
 
-  if (chan_start < 0 || chan_end >= fil.nchans) {
+  if (chan_start >= fil.nchans || chan_end >= fil.nchans) {
     char error_msg[256];
     snprintf(error_msg, sizeof(error_msg),
-             "Invalid channel range [%d-%d] for %d channels", chan_start,
+             "Invalid channel range [%zu-%zu] for %d channels", chan_start,
              chan_end, fil.nchans);
     throw std::invalid_argument(error_msg);
   }
@@ -131,7 +128,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   }
 
   const size_t nchans = fil.nchans;
-  const size_t dm_steps = static_cast<int>((dm_high - dm_low) / dm_step) + 1;
+  const size_t dm_steps = static_cast<size_t>((dm_high - dm_low) / dm_step) + 1;
 
   const float ref_freq_value = ref_freq ? fil.frequency_table[chan_end]
                                         : fil.frequency_table[chan_start];
@@ -152,7 +149,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   pre_calculate_dedispersion_kernel<<<grid_size, block_size>>>(
       d_delay_table, dm_low, dm_high, dm_step, chan_start, chan_end,
       d_freq_table, ref_freq_value, fil.tsamp);
-
+  
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
   // check the delay table
@@ -162,12 +159,12 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
                         cudaMemcpyDeviceToHost));
   // PRINT_ARR(delay_table, dm_steps * (chan_end - chan_start + 1));
 
-  const int samples_per_tsample =
-      static_cast<int>(std::round(t_sample / fil.tsamp));
+  const size_t samples_per_tsample =
+      static_cast<size_t>(std::round(t_sample / fil.tsamp));
   const size_t total_slices =
       (fil.ndata + samples_per_tsample - 1) / samples_per_tsample;
 
-  const int down_ndata_t =
+  const size_t down_ndata_t =
       (samples_per_tsample + time_downsample - 1) / time_downsample;
 
   T *d_input;
@@ -184,7 +181,8 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   dedisperseddata result;
 
   std::vector<std::shared_ptr<uint64_t[]>> dm_times;
-
+  float total_time = fil.ndata * fil.tsamp;
+  printf("Total time: %.3f s\n", total_time);
   for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
     const size_t start = slice_idx * samples_per_tsample;
     const size_t end =
@@ -192,7 +190,15 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
     const size_t slice_duration = end - start;
     const size_t down_ndata =
         (slice_duration + time_downsample - 1) / time_downsample;
-    // PRINT_VAR(start);
+    // printf("ndata: %zu\n", fil.ndata);
+    // printf("totolidx: %zu\n", fil.ndata * fil.nchans);
+    // printf("current times: %.3f s\n", start * fil.tsamp);
+    // printf("current slice_idx: %zu\n", slice_idx);
+    // printf("end_time: %.3f s\n", end * fil.tsamp);
+    // printf("current_idata: %zu\n", start * fil.nchans);
+    // printf("current_slice_duration: %zu\n", slice_duration);
+    // printf("end_idata: %zu\n", end * fil.nchans);
+
     if (slice_idx == 0) {
       result.downtsample_ndata = down_ndata;
       result.shape = {dm_steps, down_ndata};
@@ -205,7 +211,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
     int THREADS_PER_BLOCK = 256;
     dim3 threads(THREADS_PER_BLOCK);
-    dim3 grids(down_ndata + threads.x - 1 / threads.x, dm_steps);
+    dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
 
     dedispersion_kernel<T><<<grids, threads>>>(
         d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
@@ -283,18 +289,18 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
     throw std::invalid_argument(error_msg);
   }
 
-  int chan_start = static_cast<int>((freq_start - freq_min) /
+  size_t chan_start = static_cast<size_t>((freq_start - freq_min) /
                                     (freq_max - freq_min) * (nchans - 1));
-  int chan_end = static_cast<int>((freq_end - freq_min) /
+  size_t chan_end = static_cast<size_t>((freq_end - freq_min) /
                                   (freq_max - freq_min) * (nchans - 1));
 
-  chan_start = std::max(0, chan_start);
-  chan_end = std::min(static_cast<int>(nchans) - 1, chan_end);
+  chan_start = std::max(static_cast<size_t>(0), chan_start);
+  chan_end = std::min(static_cast<size_t>(nchans) - 1, chan_end);
 
-  if (chan_start < 0 || chan_end >= nchans) {
+  if (chan_start >= nchans || chan_end >= nchans) {
     char error_msg[256];
     snprintf(error_msg, sizeof(error_msg),
-             "Invalid channel range [%d-%d] for %zu channels", chan_start,
+             "Invalid channel range [%zu-%zu] for %zu channels", chan_start,
              chan_end, nchans);
     throw std::invalid_argument(error_msg);
   }
@@ -324,7 +330,7 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
     throw std::invalid_argument(error_msg);
   }
 
-  const size_t dm_steps = static_cast<int>((dm_high - dm_low) / dm_step) + 1;
+  const size_t dm_steps = static_cast<size_t>((dm_high - dm_low) / dm_step) + 1;
   const float ref_freq_value =
       ref_freq ? frequency_table[chan_end] : frequency_table[chan_start];
 
@@ -351,12 +357,12 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaDeviceSynchronize());
 
   // Process data in slices
-  const int samples_per_tsample =
-      static_cast<int>(std::round(t_sample / header.tsamp));
+  const size_t samples_per_tsample =
+      static_cast<size_t>(std::round(t_sample / header.tsamp));
   const size_t total_slices =
       (header.ndata + samples_per_tsample - 1) / samples_per_tsample;
 
-  const int down_ndata_t =
+  const size_t down_ndata_t =
       (samples_per_tsample + time_downsample - 1) / time_downsample;
 
   T *d_input;
@@ -399,7 +405,7 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
     dedispersion_kernel<T><<<grids, threads>>>(
         d_output, d_input, d_delay_table, dm_steps, time_downsample,
         header.ndata, nchans, chan_start, chan_end, start, down_ndata);
-
+    PRINT_VAR(slice_idx);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
 

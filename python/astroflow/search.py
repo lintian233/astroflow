@@ -6,7 +6,7 @@ from .utils import Config
 from .dedispered import dedispered_fil
 from .frbdetector import CenterNetFrbDetector
 from .plotter import PlotterManager
-from .io.filterbank import Filterbank,FilterbankPy
+from .io.filterbank import Filterbank, FilterbankPy
 from .io.psrfits import PsrFits
 from .dedispered import dedisperse_spec
 
@@ -21,7 +21,7 @@ def single_pulsar_search(
 
     origin_data = None
     if file.endswith(".fil"):
-        origin_data = FilterbankPy(file)
+        origin_data = Filterbank(file)
     elif file.endswith(".fits"):
         origin_data = PsrFits(file)
     else:
