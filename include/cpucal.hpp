@@ -92,10 +92,10 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
   size_t chan_start =
       static_cast<size_t>((freq_start - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
   size_t chan_end =
       static_cast<size_t>((freq_end - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(fil.nchans - 1), chan_end);
@@ -220,10 +220,10 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   }
   size_t chan_start =
       static_cast<size_t>((freq_start - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
   size_t chan_end =
       static_cast<size_t>((freq_end - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(fil->nchans - 1), chan_end);
@@ -260,8 +260,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   for (size_t ti = 0; ti < t_len; ++ti) {
 #pragma omp simd
     for (size_t ch = chan_start; ch < chan_end; ++ch) {
-      size_t target_idx =
-          t_start_idx + ti + dm_delays_table[ch - chan_start];
+      size_t target_idx = t_start_idx + ti + dm_delays_table[ch - chan_start];
       if (target_idx < fil->ndata) {
         result.data[ti * result.nchans + ch - chan_start] =
             origin_data[target_idx * fil->nchans + ch];
@@ -315,10 +314,10 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   }
   size_t chan_start =
       static_cast<size_t>((freq_start - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (header.nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (header.nchans - 1));
   size_t chan_end =
       static_cast<size_t>((freq_end - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (header.nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (header.nchans - 1));
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
@@ -354,8 +353,7 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   for (size_t ti = 0; ti < t_len; ++ti) {
 #pragma omp simd
     for (size_t ch = chan_start; ch < chan_end; ++ch) {
-      size_t target_idx =
-          t_start_idx + ti + dm_delays_table[ch - chan_start];
+      size_t target_idx = t_start_idx + ti + dm_delays_table[ch - chan_start];
       if (target_idx < header.ndata) {
         result.data[ti * result.nchans + ch - chan_start] =
             spec[target_idx * header.nchans + ch];

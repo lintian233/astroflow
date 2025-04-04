@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <variant>
+#include <omp.h>
 using namespace std;
 
 #define _CHAR_SWAP_SIZE 256
@@ -783,10 +784,12 @@ void Filterbank::info() const {
 }
 
 void Filterbank::reverse_channanl_data() {
-  if (foff >= 0)
-    return;
-  if (data == nullptr)
-    return;
+  if (foff >= 0) return;
+  if (data == nullptr) return;
+
+  if (nifs != 1) {
+    throw std::runtime_error("Only supports nifs == 1 in reverse_channanl_data");
+  }
 
   // Reverse frequency table
   std::reverse(frequency_table, frequency_table + nchans);
@@ -797,43 +800,37 @@ void Filterbank::reverse_channanl_data() {
     foff = std::abs(foff);
   }
 
-  // Reverse channels for each time sample and IF
-  const long total_channels_per_sample = nifs * nchans;
-
+  omp_set_num_threads(32);
   switch (nbits) {
   case 8: {
-    uint8_t *ptr = static_cast<uint8_t *>(data);
+    uint8_t* ptr = static_cast<uint8_t*>(data);
+    #pragma omp parallel for
     for (long i = 0; i < ndata; ++i) {
-      for (int j = 0; j < nifs; ++j) {
-        auto *start = ptr + i * total_channels_per_sample + j * nchans;
-        std::reverse(start, start + nchans);
-      }
+      auto* start = ptr + i * nchans;
+      std::reverse(start, start + nchans);
     }
     break;
   }
   case 16: {
-    uint16_t *ptr = static_cast<uint16_t *>(data);
+    uint16_t* ptr = static_cast<uint16_t*>(data);
+    #pragma omp parallel for
     for (long i = 0; i < ndata; ++i) {
-      for (int j = 0; j < nifs; ++j) {
-        auto *start = ptr + i * total_channels_per_sample + j * nchans;
-        std::reverse(start, start + nchans);
-      }
+      auto* start = ptr + i * nchans;
+      std::reverse(start, start + nchans);
     }
     break;
   }
   case 32: {
-    uint32_t *ptr = static_cast<uint32_t *>(data);
+    uint32_t* ptr = static_cast<uint32_t*>(data);
+    #pragma omp parallel for
     for (long i = 0; i < ndata; ++i) {
-      for (int j = 0; j < nifs; ++j) {
-        auto *start = ptr + i * total_channels_per_sample + j * nchans;
-        std::reverse(start, start + nchans);
-      }
+      auto* start = ptr + i * nchans;
+      std::reverse(start, start + nchans);
     }
     break;
   }
   default:
-    throw std::runtime_error(
-        "Unsupported nbits value in reverse_channanl_data");
+    throw std::runtime_error("Unsupported nbits value in reverse_channanl_data");
   }
 }
 

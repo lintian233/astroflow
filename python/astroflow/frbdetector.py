@@ -11,6 +11,16 @@ from .model.centernet import centernet
 from .model.centernetutils import get_res
 from .dmtime import DmTime
 
+import numba as nb
+
+@nb.njit(nb.float32[:,:](nb.uint64[:,:]), parallel=True, cache=True)
+def nb_convert(src):
+    dst = np.empty(src.shape, dtype=np.float32)
+    rows, cols = src.shape
+    for i in nb.prange(rows):
+        for j in range(cols):
+            dst[i,j] = src[i,j]  # 隐式类型转换
+    return dst
 
 class FrbDetector(ABC):
 
@@ -33,7 +43,8 @@ class CenterNetFrbDetector(FrbDetector):
         return model
 
     def _preprocess_dmt(self, dmt):
-        dmt = dmt.astype(np.float32)
+        # dmt = np.ascontiguousarray(dmt, dtype=np.float32)
+        dmt = nb_convert(dmt) #fast numpy array conversion
         dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
         mean_val, std_val = cv2.meanStdDev(dmt)
         if std_val:
