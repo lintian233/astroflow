@@ -34,18 +34,14 @@ class CenterNetFrbDetector(FrbDetector):
 
     def _preprocess_dmt(self, dmt):
         dmt = dmt.astype(np.float32)
+        dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
         mean_val, std_val = cv2.meanStdDev(dmt)
-        mean_val = float(mean_val[0,0])
-        std_val = float(std_val[0,0])
         if std_val:
             # MinMax normalize
             dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
-        dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
-
         lo, hi = np.percentile(dmt, (0.1, 99.5))
         np.clip(dmt, lo, hi, out=dmt)
-
         dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
         if not hasattr(self, "_mako_cmap"):

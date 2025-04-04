@@ -22,6 +22,7 @@ class TestFilterbank(unittest.TestCase):
         your_reader = your.Your(test_file)
 
         header = your_reader.your_header
+        
         tsamp = header.tsamp
         total_samples = int((end_time - start_time) / tsamp)
 

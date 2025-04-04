@@ -5,6 +5,8 @@ import os
 from .data import Header, SpectrumBase
 from .data import SpectrumType
 
+import your
+
 
 class Filterbank(SpectrumBase):
     def __init__(self, filename: str = None):
@@ -76,3 +78,52 @@ class Filterbank(SpectrumBase):
                 nbits=self._nbits,
             )
         return self._header
+
+
+class FilterbankPy(SpectrumBase):
+
+    def __init__(self, filename: str = None):
+        super().__init__()
+
+
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"File not found: {filename}")
+
+        if os.path.splitext(filename)[1] not in [".fil", ".FIL"]:
+            raise ValueError(f"Invalid file extension: {filename}")
+
+        self._type = SpectrumType.CUSTOM
+        self._filename = filename
+        self._header = None
+    
+    def _load_data(self):
+        your_reader = your.Your(self._filename)
+        header = your_reader.your_header
+        self._header = Header(
+            mjd=header.tstart,
+            filename=self._filename,
+            nifs=header.npol,
+            nchans=header.nchans,
+            ndata=header.nspectra,
+            tsamp=header.tsamp,
+            fch1=header.fch1,
+            foff=header.foff,
+            nbits=header.nbits,
+        )
+        self._data = your_reader.get_data(0, self._header.ndata)
+        
+
+    def get_spectrum(self):
+        if self._data is None:
+            self._load_data()
+        return self._data
+    
+    def header(self) -> Header:
+        """
+        Returns the header information of the filterbank file.
+        """
+        if self._header is None:
+            self._load_data()
+
+        return self._header
+
