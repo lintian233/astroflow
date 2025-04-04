@@ -81,7 +81,7 @@ void bind_dedispersed_data(py::module &m, const char *class_name) {
       .def_readonly("filname", &Data::filname);
 }
 
-template void bind_dedispersed_data<uint32_t>(py::module &m,
+template void bind_dedispersed_data<uint64_t>(py::module &m,
                                               const char *class_name);
 
 template <typename T>

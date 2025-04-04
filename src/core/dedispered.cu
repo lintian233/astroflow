@@ -21,7 +21,7 @@
 namespace gpucal {
 template <typename T>
 __global__ void
-dedispersion_kernel(uint32_t *output, T *input, int *delay_table, int dm_steps,
+dedispersion_kernel(uint64_t *output, T *input, int *delay_table, int dm_steps,
                     int time_downsample, int ndata, int nchans, int chan_start,
                     int chan_end, int start, int down_ndata) {
   int dmidx = blockIdx.y;
@@ -32,7 +32,7 @@ dedispersion_kernel(uint32_t *output, T *input, int *delay_table, int dm_steps,
     return;
 
   int base_idx = down_idx * time_downsample + start;
-  uint32_t sum = 0;
+  uint64_t sum = 0;
   for (int chan = chan_start; chan < chan_end; ++chan) {
     int target_idx =
         base_idx +
@@ -171,21 +171,19 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
       (samples_per_tsample + time_downsample - 1) / time_downsample;
 
   T *d_input;
-  uint32_t *d_output;
+  uint64_t *d_output;
   T *data = static_cast<T *>(fil.data);
-  // print class T
-  // PRINT_VAR(sizeof(T));
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint32_t)));
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint64_t)));
   CHECK_CUDA(
-      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
+      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
 
   CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
   dedisperseddata result;
 
-  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
+  std::vector<std::shared_ptr<uint64_t[]>> dm_times;
 
   for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
     const size_t start = slice_idx * samples_per_tsample;
@@ -203,7 +201,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
       // PRINT_VAR(result.shape[1]);
     }
     CHECK_CUDA(
-        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
+        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
 
     int THREADS_PER_BLOCK = 256;
     dim3 threads(THREADS_PER_BLOCK);
@@ -216,12 +214,12 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    auto dm_array = std::shared_ptr<uint32_t[]>(
-        new (std::align_val_t{4096}) uint32_t[dm_steps * down_ndata_t](),
-        [](uint32_t *p) { operator delete[](p, std::align_val_t{4096}); });
+    auto dm_array = std::shared_ptr<uint64_t[]>(
+        new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata_t](),
+        [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
 
     CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                          dm_steps * down_ndata * sizeof(uint32_t),
+                          dm_steps * down_ndata * sizeof(uint64_t),
                           cudaMemcpyDeviceToHost));
 
     dm_times.emplace_back(std::move(dm_array));
@@ -362,21 +360,21 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
       (samples_per_tsample + time_downsample - 1) / time_downsample;
 
   T *d_input;
-  uint32_t *d_output;
+  uint64_t *d_output;
   PRINT_VAR(header.ndata * nchans * sizeof(T));
   PRINT_VAR(header.ndata);
   PRINT_VAR(nchans);
   PRINT_VAR(sizeof(T));
   CHECK_CUDA(cudaMalloc(&d_input, header.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint32_t)));
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint64_t)));
   CHECK_CUDA(
-      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
+      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
 
   CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
   dedisperseddata result;
-  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
+  std::vector<std::shared_ptr<uint64_t[]>> dm_times;
 
   for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
     const size_t start = slice_idx * samples_per_tsample;
@@ -392,7 +390,7 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
     }
 
     CHECK_CUDA(
-        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint32_t)));
+        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
 
     int THREADS_PER_BLOCK = 256;
     dim3 threads(THREADS_PER_BLOCK);
@@ -405,12 +403,12 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    auto dm_array = std::shared_ptr<uint32_t[]>(
-        new (std::align_val_t{4096}) uint32_t[dm_steps * down_ndata_t](),
-        [](uint32_t *p) { operator delete[](p, std::align_val_t{4096}); });
+    auto dm_array = std::shared_ptr<uint64_t[]>(
+        new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata_t](),
+        [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
 
     CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                          dm_steps * down_ndata * sizeof(uint32_t),
+                          dm_steps * down_ndata * sizeof(uint64_t),
                           cudaMemcpyDeviceToHost));
 
     dm_times.emplace_back(std::move(dm_array));

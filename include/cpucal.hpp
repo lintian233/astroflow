@@ -138,7 +138,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
       static_cast<int>(std::round(t_sample / fil.tsamp));
   const size_t total_slices =
       (fil.ndata + samples_per_tsample - 1) / samples_per_tsample;
-  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
+  std::vector<std::shared_ptr<uint64_t[]>> dm_times;
 
   // 主循环
   for (size_t slice_idx = 0; slice_idx < total_slices; ++slice_idx) {
@@ -155,9 +155,9 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
                       static_cast<size_t>(down_ndata)};
       PRINT_VAR(down_ndata);
     }
-    auto dm_array = std::shared_ptr<uint32_t[]>(
-        new (std::align_val_t{4096}) uint32_t[dm_steps * down_ndata](),
-        [](uint32_t *p) { operator delete[](p, std::align_val_t{4096}); });
+    auto dm_array = std::shared_ptr<uint64_t[]>(
+        new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata](),
+        [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
 
 // 并行处理DM步
 #pragma omp parallel for schedule(dynamic)
@@ -168,7 +168,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
       // 处理时间维度
       for (size_t ti = 0; ti < down_ndata; ++ti) {
         const size_t base_idx = start + ti * time_downsample;
-        uint32_t sum = 0;
+        uint64_t sum = 0;
 
 // SIMD优化循环
 #pragma omp simd reduction(+ : sum)

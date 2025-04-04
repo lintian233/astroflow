@@ -46,7 +46,7 @@ struct Header {
 };
 
 struct dedisperseddata {
-  std::vector<std::shared_ptr<uint32_t[]>> dm_times;
+  std::vector<std::shared_ptr<uint64_t[]>> dm_times;
 
   //[DM,downtsample]
   std::vector<size_t> shape;
