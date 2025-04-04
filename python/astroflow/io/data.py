@@ -99,11 +99,11 @@ class SpectrumBase(ABC):
 
         if header.nbits not in [8, 16, 32]:
             raise ValueError(f"Unsupported number of bits: {header.nbits}")
-        if header.nbits == 8 and spectrum.dtype != np.uint8:
+        if header.nbits == 8 and (spectrum.dtype != np.uint8 or spectrum.dtype != np.int8):
             raise ValueError(f"Expected np.uint8 data type, but got {spectrum.dtype}")
-        elif header.nbits == 16 and spectrum.dtype != np.uint16:
+        elif header.nbits == 16 and (spectrum.dtype != np.uint16 or spectrum.dtype != np.int16):
             raise ValueError(f"Expected np.uint16 data type, but got {spectrum.dtype}")
-        elif header.nbits == 32 and spectrum.dtype != np.uint32:
+        elif header.nbits == 32 and (spectrum.dtype != np.uint32 or spectrum.dtype != np.float32):
             raise ValueError(f"Expected np.uint32 data type, but got {spectrum.dtype}")
 
         self._core_data = spectrum.flatten()
