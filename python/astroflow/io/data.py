@@ -5,6 +5,8 @@ from enum import Enum
 
 import _astroflow_core as _astro_core  # type: ignore
 
+uint8, uint16, uint32 = np.uint8, np.uint16, np.uint32
+
 
 class Header:
     def __init__(self, mjd, filename, nifs, nchans, ndata, tsamp, fch1, foff, nbits):
@@ -93,18 +95,9 @@ class SpectrumBase(ABC):
         spectrum = self.get_spectrum()
 
         if header.foff < 0:
-            header.fch1 = header.fch1 - header.foff * (header.nchans - 1)
             header.foff = -header.foff
+            header.fch1 = header.fch1 - (header.nchans - 1) * header.foff
             spectrum = spectrum[:, ::-1]
-
-        if header.nbits not in [8, 16, 32]:
-            raise ValueError(f"Unsupported number of bits: {header.nbits}")
-        if header.nbits == 8 and (spectrum.dtype != np.uint8 or spectrum.dtype != np.int8):
-            raise ValueError(f"Expected np.uint8 data type, but got {spectrum.dtype}")
-        elif header.nbits == 16 and (spectrum.dtype != np.uint16 or spectrum.dtype != np.int16):
-            raise ValueError(f"Expected np.uint16 data type, but got {spectrum.dtype}")
-        elif header.nbits == 32 and (spectrum.dtype != np.uint32 or spectrum.dtype != np.float32):
-            raise ValueError(f"Expected np.uint32 data type, but got {spectrum.dtype}")
 
         self._core_data = spectrum.flatten()
         self._core_header = header.core_header

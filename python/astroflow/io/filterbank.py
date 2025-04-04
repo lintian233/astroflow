@@ -6,6 +6,7 @@ from .data import Header, SpectrumBase
 from .data import SpectrumType
 
 import your
+import numpy as np
 
 
 class Filterbank(SpectrumBase):
@@ -111,6 +112,12 @@ class FilterbankPy(SpectrumBase):
             nbits=header.nbits,
         )
         self._data = your_reader.get_data(0, self._header.ndata)
+        if header.nbits == 8 and self._data.dtype != np.uint8:
+            self._data = self._data.astype(np.uint8)
+        elif header.nbits == 16 and self._data.dtype != np.uint16:
+            self._data = self._data.astype(np.uint16)
+        elif header.nbits == 32 and self._data.dtype != np.uint32:
+            self._data = self._data.astype(np.uint32)
         
 
     def get_spectrum(self):
