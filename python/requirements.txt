@@ -1,7 +1,12 @@
+astropy==7.0.1
 matplotlib==3.10.1
+numba==0.61.0
 numpy==2.2.4
 opencv_python==4.11.0.86
+pandas==2.2.3
 seaborn==0.13.2
 torch==2.6.0
 torchvision==0.21.0
+tqdm==4.67.1
+typing_extensions==4.13.1
 your==0.6.7
