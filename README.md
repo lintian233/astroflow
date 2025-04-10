@@ -6,7 +6,7 @@
 [![Python Version](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
 [![Conda Supported](https://img.shields.io/conda/v/conda-forge/python?logo=anaconda)](https://conda.io/)
 
-A high-performance astronomy data processing framework combining C++ computational efficiency with Python usability, featuring GPU acceleration and automated build configuration.
+A high-performance radio astronomy data processing framework combining C++ computational efficiency with Python usability, featuring GPU acceleration and automated build configuration.
 
 ## ✨ Key Features
 - 🚀 CUDA-accelerated numerical core
@@ -20,13 +20,14 @@ A high-performance astronomy data processing framework combining C++ computation
 # Clone repository and create feature branch
 git clone https://github.com/lintian233/astroflow.git
 cd astroflow
-git checkout -b your-feature origin/dev
 
 # Run automated configuration
 source configure.sh
+pip install -r python/requirements.txt
 
-# Test if installed
-python python/adder.py
+# Test if sucessful installed
+cd build && ctest 
+cd python && python -m unittest
 ```
 ⚠️ **Note** The configuration script will:
 1. Create a Conda virtual environment
@@ -44,12 +45,11 @@ conda create -n astroflow \
     --override-channels \
     --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
     --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-    python=3.12 conan numpy matplotlib gcc gxx cuda-toolkit
+    python=3.12 conan gcc gxx cuda-toolkit
 
 conda activate astroflow
+pip install -r python/requirements.txt
 
-# Verify core dependencies
-python -c "import numpy, matplotlib; print('Dependency check passed!')"
 ```
 ### Build C++ Extensions
 ```bash
@@ -68,13 +68,12 @@ cd ..
 ## 🧪 Verification Tests
 ```bash
 # Validate CUDA extensions
-python python/adder.py
+cd build && ctest
 ```
 
 ## 📦 Core Dependencies
 - **Compute**: CUDA 11.0+, GCC 9.0+
 - **Python**: 3.12+ with NumPy, Matplotlib
-- **Math**: Eigen 3.4, BLAS/LAPACK
 - **Build**: CMake 3.20+, Conan 2.0+
 
 ## 🤝 Contributing
@@ -83,9 +82,6 @@ We welcome contributions through:
 2. Pull Requests ([Contribution Guide](CONTRIBUTING.md))
 3. Documentation improvements
 4. Test case additions
-
-## 📜 License
-Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
