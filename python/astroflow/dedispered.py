@@ -97,7 +97,7 @@ def dedisperse_spec_with_dm(
         spec, header, tstart, tend, dm, freq_start, freq_end
     )
 
-    return Spectrum(data)
+    return Spectrum.from_core_spectrum(data)
 
 
 def dedispered_fil_with_dm(
@@ -218,7 +218,7 @@ def dedispered_fil_with_dm(
     else:
         raise ValueError(f"Unsupported number of bits: {nbits}")
 
-    return Spectrum(data)
+    return Spectrum.from_core_spectrum(data)
 
 
 # @timeit

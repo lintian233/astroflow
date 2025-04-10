@@ -7,6 +7,8 @@ import multiprocessing
 import os
 import time
 
+from .spectrum import Spectrum
+
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
 from .dedispered import dedisperse_spec_with_dm
@@ -26,6 +28,9 @@ class PlotterManager:
 
     def plot_dmtime(self, dmt: DmTime, save_path):
         self.pool.apply_async(plot_dmtime, args=(dmt, save_path))
+
+    def plot_spec(self, spec: np.ndarray, title, info, save_path):
+        self.pool.apply_async(plot_spec, args=(spec, title, info, save_path))
 
     def close(self):
         self.pool.close()
@@ -49,6 +54,64 @@ def preprocess_img(img):
     return img
 
 
+def plot_spec(spec, title, candinfo, save_path, dpi=100):
+    tstart = candinfo[0]
+    tend = candinfo[1]
+    freq_start = candinfo[2]
+    freq_end = candinfo[3]
+    tstart = tstart if tstart > 0 else 0
+    tstart = np.round(tstart, 3)
+    tend = np.round(tend, 3)
+
+    data = spec
+    fig, axs = plt.subplots(
+        2,
+        1,
+        figsize=(10, 10),
+        dpi=dpi,
+        gridspec_kw={"height_ratios": [1, 3]},
+        sharex=True,
+    )
+    plt.rcParams["image.origin"] = "lower"
+
+    vim, vmax = np.percentile(data, [5, 95])
+    time_axis = np.linspace(tstart, tend, data.shape[0])
+    freq_axis = np.linspace(freq_start, freq_end, data.shape[1])
+    time_series = data.sum(axis=1)
+    axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
+    axs[0].set_ylabel("Integrated Power")
+    axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    axs[0].set_yscale("log")
+    axs[0].grid(True, alpha=0.3)
+    # add title
+    axs[0].set_title(f"{title}")
+
+    extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
+    axs[1].imshow(
+        data.T,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=extent,
+        vmin=vim,
+        vmax=vmax,
+    )
+    axs[1].set_ylabel(f"Frequency (MHz)")
+    axs[1].set_xlabel(f"Time (s)")
+
+    axs[0].set_xlim(tstart, tend)
+    axs[1].set_xlim(tstart, tend)
+
+    plt.subplots_adjust(hspace=0.05, left=0.08, right=0.92)
+    plt.savefig(
+        f"{save_path}/{title}.png",
+        dpi=dpi,
+        bbox_inches="tight",
+        format="png",
+    )
+    plt.close()
+
+
 def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     print(f"Plotting {file_path} with {candinfo}")
     basename = os.path.basename(file_path).split(".")[0]
@@ -67,7 +130,7 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     toa = candinfo[1]
     freq_start = candinfo[2]
     freq_end = candinfo[3]
-    time_size = 0.1
+    time_size = 0.01
     tstart = toa - time_size
     tend = toa + time_size
     tstart = tstart if tstart > 0 else 0
@@ -185,6 +248,9 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     ax_time.plot(time_axis, time_sum, lw=1.5, color="darkred")
     ax_time.tick_params(axis="x", labelbottom=False)
     ax_time.grid(alpha=0.3)
+
+    # 添加顶部居中标题
+    fig.suptitle(f"{dmt.__str__()}", fontsize=16, y=0.96)
 
     cax = fig.add_axes([0.25, 0.92, 0.5, 0.02])
     fig.colorbar(im, cax=cax, orientation="horizontal")

@@ -15,9 +15,25 @@ def timeit(func):
     return wrapper
 
 
+class SingleDmConfig:
+    def __init__(self, dm, freq_start, freq_end, t_sample):
+        self.dm = dm
+        self.freq_start = freq_start
+        self.freq_end = freq_end
+        self.t_sample = t_sample
+
+
 class Config:
     def __init__(
-        self, dm_low, dm_high, freq_start, freq_end, dm_step, time_downsample, t_sample
+        self,
+        dm_low,
+        dm_high,
+        freq_start,
+        freq_end,
+        dm_step,
+        time_downsample,
+        t_sample,
+        confidence=0.5,
     ):
         self.dm_low = dm_low
         self.dm_high = dm_high
@@ -26,6 +42,7 @@ class Config:
         self.dm_step = dm_step
         self.time_downsample = time_downsample
         self.t_sample = t_sample
+        self.confidence = confidence
 
     def __str__(self):
         info = f"{self.dm_low}_{self.dm_high}_{self.freq_start}MHz_{self.freq_end}MHz_{self.dm_step}_{self.t_sample}s"

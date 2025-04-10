@@ -1,5 +1,3 @@
-from typing import override
-import torch
 import numpy as np
 import cv2
 import seaborn
@@ -7,51 +5,137 @@ import seaborn
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
+# override
+from typing_extensions import override
+
+import torch
+
+from .spectrum import Spectrum
+from .model.binnet import BinaryNet
 from .model.centernet import centernet
 from .model.centernetutils import get_res
 from .dmtime import DmTime
 
 import numba as nb
 
-@nb.njit(nb.float32[:,:](nb.uint64[:,:]), parallel=True, cache=True)
+
+@nb.njit(nb.float32[:, :](nb.uint64[:, :]), parallel=True, cache=True)
 def nb_convert(src):
     dst = np.empty(src.shape, dtype=np.float32)
     rows, cols = src.shape
     for i in nb.prange(rows):
         for j in range(cols):
-            dst[i,j] = src[i,j]  # 隐式类型转换
+            dst[i, j] = src[i, j]  # 隐式类型转换
     return dst
 
-class FrbDetector(ABC):
 
+class FrbDetector(ABC):
     @abstractmethod
     def detect(self, dmt: DmTime) -> List[Tuple[float, float, float, float]]:
         pass
 
 
+class BinaryChecker(ABC):
+    @abstractmethod
+    def check(self, spec: Spectrum, t_sample) -> List[int]:
+        pass
+
+
+class ResNetBinaryChecker(BinaryChecker):
+    def __init__(self, confidence=0.8):
+        self.confidence = confidence
+        self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+        self.model = self._load_model()
+
+    def _load_model(self):
+        base_model = "resnet50"
+        model = BinaryNet(base_model, num_classes=2).to(self.device)
+        model.load_state_dict(
+            torch.load(
+                f"class_{base_model}.pth",
+                map_location=self.device,
+            )
+        )
+        model.to(self.device)
+        model.eval()
+        return model
+
+    def _preprocess(self, spec: np.ndarray, exp_cut=5):
+        spec = np.ascontiguousarray(spec, dtype=np.float32)
+        spec = cv2.resize(spec, (256, 256), interpolation=cv2.INTER_LINEAR)
+        spec /= np.mean(spec, axis=0)
+        vmin, max = np.percentile(spec, (exp_cut, 100 - exp_cut))
+        spec = np.clip(spec, vmin, max)
+        spec = cv2.normalize(spec, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)  # type: ignore
+        # spec = (spec - np.min(spec)) / (np.max(spec) - np.min(spec))
+
+        return spec
+
+    @override
+    def check(self, spec: Spectrum, t_sample) -> List[int]:  # type: ignore
+        # Clip the spectrum to the specified time sample
+        spec_origin = spec.clip(t_sample)
+        num_samples = len(spec_origin)
+
+        # Preprocess all samples in one go
+        spec_processed = np.zeros((num_samples, 256, 256), dtype=np.float32)
+        for i in range(num_samples):
+            spec_processed[i] = self._preprocess(spec_origin[i])
+
+        # Batch processing
+        batch_size = 120
+        total_pred = []
+        for i in range(0, num_samples, batch_size):
+            # Prepare batch
+            batch = spec_processed[i : i + batch_size]
+            batch_tensor = (
+                torch.from_numpy(batch[:, np.newaxis, :, :]).float().to(self.device)
+            )
+
+            # Predict
+            with torch.no_grad():
+                pred = self.model(batch_tensor)
+                pred_probs = pred.softmax(dim=1)[:, 1]
+                pred_probs = pred_probs.cpu().numpy()
+
+                # Filter predictions above confidence threshold
+                frb_indices = np.where(pred_probs > self.confidence)[0]
+                if frb_indices.size > 0:
+                    total_pred.extend((i + frb_indices).tolist())
+
+        # Log and return results
+        if total_pred:
+            print(f"Found FRBs at indices: {total_pred}")
+            return total_pred
+        return []
+
+
 class CenterNetFrbDetector(FrbDetector):
     def __init__(self, confidence=0.35):
         self.confidence = confidence
-        self.model = self._load_model()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = self._load_model()
 
     def _load_model(self):
         base_model = "resnet50"
         model = centernet(model_name=base_model)
-        model.load_state_dict(torch.load("cent_{}.pth".format(base_model)))
+        model.load_state_dict(
+            torch.load("cent_{}.pth".format(base_model), map_location=self.device)
+        )
+        model.to(self.device)
         model.eval()
         return model
 
     def _preprocess_dmt(self, dmt):
-        # dmt = np.ascontiguousarray(dmt, dtype=np.float32)
-        dmt = nb_convert(dmt) #fast numpy array conversion
+        dmt = np.ascontiguousarray(dmt, dtype=np.float32)
+        # dmt = nb_convert(dmt)  # fast numpy array conversion
         dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
         mean_val, std_val = cv2.meanStdDev(dmt)
         if std_val:
             # MinMax normalize
             dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
-        lo, hi = np.percentile(dmt, (0.1, 99.5))
+        lo, hi = np.percentile(dmt, (0.1, 99))
         np.clip(dmt, lo, hi, out=dmt)
         dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
@@ -72,12 +156,12 @@ class CenterNetFrbDetector(FrbDetector):
         model = self.model
         device = self.device
         pdmt = self._preprocess_dmt(dmt.data)
-        img = torch.from_numpy(pdmt).permute(2, 0, 1).float().unsqueeze(0)
+        img = (
+            torch.from_numpy(pdmt).permute(2, 0, 1).float().unsqueeze(0).to(self.device)
+        )
         result = []
         with torch.no_grad():
             hm, wh, offset = model(img)
-            hm = hm.to(device)
-            wh = wh.to(device)
             offset = offset.to(device)
             top_conf, top_boxes = get_res(hm, wh, offset, confidence=self.confidence)
             if top_boxes is None:
@@ -86,7 +170,9 @@ class CenterNetFrbDetector(FrbDetector):
                 left, top, right, bottom = box.astype(int)
                 print(f"left: {left}, top: {top}, right: {right}, bottom: {bottom}")
                 t_len = dmt.tend - dmt.tstart
-                dm = ((top + bottom) / 2) * ((dmt.dm_high - dmt.dm_low) / 512) + dmt.dm_low
+                dm = ((top + bottom) / 2) * (
+                    (dmt.dm_high - dmt.dm_low) / 512
+                ) + dmt.dm_low
                 dm_flag = dm >= 15
                 toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                 toa = np.round(toa, 3)

@@ -26,8 +26,8 @@ template <typename T> void print_vector(const std::vector<T> &vec) {
 template <typename T> void print_array(const T *arr, size_t size) {
   std::cout << "[ ";
   for (size_t i = 0; i < size && i < 10; ++i) {
-    int random = rand() % size;
-    std::cout << arr[random] << " ";
+    int value = static_cast<int>(arr[i]);
+    std::cout << value << " ";
   }
   std::cout << "]" << std::endl;
 }
@@ -58,7 +58,7 @@ std::string format(const std::string &format_str, Args &&...args) {
   std::cout << MarcUtils::format(FORMAT_STR, __VA_ARGS__) << std::endl;
 
 // Debug macros
-// #define DEBUG
+#define DEBUG
 #ifdef DEBUG
 #define PRINT_ARR(ARR, SIZE) MarcUtils::print_array(ARR, SIZE)
 #define PRINT_VEC(VEC) MarcUtils::print_vector(VEC)

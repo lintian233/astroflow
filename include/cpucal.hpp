@@ -367,5 +367,6 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
 
   return result;
 }
+
 } // namespace cpucal
 #endif //_CPUCAL_H

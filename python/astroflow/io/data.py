@@ -94,11 +94,6 @@ class SpectrumBase(ABC):
         header = self.header()
         spectrum = self.get_spectrum()
 
-        if header.foff < 0:
-            header.foff = -header.foff
-            header.fch1 = header.fch1 - (header.nchans - 1) * header.foff
-            spectrum = spectrum[:, ::-1]
-
         self._core_data = spectrum.flatten()
         self._core_header = header.core_header
 

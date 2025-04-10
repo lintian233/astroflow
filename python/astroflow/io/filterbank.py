@@ -46,7 +46,7 @@ class Filterbank(SpectrumBase):
         self._tstart = self.core_instance.tstart
         self._tsamp = self.core_instance.tsamp
         self._ndata = self.core_instance.ndata
-        self._data = self.core_instance.data
+        self._data = self.core_instance.data[:, 0, :]
 
     @property
     def core_instance(self):
@@ -86,7 +86,6 @@ class FilterbankPy(SpectrumBase):
     def __init__(self, filename: str = None):
         super().__init__()
 
-
         if not os.path.exists(filename):
             raise FileNotFoundError(f"File not found: {filename}")
 
@@ -96,7 +95,7 @@ class FilterbankPy(SpectrumBase):
         self._type = SpectrumType.CUSTOM
         self._filename = filename
         self._header = None
-    
+
     def _load_data(self):
         your_reader = your.Your(self._filename)
         header = your_reader.your_header
@@ -118,13 +117,12 @@ class FilterbankPy(SpectrumBase):
             self._data = self._data.astype(np.uint16)
         elif header.nbits == 32 and self._data.dtype != np.uint32:
             self._data = self._data.astype(np.uint32)
-        
 
     def get_spectrum(self):
         if self._data is None:
             self._load_data()
         return self._data
-    
+
     def header(self) -> Header:
         """
         Returns the header information of the filterbank file.
@@ -133,4 +131,3 @@ class FilterbankPy(SpectrumBase):
             self._load_data()
 
         return self._header
-

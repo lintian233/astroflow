@@ -31,7 +31,15 @@ class PsrFits(SpectrumBase):
         fch1 = header0["OBSFREQ"] - header0["OBSBW"] / 2
         mjd = header0["STT_IMJD"] + header0["STT_SMJD"] / 86400.0
         data_ = data["DATA"][:, :, 0, :, 0]
+        foff = header1["CHAN_BW"]
+        nchans = header1["NCHAN"]
         self._data = data_.reshape(-1, data_.shape[2])
+
+        if foff < 0:
+            foff = -foff
+            fch1 = fch1 - (nchans - 1) * foff
+            self._data = np.flip(self._data, axis=1)
+
         self._header = Header(
             mjd=mjd,
             filename=self.filename,

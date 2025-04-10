@@ -34,7 +34,9 @@ def parse_args():
     arg_parser.add_argument(
         "--t_sample", type=float, default=0.5, help="Sampling time in ms"
     )
-
+    arg_parser.add_argument(
+        "--confidence", type=float, default=0.5, help="Confidence level for detection"
+    )
     return arg_parser.parse_args()
 
 
@@ -48,6 +50,7 @@ def main():
         dm_step=args.dm_step,
         time_downsample=args.time_downsample,
         t_sample=args.t_sample,
+        confidence=args.confidence,
     )
     single_pulsar_search_dir(args.fil_dir, args.output_dir, config)
 

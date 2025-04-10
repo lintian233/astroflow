@@ -13,8 +13,8 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot dedispersed spectrum")
     parser.add_argument("file_path", type=str, help="Path to the filterbank file")
-    parser.add_argument("tstart", type=float, help="Start time in seconds")
-    parser.add_argument("tend", type=float, help="End time in seconds")
+    parser.add_argument("toa", type=float, help="Start time in seconds")
+    parser.add_argument("tband", type=float, default=0.1, help="Time band in seconds")
     parser.add_argument("dm", type=float, help="Dispersion measure in pc cm^-3")
     parser.add_argument("output_path", type=str, help="Path to save the plot")
     parser.add_argument(
@@ -27,8 +27,14 @@ def parse_args():
 
 
 def plot_ded_spectrum(
-    file_path, tstart, tend, dm, output_path, freq_start=-1, freq_end=-1
+    file_path, toa, tband, dm, output_path, freq_start=-1, freq_end=-1
 ):
+    tstart = toa - tband / 2
+    tend = toa + tband / 2
+    tstart = max(0, tstart)
+    tend = min(tend, 1e10)  # Set a reasonable upper limit for tend
+    tstart = round(tstart, 5)
+    tend = round(tend, 5)
     os.makedirs(output_path, exist_ok=True)
     basename = os.path.basename(file_path)
     title = f"{basename}-{tstart}s-{tend}s-{dm}pc-cm3"
@@ -67,6 +73,7 @@ def plot_ded_spectrum(
     axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
     axs[0].set_yscale("log")
     axs[0].grid(True, alpha=0.3)
+    axs[0].set_title(f"{title}")
 
     # 设置imshow的显示范围和方向
     extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
@@ -86,13 +93,14 @@ def plot_ded_spectrum(
     axs[0].set_xlim(tstart, tend)
     axs[1].set_xlim(tstart, tend)
     plt.subplots_adjust(hspace=0.05, left=0.08, right=0.92)
+
+    source_nane = file_path.split("/")[-1].split(".")[0]
     plt.savefig(
         f"{output_path}/{title}.png",
         dpi=100,
         bbox_inches="tight",
         facecolor="white",
         format="png",
-        pil_kwargs={"compress_level": 0},
     )
     print(f"Saved {output_path}/{title}.png")
     plt.close()
@@ -103,8 +111,8 @@ if __name__ == "__main__":
     print(f"args: {args}")
     plot_ded_spectrum(
         args.file_path,
-        args.tstart,
-        args.tend,
+        args.toa,
+        args.tband,
         args.dm,
         args.output_path,
         args.freq_start,
