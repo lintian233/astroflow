@@ -1,18 +1,21 @@
 # type: ignore
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn
-import cv2
 import multiprocessing
 import os
 import time
 
-from .spectrum import Spectrum
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn
+from scipy.ndimage import gaussian_filter
 
+from .dedispered import dedisperse_spec_with_dm
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
-from .dedispered import dedisperse_spec_with_dm
 from .io.psrfits import PsrFits
+from .spectrum import Spectrum
+
+# Gaussian kernel
 
 
 class PlotterManager:
@@ -20,8 +23,8 @@ class PlotterManager:
         self.max_worker = max_worker
         self.pool = multiprocessing.Pool(self.max_worker)
 
-    def plot_candidate(self, dmt: DmTime, save_path):
-        self.pool.apply_async(plot_candidate, args=(dmt, save_path))
+    def plot_candidate(self, dmt: DmTime, pos, save_path):
+        self.pool.apply_async(plot_candidate, args=(dmt, pos, save_path))
 
     def plot_spectrogram(self, file_path, candinfo, save_path):
         self.pool.apply_async(plot_spectrogram, args=(file_path, candinfo, save_path))
@@ -73,7 +76,7 @@ def plot_spec(spec, title, candinfo, save_path, dpi=100):
         sharex=True,
     )
     plt.rcParams["image.origin"] = "lower"
-
+    data = (data - np.min(data)) / (np.max(data) - np.min(data))
     vim, vmax = np.percentile(data, [5, 95])
     time_axis = np.linspace(tstart, tend, data.shape[0])
     freq_axis = np.linspace(freq_start, freq_end, data.shape[1])
@@ -130,7 +133,8 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     toa = candinfo[1]
     freq_start = candinfo[2]
     freq_end = candinfo[3]
-    time_size = 0.01
+
+    time_size = 0.08
     tstart = toa - time_size
     tend = toa + time_size
     tstart = tstart if tstart > 0 else 0
@@ -194,21 +198,34 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     print(f"Saved {save_path}/{title}.png")
 
 
+def filter(img):
+    # Apply gaussian filter 10 times
+    filtered_img = img.copy()
+    # Define kernel parameters
+    kernel_size = 5
+    kernel = cv2.getGaussianKernel(kernel_size, 0)
+    kernel_2d = np.outer(kernel, kernel)
+
+    for _ in range(5):
+        filtered_img = cv2.filter2D(filtered_img, -1, kernel_2d)
+
+    return filtered_img
+
+
 def plot_dmtime(dmt: DmTime, save_path, dpi=50):
-    img = preprocess_img(dmt.data)
-    plt.imshow(img)
-    plt.title(dmt.__str__())
-    # 禁用PNG压缩并保持原始数据精度
-    plt.savefig(
-        f"{save_path}/{dmt.__str__()}.png",
-        dpi=dpi,
-        format="png",
-        hbox_inches="tight",
-    )
-    plt.close()
+    img = dmt.data
+    img = np.ascontiguousarray(img, dtype=np.float32)
+    img = filter(img)
+    img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
+    # cv2.guidedFilter
+
+    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
+    img = np.uint8(img)
+    img_colored = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)  # 应用颜色映射
+    cv2.imwrite(f"{save_path}/{dmt.__str__()}.png", img_colored)  # 保存彩色图像
 
 
-def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False):
+def plot_candidate(dmt: DmTime, pos, save_path, dpi=150, if_clip=False, if_show=False):
     # start_time = time.time()
     dm_low = dmt.dm_low
     dm_high = dmt.dm_high
@@ -216,10 +233,21 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     tend = dmt.tend
     dm_data = dmt.data
 
+    dm_data = (dm_data - np.min(dm_data)) / (np.max(dm_data) - np.min(dm_data))
+    dm_data *= 255
+    # 高斯卷积
+    # Gaussian kernel
+    # kernel = cv2.getGaussianKernel(ksize=5, sigma=0)
+    # kernel_2d = np.outer(kernel, kernel)
+    # dm_data = cv2.filter2D(dm_data, -1, kernel_2d)
+    dm_data = filter(dm_data)
+    dm_data_clip = dm_data
     if if_clip:
-        dm_data_clip = np.clip(dm_data, *np.percentile(dm_data, (0.02, 99.9)))
+        dm_data_clip = np.clip(dm_data, *np.percentile(dm_data, (5, 99)))
+
     time_axis = np.linspace(tstart, tend, dm_data.shape[1])
     dm_axis = np.linspace(dm_low, dm_high, dm_data.shape[0])
+    dm, toa = pos
 
     fig = plt.figure(figsize=(14, 14), dpi=dpi)
     gs = fig.add_gridspec(
@@ -234,6 +262,12 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
         cmap="viridis",
         extent=[time_axis[0], time_axis[-1], dm_axis[0], dm_axis[-1]],
     )
+
+    # Draw a red circle at the dm, toa position
+    circle_radius = (tend - tstart) * 0.03  # 3% of time span for circle radius
+    circle = plt.Circle((toa, dm), circle_radius, color="red", fill=False, linewidth=2)
+    # ax_main.add_patch(circle)
+
     ax_main.set_xlabel("Time (s)", fontsize=12, labelpad=10)
     ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
 
@@ -258,7 +292,7 @@ def plot_candidate(dmt: DmTime, save_path, dpi=150, if_clip=True, if_show=False)
     if if_show:
         plt.show()
     plt.savefig(
-        f"{save_path}/{dmt.__str__()}.png",
+        f"{save_path}/{dm}_{toa}_{dmt.__str__()}.png",
         dpi=dpi,
         format="png",
         bbox_inches="tight",

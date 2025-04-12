@@ -1,14 +1,13 @@
-from astroflow import single_pulsar_search_file
-from astroflow import Config
-import time
 import argparse
+import time
+
+from astroflow import Config, single_pulsar_search_file
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Single Pulsar Search")
     parser.add_argument(
-        "-f",
-        "--file",
+        "file",
         type=str,
         help="Input file path",
     )

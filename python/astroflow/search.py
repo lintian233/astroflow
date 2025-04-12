@@ -1,21 +1,20 @@
 import os
 import time
-import tqdm
+
 import numpy as np
 import pandas as pd
+import tqdm
 
-from .utils import Config, SingleDmConfig
-from .dedispered import dedispered_fil, dedisperse_spec_with_dm
-from .frbdetector import CenterNetFrbDetector
-from .plotter import PlotterManager
+from .dedispered import dedispered_fil, dedisperse_spec, dedisperse_spec_with_dm
+from .frbdetector import BinaryChecker, CenterNetFrbDetector, ResNetBinaryChecker
 from .io.filterbank import Filterbank, FilterbankPy
 from .io.psrfits import PsrFits
-from .dedispered import dedisperse_spec
-from .frbdetector import ResNetBinaryChecker, BinaryChecker
+from .plotter import PlotterManager
+from .utils import Config, SingleDmConfig
 
 
 def single_pulsar_search_with_dm_dir(
-    files_dir: str, output_dir: str, config: SingleDmConfig, confidence=0.8
+    files_dir: str, output_dir: str, config: SingleDmConfig, confidence=0.99
 ):
     if files_dir[-1] == "/":
         files_dir = files_dir[:-1]
@@ -65,7 +64,7 @@ def single_pulsar_search_with_dm_file(
     file: str,
     output_dir: str,
     config: SingleDmConfig,
-    confidence: float = 0.8,
+    confidence: float = 0.99,
 ):
     checker = ResNetBinaryChecker(confidence=confidence)
     plotter = PlotterManager()
@@ -165,9 +164,12 @@ def single_pulsar_search(
 
     for idx, data in enumerate(dmtimes):
         candidate = detector.detect(data)
-        for candinfo in candidate:
+        plotter.plot_dmtime(data, save_path)
+        for i, candinfo in enumerate(candidate):
             print(f"Found FRB in {file_basename} at {candinfo}")
-            plotter.plot_candidate(data, detect_dir)
+            dm = candinfo[0]
+            toa = candinfo[1]
+            plotter.plot_candidate(data, (dm, toa), detect_dir)
             plotter.plot_spectrogram(file, candinfo, detect_dir)
 
 
@@ -187,7 +189,7 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
     plotter = PlotterManager()
 
     frb_detector = CenterNetFrbDetector(confidence=config.confidence)
-    plotter = PlotterManager(6)
+    plotter = PlotterManager(8)
     for file in tqdm.tqdm(all_files):
         if not file.endswith(".fil") and not file.endswith(".fits"):
             continue
@@ -216,7 +218,7 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
 
 
 def single_pulsar_search_file(file: str, output_dir: str, config: Config) -> None:
-    plotter = PlotterManager()
+    plotter = PlotterManager(3)
     frb_detector = CenterNetFrbDetector(confidence=config.confidence)
     single_pulsar_search(file, output_dir, config, frb_detector, plotter)
     plotter.close()

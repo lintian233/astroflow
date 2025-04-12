@@ -1,22 +1,20 @@
-import numpy as np
-import cv2
-import seaborn
-
 from abc import ABC, abstractmethod
 from typing import List, Tuple
+
+import cv2
+import numba as nb
+import numpy as np
+import seaborn
+import torch
 
 # override
 from typing_extensions import override
 
-import torch
-
-from .spectrum import Spectrum
+from .dmtime import DmTime
 from .model.binnet import BinaryNet
 from .model.centernet import centernet
 from .model.centernetutils import get_res
-from .dmtime import DmTime
-
-import numba as nb
+from .spectrum import Spectrum
 
 
 @nb.njit(nb.float32[:, :](nb.uint64[:, :]), parallel=True, cache=True)
@@ -31,7 +29,7 @@ def nb_convert(src):
 
 class FrbDetector(ABC):
     @abstractmethod
-    def detect(self, dmt: DmTime) -> List[Tuple[float, float, float, float]]:
+    def detect(self, dmt: DmTime):
         pass
 
 
@@ -42,7 +40,7 @@ class BinaryChecker(ABC):
 
 
 class ResNetBinaryChecker(BinaryChecker):
-    def __init__(self, confidence=0.8):
+    def __init__(self, confidence=0.5):
         self.confidence = confidence
         self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
         self.model = self._load_model()
@@ -60,7 +58,7 @@ class ResNetBinaryChecker(BinaryChecker):
         model.eval()
         return model
 
-    def _preprocess(self, spec: np.ndarray, exp_cut=5):
+    def _preprocess(self, spec: np.ndarray, exp_cut=1):
         spec = np.ascontiguousarray(spec, dtype=np.float32)
         spec = cv2.resize(spec, (256, 256), interpolation=cv2.INTER_LINEAR)
         spec /= np.mean(spec, axis=0)
@@ -126,16 +124,21 @@ class CenterNetFrbDetector(FrbDetector):
         model.eval()
         return model
 
+    def _filter(self, img):
+        kernel_size = 5
+        kernel = cv2.getGaussianKernel(kernel_size, 0)
+        kernel_2d = np.outer(kernel, kernel)
+
+        for _ in range(5):
+            filtered_img = cv2.filter2D(img, -1, kernel_2d)
+
+        return filtered_img
+
     def _preprocess_dmt(self, dmt):
         dmt = np.ascontiguousarray(dmt, dtype=np.float32)
-        # dmt = nb_convert(dmt)  # fast numpy array conversion
+        dmt = self._filter(dmt)
         dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
-        mean_val, std_val = cv2.meanStdDev(dmt)
-        if std_val:
-            # MinMax normalize
-            dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
-
-        lo, hi = np.percentile(dmt, (0.1, 99))
+        lo, hi = np.percentile(dmt, (5, 100))
         np.clip(dmt, lo, hi, out=dmt)
         dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
@@ -143,7 +146,6 @@ class CenterNetFrbDetector(FrbDetector):
             self._mako_cmap = seaborn.color_palette("mako", as_cmap=True)
 
         dmt = self._mako_cmap(dmt)[..., :3]
-
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
         dmt = dmt.astype(np.float32)
@@ -160,6 +162,7 @@ class CenterNetFrbDetector(FrbDetector):
             torch.from_numpy(pdmt).permute(2, 0, 1).float().unsqueeze(0).to(self.device)
         )
         result = []
+        position = []
         with torch.no_grad():
             hm, wh, offset = model(img)
             offset = offset.to(device)

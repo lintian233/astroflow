@@ -1,6 +1,5 @@
 # AstroFlow 🌌
 
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/lintian233/astroflow/build.yml?logo=github)](https://github.com/lintian233/astroflow/actions)
 [![C++ Standard](https://img.shields.io/badge/C++-17-blue?logo=c%2B%2B)](https://isocpp.org/)
 [![Python Version](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)

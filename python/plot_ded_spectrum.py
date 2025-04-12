@@ -6,6 +6,7 @@ from astroflow.io.psrfits import PsrFits
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import cv2
 
 import argparse
 
@@ -23,11 +24,17 @@ def parse_args():
     parser.add_argument(
         "--freq_end", type=float, default=-1, help="End frequency in MHz"
     )
+    parser.add_argument(
+        "--mask",
+        type=str,
+        default=None,
+        help="Path to the mask file (optional)",
+    )
     return parser.parse_args()
 
 
 def plot_ded_spectrum(
-    file_path, toa, tband, dm, output_path, freq_start=-1, freq_end=-1
+    file_path, toa, tband, dm, output_path, freq_start=-1, freq_end=-1, mask=None
 ):
     tstart = toa - tband / 2
     tend = toa + tband / 2
@@ -62,12 +69,19 @@ def plot_ded_spectrum(
     )
     plt.rcParams["image.origin"] = "lower"
 
-    vmin, vmax = np.percentile(spectrum.data, [0, 99])
-    print(f"vmin: {vmin}, vmax: {vmax}")
     data = spectrum.data
+    if mask is not None:
+        print(data.shape)
+        data[:, mask[:-1]] = 0
+
+    # vmin, vmax = np.percentile(spectrum.data, [5, 95])
+    vmin, vmax = np.percentile(data, [70, 99])
+    print(f"vmin: {vmin}, vmax: {vmax}")
     time_axis = np.linspace(tstart, tend, spectrum.ntimes)
     freq_axis = freq_start + np.arange(spectrum.nchans) * header.foff
     time_series = data.sum(axis=1)  # 通道积分
+    # 高斯卷积time_series
+    # time_series = cv2.GaussianBlur(time_series, (3, 1), 0)
     axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
     axs[0].set_ylabel("Integrated Power")
     axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
@@ -109,6 +123,16 @@ def plot_ded_spectrum(
 if __name__ == "__main__":
     args = parse_args()
     print(f"args: {args}")
+    mask_file = args.mask
+    mask = None
+    if mask_file and os.path.exists(mask_file):
+        with open(mask_file, "r") as f:
+            data = f.read()
+
+        bad_channels = list(map(int, data.split()))
+
+        mask = np.array(bad_channels)
+
     plot_ded_spectrum(
         args.file_path,
         args.toa,
@@ -117,4 +141,5 @@ if __name__ == "__main__":
         args.output_path,
         args.freq_start,
         args.freq_end,
+        mask=mask,
     )
