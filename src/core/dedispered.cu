@@ -21,9 +21,10 @@
 namespace gpucal {
 template <typename T>
 __global__ void
-dedispersion_kernel(uint64_t *output, T *input, int *delay_table, size_t dm_steps,
-                    int time_downsample, size_t ndata, size_t nchans, size_t chan_start,
-                    size_t chan_end, size_t start, size_t down_ndata) {
+dedispersion_kernel(uint64_t *output, T *input, int *delay_table,
+                    size_t dm_steps, int time_downsample, size_t ndata,
+                    size_t nchans, size_t chan_start, size_t chan_end,
+                    size_t start, size_t down_ndata) {
   size_t dmidx = blockIdx.y;
   size_t down_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (dmidx >= dm_steps)
@@ -51,9 +52,9 @@ dedispersion_kernel(uint64_t *output, T *input, int *delay_table, size_t dm_step
 
 __global__ void
 pre_calculate_dedispersion_kernel(int *delay_table, float dm_low, float dm_high,
-                                  float dm_step, size_t chan_start, size_t chan_end,
-                                  double *freq_table, float ref_freq_value,
-                                  double tsamp) {
+                                  float dm_step, size_t chan_start,
+                                  size_t chan_end, double *freq_table,
+                                  float ref_freq_value, double tsamp) {
 
   size_t dmidx = blockDim.x * blockIdx.x + threadIdx.x;
   float dm = dm_low + (blockDim.x * blockIdx.x + threadIdx.x) * (dm_step);
@@ -78,6 +79,29 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample) {
 
+  // get all cuda devices
+  int device_count;
+  CHECK_CUDA(cudaGetDeviceCount(&device_count));
+  if (device_count == 0) {
+    throw std::runtime_error("No CUDA devices found");
+  }
+
+  int device_id;
+  if (device_count == 1) {
+    device_id = 0;
+  } else if (device_count == 4) {
+    device_id = 2;
+  } else {
+    device_id = 0;
+  }
+  // print device info
+  cudaDeviceProp device_prop;
+  CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
+  printf("Using device %d: %s\n", device_id, device_prop.name);
+
+  CHECK_CUDA(cudaSetDevice(device_id));
+  // check if the device is compatible
+
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
 
@@ -91,10 +115,10 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   }
   size_t chan_start =
       static_cast<size_t>((freq_start - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
   size_t chan_end =
       static_cast<size_t>((freq_end - fil_freq_min) /
-                       (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
+                          (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(fil.nchans - 1), chan_end);
@@ -149,7 +173,7 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   pre_calculate_dedispersion_kernel<<<grid_size, block_size>>>(
       d_delay_table, dm_low, dm_high, dm_step, chan_start, chan_end,
       d_freq_table, ref_freq_value, fil.tsamp);
-  
+
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
   // check the delay table
@@ -290,9 +314,9 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
   }
 
   size_t chan_start = static_cast<size_t>((freq_start - freq_min) /
-                                    (freq_max - freq_min) * (nchans - 1));
+                                          (freq_max - freq_min) * (nchans - 1));
   size_t chan_end = static_cast<size_t>((freq_end - freq_min) /
-                                  (freq_max - freq_min) * (nchans - 1));
+                                        (freq_max - freq_min) * (nchans - 1));
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(nchans) - 1, chan_end);

@@ -57,15 +57,16 @@ def decode_bbox(pred_hms, pred_whs, pred_offsets, confidence, cuda):
         # -------------------------------------------------------------------------#
         xv, yv = xv.flatten().float(), yv.flatten().float()
         if cuda:
-            xv = xv.cuda()
-            yv = yv.cuda()
+            # 选择相同的设备
+            device = pred_hms.device
+            xv, yv = xv.to(device), yv.to(device)
+        
         # -------------------------------------------------------------------------#
         #   class_conf      128*128,    特征点的种类置信度
         #   class_pred      128*128,    特征点的种类
         # -------------------------------------------------------------------------#
         class_conf, class_pred = torch.max(heat_map, dim=-1)
         mask = class_conf > confidence
-
         # -----------------------------------------#
         #   取出得分筛选后对应的结果
         # -----------------------------------------#
@@ -122,8 +123,8 @@ def postprocess(prediction, need_nms, input_shape, nms_iou=0.4):
         unique_labels = detections[:, -1].cpu().unique()
 
         if detections.is_cuda:
-            unique_labels = unique_labels.cuda()
-            detections = detections.cuda()
+            unique_labels = unique_labels.to(detections.device)
+            detections = detections.to(detections.device)
 
         for c in unique_labels:
             # ------------------------------------------#

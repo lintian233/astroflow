@@ -12,8 +12,7 @@ def parse_args():
         help="Input file path",
     )
     parser.add_argument(
-        "-o",
-        "--output_dir",
+        "output_dir",
         type=str,
         help="Output directory for the results",
     )
