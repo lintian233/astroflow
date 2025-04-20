@@ -60,7 +60,7 @@ def decode_bbox(pred_hms, pred_whs, pred_offsets, confidence, cuda):
             # 选择相同的设备
             device = pred_hms.device
             xv, yv = xv.to(device), yv.to(device)
-        
+
         # -------------------------------------------------------------------------#
         #   class_conf      128*128,    特征点的种类置信度
         #   class_pred      128*128,    特征点的种类

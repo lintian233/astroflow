@@ -112,7 +112,9 @@ class CenterNetFrbDetector(FrbDetector):
     def __init__(self, confidence=0.35):
         self.confidence = confidence
         self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device} NAME: {torch.cuda.get_device_name(self.device)}")
+        print(
+            f"Using device: {self.device} NAME: {torch.cuda.get_device_name(self.device)}"
+        )
         self.model = self._load_model()
 
     def _load_model(self):
@@ -130,12 +132,11 @@ class CenterNetFrbDetector(FrbDetector):
         return model
 
     def _filter(self, img):
-        
+
         for _ in range(2):
             img = cv2.filter2D(img, -1, self.kernel_2d)
         # for _ in range(2):
         #     img = cv2.medianBlur(img.astype(np.float32), ksize=5)
-        
         return img
 
     def _preprocess_dmt(self, dmt):
@@ -179,7 +180,7 @@ class CenterNetFrbDetector(FrbDetector):
                 dm = ((top + bottom) / 2) * (
                     (dmt.dm_high - dmt.dm_low) / 512
                 ) + dmt.dm_low
-                dm_flag = (dm <= 57 and dm >= 56)
+                dm_flag = dm <= 57 and dm >= 56
                 toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                 toa = np.round(toa, 3)
                 dm = np.round(dm, 3)

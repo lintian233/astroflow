@@ -166,7 +166,9 @@ def single_pulsar_search(
         candidate = detector.detect(data)
         # plotter.plot_dmtime(data, save_path)
         for i, candinfo in enumerate(candidate):
-            print(f"Found FRB in {file_basename} at DM: {candinfo[0]} at time: {candinfo[1]}")
+            print(
+                f"Found FRB in {file_basename} at DM: {candinfo[0]} at time: {candinfo[1]}"
+            )
             plotter.plot_candidate(data, candinfo, detect_dir, file)
             # plotter.plot_spectrogram(file, candinfo, detect_dir)
 
