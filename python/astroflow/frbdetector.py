@@ -9,6 +9,7 @@ import torch
 
 # override
 from typing_extensions import override
+from ultralytics import YOLO
 
 from .dmtime import DmTime
 from .model.binnet import BinaryNet
@@ -38,6 +39,69 @@ class BinaryChecker(ABC):
     def check(self, spec: Spectrum, t_sample) -> List[int]:
         pass
 
+
+
+class Yolo11nFrbDetector(FrbDetector):
+    def __init__(self, confidence=0.331):
+        self.confidence = confidence
+        self.model = self._load_model()
+    
+    def _load_model(self):
+        model = YOLO("yolo11nfinal.pt")
+        return model
+    
+    def filter(self, img):
+        kernel_size = 5
+        kernel = cv2.getGaussianKernel(kernel_size, 0)
+        self.kernel_2d = np.outer(kernel, kernel.transpose())
+        for i in range(1):
+            img = cv2.filter2D(img, -1, self.kernel_2d)
+        for _ in range(2):
+            img = cv2.medianBlur(img.astype(np.float32), ksize=3)
+        return img
+    
+    
+    def preprocess(self, img):
+        img = np.ascontiguousarray(img, dtype=np.float32)
+        img = self.filter(img)
+        img = cv2.resize(img, (1024, 1024), interpolation=cv2.INTER_LINEAR)
+        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        img = np.uint8(img)
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+
+        return img
+
+    def detect(self, dmt: DmTime):
+        model = self.model
+        img = self.preprocess(dmt.data)
+        candidate = []
+        results = model(img, conf=self.confidence, device="cuda:2", iou=0.1)
+
+        for i, r in enumerate(results):
+            xywh = r.boxes.xywh
+            if xywh is not None and len(xywh) > 0:
+                for box in xywh:
+                    x, y, w, h = box
+                    left = int(x - w / 2)
+                    top = int(y - h / 2)
+                    right = int(x + w / 2)
+                    bottom = int(y + h / 2)
+
+                    t_len = dmt.tend - dmt.tstart
+                    dm = ((top + bottom) / 2) * (
+                        (dmt.dm_high - dmt.dm_low) / 1024
+                    ) + dmt.dm_low
+                    # dm_flag = dm <= 57 and dm >= 56
+                    dm_flag = dm <= 600 and dm >=390
+                    # dm_flag = 1
+                    toa = ((left + right) / 2) * (t_len / 1024) + dmt.tstart
+                    toa = np.round(toa, 3)
+                    dm = np.round(dm, 3)
+                    if dm_flag: 
+                        # r.save(filename=f"{dmt.__str__()}_{i}.jpg")
+                        candidate.append((dm, toa, dmt.freq_start, dmt.freq_end))
+        return candidate
 
 class ResNetBinaryChecker(BinaryChecker):
     def __init__(self, confidence=0.5):
@@ -96,7 +160,7 @@ class ResNetBinaryChecker(BinaryChecker):
                 pred_probs = pred.softmax(dim=1)[:, 1]
                 pred_probs = pred_probs.cpu().numpy()
 
-                # Filter predictions above confidence threshold
+
                 frb_indices = np.where(pred_probs > self.confidence)[0]
                 if frb_indices.size > 0:
                     total_pred.extend((i + frb_indices).tolist())

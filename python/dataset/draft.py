@@ -11,121 +11,6 @@ import numpy as np
 import pandas as pd
 
 
-def read_fetch_h5():
-    h5_file_path = r"/data/QL/lingh/FETCH_DADASET/train_data.hdf5"
-    with h5py.File(h5_file_path, "r") as f:
-        # 读取数据集
-        dmts = f["data_dm_time"]
-        specs = f["data_freq_time"]
-        lables = f["data_labels"]
-        dmts = np.array(dmts, dtype=np.float32)
-        specs = np.array(specs, dtype=np.float32)
-        lables = np.array(lables)
-
-    print(f"dmts shape: {dmts.shape}")
-    print(f"specs shape: {specs.shape}")
-    print(f"lables shape: {lables.shape}")
-    return dmts, specs, lables
-
-
-def generate_fetch_dataset_label():
-    DATASET_PATH = r"/data/QL/lingh/DATASET/FETCH_TEST"
-    tasks = []
-    all_files = os.listdir(DATASET_PATH)
-    for file in all_files:
-        annotations = []
-        begin = "dmt"
-        end = "png"
-        frbflag = "True"
-        if begin in file and end in file:
-            if frbflag in file:
-                annotations.append(
-                    {
-                        "result": [
-                            {
-                                "type": "rectanglelabels",
-                                "original_width": 256,
-                                "original_height": 256,
-                                "from_name": "label",
-                                "to_name": "image",
-                                "value": {
-                                    "x": 40,
-                                    "y": 40,
-                                    "width": 20,
-                                    "height": 20,
-                                    "rotation": 0,
-                                    "rectanglelabels": ["object"],
-                                },
-                            }
-                        ]
-                    }
-                )
-                tasks.append(
-                    {
-                        "data": {
-                            "image": f"/data/local-files/?d=data/QL/lingh/DATASET/FETCH_TEST/{file}"
-                        },
-                        "annotations": annotations,
-                    }
-                )
-            else:
-                annotations.append({"result": []})
-                tasks.append(
-                    {
-                        "data": {
-                            "image": f"/data/local-files/?d=data/QL/lingh/DATASET/FETCH_TEST/{file}"
-                        },
-                        "annotations": annotations,
-                    }
-                )
-
-    with open("fetch_test_label.json", "w") as f:
-        json.dump(tasks, f, indent=2)
-    print(f"Total images: {len(tasks)}")
-
-
-def save_fetch_dataset():
-    dmts, specs, labels = read_fetch_h5()
-    ture_label = np.where(labels == True)[0]
-    output_dir = "./FETCH_DATASET/FETCH_TRAIN"
-    os.makedirs(output_dir, exist_ok=True)
-
-    for i in range(len(dmts)):
-        # Save the dmts and specs as images
-        dmt = dmts[i]
-        spec = specs[i]
-        # (shape[0])
-
-        # Normalize to 0-255 range
-        dmt = cv2.normalize(dmt, None, 0, 255, cv2.NORM_MINMAX)
-        spec = cv2.normalize(spec, None, 0, 255, cv2.NORM_MINMAX)
-
-        # Convert to uint8 first (colormap requires uint8)
-        dmt = np.uint8(dmt)
-        spec = np.uint8(spec)
-
-        # Apply colormap to grayscale images
-        dmt = cv2.applyColorMap(dmt, cv2.COLORMAP_VIRIDIS)
-        spec = cv2.applyColorMap(spec, cv2.COLORMAP_VIRIDIS)
-
-        # Save to png
-        cv2.imwrite(os.path.join(output_dir, f"dmt_{i}_{labels[i]}.png"), dmt)
-        cv2.imwrite(os.path.join(output_dir, f"spec_{i}_{labels[i]}.png"), spec)
-
-
-def load_frb_simulation():
-    file_path = r"/data/QL/lingh/FRB_SIMULATION_DATASET/chime_100_scaled_SNR_drifting_test_zapped_extended/DD_908_zapped_extended.npy"
-
-    data = np.load(file_path, allow_pickle=True)
-    data = cv2.normalize(data, None, 0, 255, cv2.NORM_MINMAX)
-    data = np.uint8(data)
-    # TO RGB
-    data = cv2.cvtColor(data, cv2.COLOR_GRAY2RGB)
-    print(data.shape)
-    data = cv2.applyColorMap(data, cv2.COLORMAP_VIRIDIS)
-    cv2.imwrite("test.png", data)
-
-
 def filter(img):
     # Apply gaussian filter 10 times
     filtered_img = img
@@ -135,7 +20,7 @@ def filter(img):
     kernel_2d = np.outer(kernel, kernel)
 
     filtered_img = cv2.filter2D(filtered_img, -1, kernel_2d)
-    filtered_img = cv2.medianBlur(filtered_img, 4)
+    filtered_img = cv2.medianBlur(filtered_img, 3)
 
     return filtered_img
 
@@ -152,7 +37,6 @@ def switch_label(labels, origin_shape, new_shape):
             frbflag = 0
 
         save_name = f"{save_name}_{freq_slice}_{frbflag}.png"
-        # print(save_name)
         if time_center <= 0.0 or dm_center <= 0.0:
             dframe = pd.DataFrame(
                 {
@@ -215,9 +99,10 @@ def load_draft_dataset():
             frbflag = 0
 
         data = data[0]
+        data = np.clip(data, *np.percentile(data, (5, 99)))
         data = filter(data)
         data = cv2.normalize(data, None, 0, 255, cv2.NORM_MINMAX)
-        print(data.shape)
+
         data = cv2.resize(data, (1024, 1024))
         data = np.uint8(data)
         data = cv2.cvtColor(data, cv2.COLOR_GRAY2RGB)
@@ -307,7 +192,6 @@ def load_data_label():
 
 
 def dataset_label_parser():
-    # file_path = r"/data/QL/lingh/DFRAST_DATASET/CENT_DATA/data_label.csv
     df = load_data_label()
     df = switch_label(df, (1024, 8192), (1024, 1024))
     coco_to_dabel_studio_format(df, (1024, 1024))
@@ -317,5 +201,4 @@ def dataset_label_parser():
 
 if __name__ == "__main__":
     # dataset_label_parser()
-    # load_draft_dataset()
-    generate_fetch_dataset_label()
+    load_draft_dataset()

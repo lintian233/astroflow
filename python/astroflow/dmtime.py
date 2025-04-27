@@ -1,3 +1,4 @@
+
 class DmTime:
     def __init__(
         self,
@@ -13,13 +14,13 @@ class DmTime:
     ):
         self.name = name
         self.data = data
-        self.tstart = tstart
-        self.tend = tend
-        self.dm_low = dm_low
-        self.dm_high = dm_high
-        self.dm_step = dm_step
-        self.freq_start = freq_start
-        self.freq_end = freq_end
+        self.tstart = round(tstart, 3)
+        self.tend = round(tend, 3)
+        self.dm_low = round(dm_low, 3)
+        self.dm_high = round(dm_high, 3)
+        self.dm_step = round(dm_step, 3)
+        self.freq_start = round(freq_start, 3)
+        self.freq_end = round(freq_end, 3)
 
     def __str__(self):
         info = f"{self.name}_T_{self.tstart}s_{self.tend}s_DM_{self.dm_low}_{self.dm_high}_F_{self.freq_start}_{self.freq_end}"

@@ -1,0 +1,44 @@
+#filterbank, fits dir
+input_dir: /path/to/input
+
+#output_dir
+output_dir: /path/to/output
+
+timedownfactor: 1
+confidence: 0.2
+
+tsample:
+  - name: t1
+    t: 0.5 #s
+  - name: t2
+    t: 0.1
+
+dm_limt:
+  - name: limt1
+    dm_low: 200
+    dm_high: 250
+
+preprocess:
+  - clip: 0.01
+  - meadianbulr: 1 3
+  - guassion: 1 5
+
+dmrange:
+  - name: dm1
+    dm_low: 0
+    dm_high: 100
+    dm_step: 0.1
+  - name: dm2
+    dm_low: 100
+    dm_high: 300
+    dm_step: 0.5
+
+freqrange:
+  - name: freq1
+    freq_start: 1000 #Mhz
+    freq_end: 1200
+  - name: freq2
+    freq_start: 1200
+    freq_end: 1400 #Mhz
+
+
