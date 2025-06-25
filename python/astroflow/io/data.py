@@ -98,3 +98,9 @@ class SpectrumBase(ABC):
         self._core_header = header.core_header
 
         return self._core_data, self._core_header
+
+    def spectrumset(self, spectrum: np.ndarray):
+        """
+        Set the spectrum data.
+        """
+        self._core_data = spectrum

@@ -6,7 +6,6 @@ import numba as nb
 import numpy as np
 import seaborn
 import torch
-
 # override
 from typing_extensions import override
 from ultralytics import YOLO
@@ -40,16 +39,15 @@ class BinaryChecker(ABC):
         pass
 
 
-
 class Yolo11nFrbDetector(FrbDetector):
     def __init__(self, confidence=0.331):
         self.confidence = confidence
         self.model = self._load_model()
-    
+
     def _load_model(self):
-        model = YOLO("yolo11nfinal.pt")
+        model = YOLO("draft.pt")
         return model
-    
+
     def filter(self, img):
         kernel_size = 5
         kernel = cv2.getGaussianKernel(kernel_size, 0)
@@ -59,12 +57,11 @@ class Yolo11nFrbDetector(FrbDetector):
         for _ in range(2):
             img = cv2.medianBlur(img.astype(np.float32), ksize=3)
         return img
-    
-    
+
     def preprocess(self, img):
         img = np.ascontiguousarray(img, dtype=np.float32)
         img = self.filter(img)
-        img = cv2.resize(img, (1024, 1024), interpolation=cv2.INTER_LINEAR)
+        img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
         img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         img = np.uint8(img)
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
@@ -90,18 +87,19 @@ class Yolo11nFrbDetector(FrbDetector):
 
                     t_len = dmt.tend - dmt.tstart
                     dm = ((top + bottom) / 2) * (
-                        (dmt.dm_high - dmt.dm_low) / 1024
+                        (dmt.dm_high - dmt.dm_low) / 512
                     ) + dmt.dm_low
-                    # dm_flag = dm <= 57 and dm >= 56
-                    dm_flag = dm <= 600 and dm >=390
-                    # dm_flag = 1
-                    toa = ((left + right) / 2) * (t_len / 1024) + dmt.tstart
+                    dm_flag = dm <= 57 and dm >= 56
+                    # dm_flag = dm <= 600 and dm >= 390
+                    dm_flag = 1
+                    toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                     toa = np.round(toa, 3)
                     dm = np.round(dm, 3)
-                    if dm_flag: 
+                    if dm_flag:
                         # r.save(filename=f"{dmt.__str__()}_{i}.jpg")
                         candidate.append((dm, toa, dmt.freq_start, dmt.freq_end))
         return candidate
+
 
 class ResNetBinaryChecker(BinaryChecker):
     def __init__(self, confidence=0.5):
@@ -159,7 +157,6 @@ class ResNetBinaryChecker(BinaryChecker):
                 pred = self.model(batch_tensor)
                 pred_probs = pred.softmax(dim=1)[:, 1]
                 pred_probs = pred_probs.cpu().numpy()
-
 
                 frb_indices = np.where(pred_probs > self.confidence)[0]
                 if frb_indices.size > 0:
@@ -244,7 +241,8 @@ class CenterNetFrbDetector(FrbDetector):
                 dm = ((top + bottom) / 2) * (
                     (dmt.dm_high - dmt.dm_low) / 512
                 ) + dmt.dm_low
-                dm_flag = dm <= 57 and dm >= 56
+                # dm_flag = dm <= 57 and dm >= 56
+                dm_flag = (160 <= dm <= 190)
                 toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                 toa = np.round(toa, 3)
                 dm = np.round(dm, 3)

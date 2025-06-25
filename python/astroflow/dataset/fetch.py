@@ -25,7 +25,7 @@ def load_fetch_dataset(h5_file_path):
 
 
 def generate_fetch_dataset_label(dataset_path, save_name):
-    
+
     tasks = []
     all_files = os.listdir(dataset_path)
     for file in all_files:
@@ -33,7 +33,7 @@ def generate_fetch_dataset_label(dataset_path, save_name):
         begin = "dmt"
         end = "png"
         frbflag = "True"
-        
+
         dir_path = dataset_path[1:]
         images_path = f"/data/local-files/?d={dir_path}/{file}"
 
@@ -63,7 +63,7 @@ def generate_fetch_dataset_label(dataset_path, save_name):
                 tasks.append(
                     {
                         "data": {
-                            "image": images_path, 
+                            "image": images_path,
                         },
                         "annotations": annotations,
                     }
@@ -82,6 +82,7 @@ def generate_fetch_dataset_label(dataset_path, save_name):
     with open(f"{save_name}.json", "w") as f:
         json.dump(tasks, f, indent=2)
     print(f"Total images: {len(tasks)}")
+
 
 def save_fetch_dataset(dmts, specs, labels, save_dir):
     ture_label = np.where(labels == True)[0]
@@ -119,6 +120,6 @@ def main():
 
     # generate_fetch_dataset_label(dataset_path, "fetch_test_label")
 
+
 if __name__ == "__main__":
     main()
-

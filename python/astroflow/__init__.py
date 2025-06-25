@@ -6,6 +6,7 @@ from .dedispered import dedispered_fil_with_dm
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
 from .spectrum import Spectrum
+from .io.psrfits import PsrFits
 
 __all__ = [
     "dedispered_fil",
@@ -17,4 +18,5 @@ __all__ = [
     "DmTime",
     "Filterbank",
     "Spectrum",
+    "PsrFits",
 ]

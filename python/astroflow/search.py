@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 import tqdm
 
-from .dedispered import dedispered_fil, dedisperse_spec, dedisperse_spec_with_dm
-from .frbdetector import BinaryChecker, CenterNetFrbDetector, ResNetBinaryChecker,Yolo11nFrbDetector
+from .dedispered import (dedispered_fil, dedisperse_spec,
+                         dedisperse_spec_with_dm)
+from .frbdetector import (BinaryChecker, CenterNetFrbDetector,
+                          ResNetBinaryChecker, Yolo11nFrbDetector)
 from .io.filterbank import Filterbank, FilterbankPy
 from .io.psrfits import PsrFits
 from .plotter import PlotterManager, plot_dmtime
@@ -76,6 +78,7 @@ def single_pulsar_search_with_dm_file(
         plotter,
     )
     plotter.close()
+
 
 def single_pulsar_search_with_dm(
     file: str,
@@ -155,7 +158,6 @@ def single_pulsar_search(
         config.t_sample,
     )
 
-
     detect_dir = os.path.join(output_dir, "detect").lower()
     file_basename = os.path.basename(file).split(".")[0]
     save_path = os.path.join(output_dir, file_basename).lower()
@@ -170,7 +172,7 @@ def single_pulsar_search(
                 f"Found FRB in {file_basename} at DM: {candinfo[0]} at time: {candinfo[1]}"
             )
             plotter.plot_candidate(data, candinfo, detect_dir, file)
-    
+
     del origin_data
 
 
@@ -187,12 +189,10 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
     base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
     base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
 
-
-
     plotter = PlotterManager()
 
-    # frb_detector = CenterNetFrbDetector(confidence=config.confidence)
-    frb_detector = Yolo11nFrbDetector(confidence=config.confidence)
+    frb_detector = CenterNetFrbDetector(confidence=config.confidence)
+    # frb_detector = Yolo11nFrbDetector(confidence=config.confidence)
     plotter = PlotterManager(6)
     for file in tqdm.tqdm(all_files):
         if not file.endswith(".fil") and not file.endswith(".fits"):
@@ -224,6 +224,6 @@ def single_pulsar_search_dir(files_dir: str, output_dir: str, config: Config) ->
 def single_pulsar_search_file(file: str, output_dir: str, config: Config) -> None:
     plotter = PlotterManager(3)
     # frb_detector = CenterNetFrbDetector(confidence=config.confidence)
-    frb_detector = Yolo11nFrbDetector()
+    frb_detector = Yolo11nFrbDetector(confidence=config.confidence)
     single_pulsar_search(file, output_dir, config, frb_detector, plotter)
     plotter.close()

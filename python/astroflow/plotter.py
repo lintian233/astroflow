@@ -293,13 +293,13 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0):
     return snr, pulse_width, peak_idx_fit, (noise_mean, noise_std)
 
 
-def plot_dmtime(dmt: DmTime, save_path, dpi=50):
+def plot_dmtime(dmt: DmTime, save_path, imgsize=512):
     img = dmt.data
     img = np.ascontiguousarray(img, dtype=np.float32)
     img = np.clip(img, *np.percentile(img, (1, 99.9)))
     img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
     img = filter(img)
-    img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
+    img = cv2.resize(img, (imgsize, imgsize), interpolation=cv2.INTER_LINEAR)
     img = np.uint8(img)
     img_colored = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
     cv2.imwrite(f"{save_path}/{dmt.__str__()}.png", img_colored)

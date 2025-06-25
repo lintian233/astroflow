@@ -15,7 +15,7 @@ def save_frb_simulation_spec(file_path):
     data = np.uint8(data)
     data = cv2.cvtColor(data, cv2.COLOR_GRAY2RGB)
     data = cv2.applyColorMap(data, cv2.COLORMAP_VIRIDIS)
-    
+
     cv2.imwrite("test.png", data)
 
 

@@ -14,12 +14,13 @@ def parser_candidate_png_path(dir_path):
     """
     files = os.listdir(dir_path)
 
-    png_files = [f for f in files if f.endswith('.png')]
+    png_files = [f for f in files if f.endswith(".png")]
 
     png_files.sort()
 
     png_paths = [os.path.join(dir_path, f) for f in png_files]
     return png_paths
+
 
 def generate_label_studio_labels_json(png_paths, save_name):
     """
