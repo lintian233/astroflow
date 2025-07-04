@@ -25,3 +25,9 @@ ql/*
 **/*.nbc
 **/*.nbi
 **/*.pt
+*.bad_chans
+*.log
+*.log.*
+*.txt
+*.csv
+*.yaml

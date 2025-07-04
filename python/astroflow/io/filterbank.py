@@ -99,18 +99,33 @@ class FilterbankPy(SpectrumBase):
     def _load_data(self):
         your_reader = your.Your(self._filename)
         header = your_reader.your_header
+        
+        fch1 = header.fch1
+        foff = header.foff
+        nchans = header.nchans
+        
+        self._data = your_reader.get_data(0, header.nspectra)
+
+        if foff < 0:
+            foff = -foff
+            fch1 = fch1 - (nchans - 1) * foff
+            # self._data = np.reshape(self._data, (header.npol, header.nspectra, nchans))
+            # self._data = np.flip(self._data, axis=2)
+            # self._data = np.ascontiguousarray(self._data, dtype=np.float32)
+            self._data = np.flip(self._data, axis=1)
+
         self._header = Header(
             mjd=header.tstart,
             filename=self._filename,
             nifs=header.npol,
-            nchans=header.nchans,
+            nchans=nchans,
             ndata=header.nspectra,
             tsamp=header.tsamp,
-            fch1=header.fch1,
-            foff=header.foff,
+            fch1=fch1,
+            foff=foff,
             nbits=header.nbits,
         )
-        self._data = your_reader.get_data(0, self._header.ndata)
+        
         if header.nbits == 8 and self._data.dtype != np.uint8:
             self._data = self._data.astype(np.uint8)
         elif header.nbits == 16 and self._data.dtype != np.uint16:

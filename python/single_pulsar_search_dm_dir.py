@@ -2,46 +2,17 @@ import argparse
 
 from astroflow.search import single_pulsar_search_with_dm_dir
 from astroflow.utils import SingleDmConfig, Config
-
+from astroflow.config.taskconfig import TaskConfig
 
 def parse_args():
-    argparser = argparse.ArgumentParser(description="Single Pulsar Search with DM DIR")
-    argparser.add_argument(
-        "files_dir",
+    parser = argparse.ArgumentParser(description="Single Pulsar Search")
+    # yaml
+    parser.add_argument(
+        "configfile",
         type=str,
-        help="Directory containing input files",
+        help="Input config file path",
     )
-    argparser.add_argument(
-        "output_dir",
-        type=str,
-        help="Directory to save output files",
-    )
-    argparser.add_argument(
-        "--dm",
-        type=float,
-        default=40,
-        help="DM value for search",
-    )
-    argparser.add_argument(
-        "--t_sample",
-        type=float,
-        default=0.1,
-        help="Time sample for search",
-    )
-    argparser.add_argument(
-        "--freq_start",
-        type=float,
-        default=1250,
-        help="Start frequency for search",
-    )
-    argparser.add_argument(
-        "--freq_end",
-        type=float,
-        default=1430,
-        help="End frequency for search",
-    )
-    return argparser.parse_args()
-
+    return parser.parse_args()
 
 def main():
     args = parse_args()

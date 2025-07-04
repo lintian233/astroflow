@@ -148,17 +148,22 @@ def plot_ded_spectrum(
     plt.rcParams["image.origin"] = "lower"
 
     data = spectrum.data
-    snr, pulse_width, peak_idx, (noise_mean, noise_std) = calculate_frb_snr(
-        data, noise_range=None, threshold_sigma=5
-    )
-    print(f"SNR: {snr:.2f}")
-    print(f"Pulse Width: {pulse_width} time points")
+    # snr, pulse_width, peak_idx, (noise_mean, noise_std) = calculate_frb_snr(
+    #     data, noise_range=None, threshold_sigma=5
+    # )
+    # print(f"SNR: {snr:.2f}")
+    # print(f"Pulse Width: {pulse_width} time points")
     if mask is not None:
         print(data.shape)
         data[:, mask[:-1]] = 0
 
     # vmin, vmax = np.percentile(spectrum.data, [5, 95])
-    vmin, vmax = np.percentile(data, [70, 99])
+    vmin, vmax = np.percentile(data, [5, 99])
+    if vmin == 0:
+        non_zero_values = data[data > 0]
+        if non_zero_values.size > 0:
+            vmin = non_zero_values.min()
+        
     print(f"vmin: {vmin}, vmax: {vmax}")
     time_axis = np.linspace(tstart, tend, spectrum.ntimes)
     freq_axis = freq_start + np.arange(spectrum.nchans) * header.foff

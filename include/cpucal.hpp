@@ -6,7 +6,7 @@
 #include "data.h"
 #include "filterbank.h"
 #include "marcoutils.h"
-
+#include "rfimarker.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -227,6 +227,8 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(fil->nchans - 1), chan_end);
+  RfiMarker<T> rfi_marker;
+
 
   Spectrum<T> result;
   result.nbits = fil->nbits;
@@ -235,7 +237,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   result.tend = tend;
   result.dm = dm;
   T *origin_data = static_cast<T *>(fil->data);
-
+  rfi_marker.mark_rfi(origin_data, fil->nchans, fil->ndata);
   result.nchans = chan_end - chan_start;
   result.freq_start = fil->frequency_table[chan_start];
   result.freq_end = fil->frequency_table[chan_end];
@@ -280,6 +282,8 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
                                     float freq_end) {
   omp_set_num_threads(32);
   PRINT_VAR(header.tsamp);
+  
+
 
   size_t t_start_idx = static_cast<size_t>(tstart / header.tsamp);
   size_t t_end_idx = static_cast<size_t>(tend / header.tsamp);
@@ -322,6 +326,11 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
 
+  RfiMarker <T> rfi_marker;
+  rfi_marker.mark_rfi(spec, header.nchans, header.ndata);
+  printf("RFI marked, chan_start: %zu, chan_end: %zu\n", chan_start,
+         chan_end);
+  
   Spectrum<T> result;
   result.nbits = header.nbits;
   result.ntimes = t_len;
@@ -356,7 +365,7 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
       size_t target_idx = t_start_idx + ti + dm_delays_table[ch - chan_start];
       if (target_idx < header.ndata) {
         result.data[ti * result.nchans + ch - chan_start] =
-            spec[target_idx * header.nchans + ch];
+            spec[target_idx * header.nchans + ch];  
       } else {
         result.data[ti * result.nchans + ch - chan_start] = 0;
       }

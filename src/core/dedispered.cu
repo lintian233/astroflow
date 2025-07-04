@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include <stdexcept>
 #include <vector_types.h>
+#include "rfimarker.h"
 
 // cuda atomicAdd
 
@@ -194,6 +195,9 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   T *d_input;
   uint64_t *d_output;
   T *data = static_cast<T *>(fil.data);
+  RfiMarker<T> rfi_marker;
+  rfi_marker.mark_rfi(data, fil.nchans, fil.ndata);
+
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint64_t)));
   CHECK_CUDA(
@@ -388,6 +392,9 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
 
   const size_t down_ndata_t =
       (samples_per_tsample + time_downsample - 1) / time_downsample;
+
+  RfiMarker<T> rfi_marker;
+  rfi_marker.mark_rfi(data, header.nchans, header.ndata);
 
   T *d_input;
   uint64_t *d_output;

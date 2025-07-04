@@ -33,13 +33,25 @@ def error_tracer(func):
 
 
 class PlotterManager:
-    def __init__(self, max_worker=8):
+    def __init__(self, dmtconfig=None, specconfig=None, max_worker=8):
         self.max_worker = max_worker
         self.pool = multiprocessing.Pool(self.max_worker)
+        self.dmtconfig = dmtconfig
+        self.speconfig = specconfig
+        if self.dmtconfig is None:
+            self.dmtconfig = {
+                "minpercentile": 5,
+                "maxpercentile": 99.9,
+            }
+            self.speconfig = {
+                "minpercentile": 5,
+                "maxpercentile": 99,
+                "tband": 50,  # 50ms
+            }
 
     def plot_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
         self.pool.apply_async(
-            plot_candidate, args=(dmt, candinfo, save_path, file_path)
+            plot_candidate, args=(dmt, candinfo, save_path, file_path, self.dmtconfig, self.speconfig),
         )
 
     def plot_spectrogram(self, file_path, candinfo, save_path):
@@ -71,6 +83,7 @@ def preprocess_img(img):
     img /= [0.229, 0.224, 0.225]
 
     return img
+
 
 
 def plot_spec(spec, title, candinfo, save_path, dpi=100):
@@ -150,7 +163,7 @@ def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
     freq_start = candinfo[2]
     freq_end = candinfo[3]
 
-    time_size = 0.05
+    time_size = 50 / 1000  # 50ms
     tstart = toa - time_size
     tend = toa + time_size
     tstart = tstart if tstart > 0 else 0
@@ -237,10 +250,7 @@ def gaussian(x, amp, mu, sigma, baseline):
 
 
 def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0):
-    """
-    用高斯拟合时间序列，基线为拟合的均值，脉冲宽度为高斯的sigma（或FWHM），
-    信噪比为脉冲区间积分信号与噪声的比值。
-    """
+
     # --- 步骤1：沿频率轴积分生成时间序列 ---
     time_series = np.sum(spec, axis=1)  # 假设时间轴为第0维
     n_time = len(time_series)
@@ -256,7 +266,6 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0):
     noise_mean = np.mean(noise_data)
     noise_std = np.std(noise_data)
 
-    # --- 步骤3：高斯拟合 ---
     peak_idx = np.argmax(time_series)
     amp0 = time_series[peak_idx] - noise_mean
     mu0 = peak_idx
@@ -306,9 +315,13 @@ def plot_dmtime(dmt: DmTime, save_path, imgsize=512):
 
 
 def plot_candidate(
-    dmt: DmTime, candinfo, save_path, file_path, dpi=150, if_clip=False, if_show=False
+    dmt: DmTime, candinfo, save_path, file_path, dmtconfig, specconfig, dpi=150,
 ):
-    dm, toa, freq_start, freq_end = candinfo
+    dm = candinfo[0]
+    toa = candinfo[1]
+    freq_start = candinfo[2]
+    freq_end = candinfo[3]
+    ref_toa = candinfo[5] if len(candinfo) > 5 else toa
 
     fig = plt.figure(figsize=(20, 10), dpi=dpi)
 
@@ -336,16 +349,16 @@ def plot_candidate(
 
     dm_data = filter(dm_data)
     dm_data = cv2.resize(dm_data, (512, 512), interpolation=cv2.INTER_LINEAR)
-    if if_clip:
-        dm_data = np.clip(dm_data, *np.percentile(dm_data, (5, 99)))
     time_axis = np.linspace(tstart, tend, dm_data.shape[1])
     dm_axis = np.linspace(dm_low, dm_high, dm_data.shape[0])
-
+    dm_vmin, dm_vmax = np.percentile(dm_data, [dmtconfig.get("minpercentile", 5), dmtconfig.get("maxpercentile", 99.9)])
     im = ax_main.imshow(
         dm_data,
         aspect="auto",
         origin="lower",
         cmap="viridis",
+        vmin=dm_vmin,
+        vmax=dm_vmax,
         extent=[time_axis[0], time_axis[-1], dm_axis[0], dm_axis[-1]],
     )
 
@@ -368,7 +381,7 @@ def plot_candidate(
     else:
         raise ValueError("Unknown file type")
     header = origin_data.header()
-    time_size = 0.01
+    time_size = specconfig.get("tband", 50) / 2000  # 默认50ms
     spec_tstart = toa - time_size
     spec_tend = toa + time_size
     spec_tstart = spec_tstart if spec_tstart > 0 else 0
@@ -391,20 +404,32 @@ def plot_candidate(
     print(f"TOA: {toa:.3f}s, Peak Time: {peak_time:.3f}s")
     print(f"SNR: {snr:.2f}, Pulse Width: {pulse_width:.2f} ms")
 
-    spec_vim, spec_vmax = np.percentile(spec_data, [5, 95])
+    spec_vim, spec_vmax = np.percentile(spec_data, [specconfig.get("minpercentile", 5), specconfig.get("maxpercentile", 99.9)])
+    if spec_vim == 0:
+        non_zero_values = spec_data[spec_data > 0]
+        if non_zero_values.size > 0:
+            spec_vim = non_zero_values.min()
+            
     spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
     spec_freq_axis = freq_start + np.arange(spectrum.nchans) * header.foff
 
     spec_time_series = spec_data.sum(axis=1)
     spec_freq_series = spec_data.sum(axis=0)
     ax_spec_freq.plot(spec_freq_series, spec_freq_axis, "k-", linewidth=0.5)
+
+    non_zero_freq_series = spec_freq_series[spec_freq_series > 0]
+    if non_zero_freq_series.size > 0:
+        freq_series_min = non_zero_freq_series.min()
+        freq_series_max = spec_freq_series.max()
+        ax_spec_freq.set_xlim(freq_series_min, freq_series_max + 10)
+
     ax_spec_time.plot(spec_time_axis, spec_time_series, "k-", linewidth=0.5)
     ax_spec_time.set_ylabel("Integrated Power")
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_time.set_yscale("log")
     ax_spec_time.grid(True, alpha=0.3)
-
+    
     extent_spec = [
         spec_time_axis[0],
         spec_time_axis[-1],
@@ -437,11 +462,13 @@ def plot_candidate(
         fontsize=16,
         y=0.96,
     )
-    if if_show:
-        plt.show()
+    
+    plt.show()
 
-    output_filename = f"{save_path}/{dm}_{toa}_{dmt.__str__()}.png"
-    print(f"Saving {dm}_{toa}_{dmt.__str__()}.png")
+    output_filename = (
+        f"{save_path}/{snr:.2f}_{pulse_width:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
+    )
+    print(f"Saving {snr:.2f}_{pulse_width:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png")
     plt.savefig(
         output_filename,
         dpi=dpi,

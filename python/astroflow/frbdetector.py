@@ -6,6 +6,7 @@ import numba as nb
 import numpy as np
 import seaborn
 import torch
+
 # override
 from typing_extensions import override
 from ultralytics import YOLO
@@ -28,6 +29,26 @@ def nb_convert(src):
 
 
 class FrbDetector(ABC):
+    def __init__(self, dm_limt, preprocess, confidence=0.5):
+        self.confidence = confidence
+        self.dm_limt = dm_limt  # type: Tuple[float, float]
+        self.preprocess = preprocess if preprocess is not None else []
+
+    def check_dm(self, dm):
+        if self.dm_limt is None:
+            return True
+        for item in self.dm_limt:
+            dm_low = item["dm_low"]
+            dm_high = item["dm_high"]
+            dm_name = item["name"]
+            if dm_low <= dm <= dm_high:
+                return True
+        return False
+
+    @abstractmethod
+    def mutidetect(self, dmt_list: List[DmTime]):
+        pass
+
     @abstractmethod
     def detect(self, dmt: DmTime):
         pass
@@ -40,9 +61,15 @@ class BinaryChecker(ABC):
 
 
 class Yolo11nFrbDetector(FrbDetector):
-    def __init__(self, confidence=0.331):
-        self.confidence = confidence
+    def __init__(self, dm_limt=None, preprocess=None, confidence=0.5, batch_size=1024):
+        super().__init__(dm_limt, preprocess, confidence)
+        self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+        print(
+            f"Using device: {self.device} NAME: {torch.cuda.get_device_name(self.device)}"
+        )
         self.model = self._load_model()
+        self.kernel_2d = None
+        self.batch_size = batch_size  # 添加批处理大小参数
 
     def _load_model(self):
         model = YOLO("draft.pt")
@@ -58,7 +85,7 @@ class Yolo11nFrbDetector(FrbDetector):
             img = cv2.medianBlur(img.astype(np.float32), ksize=3)
         return img
 
-    def preprocess(self, img):
+    def _preprocess(self, img):
         img = np.ascontiguousarray(img, dtype=np.float32)
         img = self.filter(img)
         img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
@@ -69,15 +96,46 @@ class Yolo11nFrbDetector(FrbDetector):
 
         return img
 
-    def detect(self, dmt: DmTime):
+    @override
+    def mutidetect(self, dmt_list: List[DmTime]):
         model = self.model
-        img = self.preprocess(dmt.data)
+        npy_dmt_list = []
+        for dmt in dmt_list:
+            img = self._preprocess(dmt.data)
+            npy_dmt_list.append(img)
+        
         candidate = []
-        results = model(img, conf=self.confidence, device="cuda:2", iou=0.1)
+        total_samples = len(npy_dmt_list)
+        
+        if total_samples <= self.batch_size:
+            
+            results = model(
+                npy_dmt_list, conf=self.confidence, device="cuda:2", iou=0.1, stream=True
+            )
+            self._process_results(results, dmt_list, candidate, start_index=0)
+            print(f"Processed {total_samples} samples in one batch.")
+        else:
 
+            for i in range(0, total_samples, self.batch_size):
+                end_idx = min(i + self.batch_size, total_samples)
+                batch_imgs = npy_dmt_list[i:end_idx]
+                batch_dmts = dmt_list[i:end_idx]
+                
+                results = model(
+                    batch_imgs, conf=self.confidence, device="cuda:2", iou=0.1, stream=True
+                )
+                self._process_results(results, batch_dmts, candidate, start_index=i)
+                
+                torch.cuda.empty_cache()
+                        
+        return candidate
+    
+    def _process_results(self, results, dmt_list, candidate, start_index=0):
         for i, r in enumerate(results):
             xywh = r.boxes.xywh
             if xywh is not None and len(xywh) > 0:
+                dmt = dmt_list[i]
+                dmt_index = start_index + i  
                 for box in xywh:
                     x, y, w, h = box
                     left = int(x - w / 2)
@@ -89,22 +147,50 @@ class Yolo11nFrbDetector(FrbDetector):
                     dm = ((top + bottom) / 2) * (
                         (dmt.dm_high - dmt.dm_low) / 512
                     ) + dmt.dm_low
-                    dm_flag = dm <= 57 and dm >= 56
-                    # dm_flag = dm <= 600 and dm >= 390
-                    dm_flag = 1
+                    dm_flag = self.check_dm(dm)
+
                     toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                     toa = np.round(toa, 3)
                     dm = np.round(dm, 3)
                     if dm_flag:
-                        # r.save(filename=f"{dmt.__str__()}_{i}.jpg")
-                        candidate.append((dm, toa, dmt.freq_start, dmt.freq_end))
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index])
+    
+    @override
+    def detect(self, dmt: DmTime):
+        model = self.model
+        data = dmt.data
+        img = self._preprocess(data)
+        candidate = []
+        results = model(img, conf=self.confidence, device="cuda:2", iou=0.1)
+
+        for i, r in enumerate(results):
+            xywh = r.boxes.xywh
+            if xywh is not None and len(xywh) > 0:
+                for box in xywh:
+                    x, y, w, h = box
+                    left = int(x - w / 2)
+                    top = int(y - h / 2)
+                    right = int(x + w / 2)
+                    bottom = int(y + w / 2)
+
+                    t_len = dmt.tend - dmt.tstart
+                    dm = ((top + bottom) / 2) * (
+                        (dmt.dm_high - dmt.dm_low) / 512
+                    ) + dmt.dm_low
+                    dm_flag = self.check_dm(dm)
+
+                    toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
+                    toa = np.round(toa, 3)
+                    dm = np.round(dm, 3)
+                    if dm_flag:
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end])
         return candidate
 
 
 class ResNetBinaryChecker(BinaryChecker):
     def __init__(self, confidence=0.5):
         self.confidence = confidence
-        self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = self._load_model()
 
     def _load_model(self):
@@ -127,7 +213,6 @@ class ResNetBinaryChecker(BinaryChecker):
         vmin, max = np.percentile(spec, (exp_cut, 100 - exp_cut))
         spec = np.clip(spec, vmin, max)
         spec = cv2.normalize(spec, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)  # type: ignore
-        # spec = (spec - np.min(spec)) / (np.max(spec) - np.min(spec))
 
         return spec
 
@@ -170,9 +255,9 @@ class ResNetBinaryChecker(BinaryChecker):
 
 
 class CenterNetFrbDetector(FrbDetector):
-    def __init__(self, confidence=0.35):
-        self.confidence = confidence
-        self.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+    def __init__(self, dm_limt=None, preprocess=None, confidence=0.5):
+        super().__init__(dm_limt, preprocess, confidence)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print(
             f"Using device: {self.device} NAME: {torch.cuda.get_device_name(self.device)}"
         )
@@ -193,7 +278,6 @@ class CenterNetFrbDetector(FrbDetector):
         return model
 
     def _filter(self, img):
-
         for _ in range(2):
             img = cv2.filter2D(img, -1, self.kernel_2d)
         # for _ in range(2):
@@ -204,7 +288,7 @@ class CenterNetFrbDetector(FrbDetector):
         dmt = np.ascontiguousarray(dmt, dtype=np.float32)
         dmt = self._filter(dmt)
         dmt = cv2.resize(dmt, (512, 512), interpolation=cv2.INTER_LINEAR)
-        lo, hi = np.percentile(dmt, (5, 100))
+        lo, hi = np.percentile(dmt, (5, 99))
         np.clip(dmt, lo, hi, out=dmt)
         dmt = cv2.normalize(dmt, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
 
@@ -218,6 +302,10 @@ class CenterNetFrbDetector(FrbDetector):
         dmt = cv2.subtract(dmt, mean)
         dmt = cv2.divide(dmt, std)
         return dmt
+    
+    @override
+    def mutidetect(self, dmt_list: List[DmTime]):
+        pass
 
     @override
     def detect(self, dmt: DmTime):
@@ -241,12 +329,12 @@ class CenterNetFrbDetector(FrbDetector):
                 dm = ((top + bottom) / 2) * (
                     (dmt.dm_high - dmt.dm_low) / 512
                 ) + dmt.dm_low
-                # dm_flag = dm <= 57 and dm >= 56
-                dm_flag = (160 <= dm <= 190)
+                dm_flag = self.check_dm(dm)
                 toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
                 toa = np.round(toa, 3)
                 dm = np.round(dm, 3)
                 if dm_flag:
                     print(f"Confidence: {np.min(top_conf):.3f}")
-                    result.append((dm, toa, dmt.freq_start, dmt.freq_end))
+                    result.append([dm, toa, dmt.freq_start, dmt.freq_end])
+
         return result
