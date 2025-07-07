@@ -49,8 +49,8 @@ class TestDedispered(unittest.TestCase):
 
         self.assertTrue(
             np.allclose(
-                processed_spectrum.data[:, :],  # 处理后的数据
-                your_raw_data[:, :-1],  # your库数据（排除最后一个频率通道）
+                processed_spectrum.data[:, :],
+                your_raw_data[:, :-1],
                 atol=1e-6,
             ),
             "频谱数据与your库不一致",
