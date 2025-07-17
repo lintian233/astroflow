@@ -76,6 +76,7 @@ class Yolo11nFrbDetector(FrbDetector):
         return model
 
     def filter(self, img):
+        
         kernel_size = 5
         kernel = cv2.getGaussianKernel(kernel_size, 0)
         self.kernel_2d = np.outer(kernel, kernel.transpose())
@@ -87,7 +88,8 @@ class Yolo11nFrbDetector(FrbDetector):
 
     def _preprocess(self, img):
         img = np.ascontiguousarray(img, dtype=np.float32)
-        img = self.filter(img)
+        # img = self.filter(img)
+
         img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
         img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         img = np.uint8(img)
