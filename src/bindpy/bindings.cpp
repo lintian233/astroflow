@@ -23,7 +23,7 @@ PYBIND11_MODULE(_astroflow_core, m) {
         py::arg("dm_low"), py::arg("dm_high"), py::arg("freq_start"),
         py::arg("freq_end"), py::arg("dm_step") = 1,
         py::arg("time_downsample") = 2, py::arg("t_sample") = 0.5,
-        py::arg("target") = GPU_TARGET);
+        py::arg("target") = GPU_TARGET,py::arg("mask_file") = "mask.txt");
 
   m.def("_dedispered_fil_with_dm_uint8",
         &cpucal::dedispered_fil_with_dm<uint8_t>, py::arg("fil"),
@@ -41,17 +41,17 @@ PYBIND11_MODULE(_astroflow_core, m) {
         py::arg("header"), py::arg("dm_low"), py::arg("dm_high"),
         py::arg("freq_start"), py::arg("dm_step") = 1,
         py::arg("ref_freq") = REF_FREQ_END, py::arg("time_downsample") = 2,
-        py::arg("t_sample") = 0.5);
+        py::arg("t_sample") = 0.5, py::arg("mask_file") = "mask.txt");
   m.def("_dedisperse_spec", &dedisperse_spec_py<uint16_t>, py::arg("data"),
         py::arg("header"), py::arg("dm_low"), py::arg("dm_high"),
         py::arg("freq_start"), py::arg("dm_step") = 1,
         py::arg("ref_freq") = REF_FREQ_END, py::arg("time_downsample") = 2,
-        py::arg("t_sample") = 0.5);
+        py::arg("t_sample") = 0.5, py::arg("mask_file") = "mask.txt");
   m.def("_dedisperse_spec", &dedisperse_spec_py<uint32_t>, py::arg("data"),
         py::arg("header"), py::arg("dm_low"), py::arg("dm_high"),
         py::arg("freq_start"), py::arg("dm_step") = 1,
         py::arg("ref_freq") = REF_FREQ_END, py::arg("time_downsample") = 2,
-        py::arg("t_sample") = 0.5);
+        py::arg("t_sample") = 0.5, py::arg("mask_file") = "mask.txt");
 
   m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint8_t>,
         py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),

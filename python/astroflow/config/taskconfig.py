@@ -137,6 +137,17 @@ class TaskConfig:
         return modelnamedict[modelname]
     
     @property
+    def maskfile(self):
+        maskfile = self._config_data.get("maskfile")
+        if maskfile is None:
+            raise ValueError("maskfile not found in config file.")
+        if not isinstance(maskfile, str):
+            raise ValueError("maskfile must be a string.")
+        if not os.path.exists(maskfile):
+            raise FileNotFoundError(f"Mask file {maskfile} does not exist.")
+        return maskfile
+    
+    @property
     def dmtconfig(self):
         dmtconfig = self._config_data.get("dmtconfig")
         if dmtconfig is None:

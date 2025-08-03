@@ -15,6 +15,7 @@ class RfiMarker {
 public:
     RfiMarker();
     RfiMarker(const char* mask_file); // Constructor that takes a mask file
+    RfiMarker(std::string mask_file) : RfiMarker(mask_file.c_str()) {} // Constructor that takes a string
     ~RfiMarker() = default;
 
     std::vector<int> bad_channels; // Vector to store bad channels
@@ -23,6 +24,11 @@ public:
     void load_mask(const char* mask_file);
 
     void mark_rfi(T* data, uint num_channels, uint num_samples);
+    
+
+    const std::vector<int>& get_bad_channels() const {
+        return bad_channels;
+    }
 };
 
 
@@ -52,6 +58,7 @@ void RfiMarker<T>::mark_rfi(T* data, uint num_channels, uint num_samples) {
             std::cerr << "Warning: Bad channel index " << chan << " out of range." << std::endl;
         }
     }
+    std::cout << "RFI marking completed. Bad channels: " << bad_channels.size() << std::endl;
 }
 
 template <typename T>

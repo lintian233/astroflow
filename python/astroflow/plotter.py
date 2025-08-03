@@ -48,6 +48,15 @@ class PlotterManager:
                 "maxpercentile": 99,
                 "tband": 50,  # 50ms
             }
+    def pack_background(self, dmt: DmTime, candinfo, save_path, file_path):
+        self.pool.apply_async(
+            pack_background, args=(dmt, candinfo, save_path, file_path),
+        )
+    
+    def pack_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
+        self.pool.apply_async(
+            pack_candidate, args=(dmt, candinfo, save_path, file_path),
+        )
 
     def plot_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
         self.pool.apply_async(
@@ -66,6 +75,70 @@ class PlotterManager:
     def close(self):
         self.pool.close()
         self.pool.join()
+
+def pack_candidate(dmt, candinfo, save_path, file_path):
+    IMAGE_PATH = os.path.join(save_path,"frb","images").lower()
+    LABEL_PATH = os.path.join(save_path,"frb","labels").lower()
+
+    os.makedirs(IMAGE_PATH, exist_ok=True)
+    os.makedirs(LABEL_PATH, exist_ok=True)
+
+    if len(candinfo) == 7:
+        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
+    elif len(candinfo) == 6:
+        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
+    else:
+        dm, toa, freq_start, freq_end, dmt_idx = candinfo
+        ref_toa = toa
+
+    dmt_data = np.array(dmt.data, dtype=np.float32)
+    img = cv2.resize(dmt_data, (512, 512), interpolation=cv2.INTER_AREA)
+    
+    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+    
+    name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
+    label_name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.txt"
+
+    cv2.imwrite(os.path.join(IMAGE_PATH, name), img)
+
+    with open(os.path.join(LABEL_PATH, label_name), "w") as f:
+        if len(candinfo) == 7:
+            f.write(f"0 {x:.2f} {y:.2f} {w:.2f} {h:.2f} \n")
+    print(f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
+
+
+def pack_background(dmt, candinfo, save_path, file_path):
+    IMAGE_PATH = os.path.join(save_path,"bg","images").lower()
+    LABEL_PATH = os.path.join(save_path,"bg","labels").lower()
+
+    os.makedirs(IMAGE_PATH, exist_ok=True)
+    os.makedirs(LABEL_PATH, exist_ok=True)
+
+    if len(candinfo) == 7:
+        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
+    elif len(candinfo) == 6:
+        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
+    else:
+        dm, toa, freq_start, freq_end, dmt_idx = candinfo
+        ref_toa = toa
+
+    dmt_data = np.array(dmt.data, dtype=np.float32)
+    img = cv2.resize(dmt_data, (512, 512), interpolation=cv2.INTER_AREA)
+    
+    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+    
+    name = f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
+    label_name = f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.txt"
+
+    cv2.imwrite(os.path.join(IMAGE_PATH, name), img)
+
+    open(os.path.join(LABEL_PATH, label_name), "w").close()  # Create an empty label file
+
+    print(f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
 
 
 def preprocess_img(img):
@@ -317,12 +390,14 @@ def plot_dmtime(dmt: DmTime, save_path, imgsize=512):
 def plot_candidate(
     dmt: DmTime, candinfo, save_path, file_path, dmtconfig, specconfig, dpi=150,
 ):
-    dm = candinfo[0]
-    toa = candinfo[1]
-    freq_start = candinfo[2]
-    freq_end = candinfo[3]
-    ref_toa = candinfo[5] if len(candinfo) > 5 else toa
-
+    if len(candinfo) == 7:
+        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
+    elif len(candinfo) == 6:
+        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
+    else:
+        dm, toa, freq_start, freq_end, dmt_idx = candinfo
+        ref_toa = toa
+    print(f"Plotting candidate: DM={dm}, TOA={toa}, Freq={freq_start}-{freq_end} MHz, DMT Index={dmt_idx}")
     fig = plt.figure(figsize=(20, 10), dpi=dpi)
 
     gs = GridSpec(
@@ -343,15 +418,15 @@ def plot_candidate(
     dm_high = dmt.dm_high
     tstart = dmt.tstart
     tend = dmt.tend
-    dm_data = dmt.data
-    dm_data = (dm_data - np.min(dm_data)) / (np.max(dm_data) - np.min(dm_data))
-    dm_data *= 255
+    dm_data = np.array(dmt.data,dtype=np.float32)
 
-    dm_data = filter(dm_data)
-    dm_data = cv2.resize(dm_data, (512, 512), interpolation=cv2.INTER_LINEAR)
+    dm_data = cv2.resize(dm_data, (512, 512), interpolation=cv2.INTER_AREA)
     time_axis = np.linspace(tstart, tend, dm_data.shape[1])
     dm_axis = np.linspace(dm_low, dm_high, dm_data.shape[0])
+    dm_data = cv2.normalize(dm_data, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+
     dm_vmin, dm_vmax = np.percentile(dm_data, [dmtconfig.get("minpercentile", 5), dmtconfig.get("maxpercentile", 99.9)])
+    
     im = ax_main.imshow(
         dm_data,
         aspect="auto",
@@ -462,8 +537,6 @@ def plot_candidate(
         fontsize=16,
         y=0.96,
     )
-    
-    plt.show()
 
     output_filename = (
         f"{save_path}/{snr:.2f}_{pulse_width:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"

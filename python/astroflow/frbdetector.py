@@ -72,7 +72,7 @@ class Yolo11nFrbDetector(FrbDetector):
         self.batch_size = batch_size  # 添加批处理大小参数
 
     def _load_model(self):
-        model = YOLO("draft.pt")
+        model = YOLO("yolo11n_0802.pt")
         return model
 
     def filter(self, img):
@@ -88,11 +88,13 @@ class Yolo11nFrbDetector(FrbDetector):
 
     def _preprocess(self, img):
         img = np.ascontiguousarray(img, dtype=np.float32)
-        # img = self.filter(img)
 
-        img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
-        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
-        img = np.uint8(img)
+        if img.shape[0] > 512 and img.shape[1] > 512: 
+            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_AREA)
+        else:
+            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
+
+        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
         img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
 
@@ -112,7 +114,7 @@ class Yolo11nFrbDetector(FrbDetector):
         if total_samples <= self.batch_size:
             
             results = model(
-                npy_dmt_list, conf=self.confidence, device="cuda:2", iou=0.1, stream=True
+                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.1, stream=True
             )
             self._process_results(results, dmt_list, candidate, start_index=0)
             print(f"Processed {total_samples} samples in one batch.")
@@ -124,11 +126,9 @@ class Yolo11nFrbDetector(FrbDetector):
                 batch_dmts = dmt_list[i:end_idx]
                 
                 results = model(
-                    batch_imgs, conf=self.confidence, device="cuda:2", iou=0.1, stream=True
+                    batch_imgs, conf=self.confidence, device=self.device, iou=0.1, stream=True
                 )
                 self._process_results(results, batch_dmts, candidate, start_index=i)
-                
-                torch.cuda.empty_cache()
                         
         return candidate
     
@@ -145,6 +145,11 @@ class Yolo11nFrbDetector(FrbDetector):
                     right = int(x + w / 2)
                     bottom = int(y + h / 2)
 
+                    x_norm = np.round(x.cpu() / 512, 2)
+                    y_norm = np.round(y.cpu() / 512, 2)
+                    w_norm = np.round(w.cpu() / 512, 2)
+                    h_norm = np.round(h.cpu() / 512, 2)
+
                     t_len = dmt.tend - dmt.tstart
                     dm = ((top + bottom) / 2) * (
                         (dmt.dm_high - dmt.dm_low) / 512
@@ -155,7 +160,7 @@ class Yolo11nFrbDetector(FrbDetector):
                     toa = np.round(toa, 3)
                     dm = np.round(dm, 3)
                     if dm_flag:
-                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index])
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index, (x_norm, y_norm, w_norm, h_norm)])
     
     @override
     def detect(self, dmt: DmTime):

@@ -23,6 +23,7 @@ def dedisperse_spec(
     time_downsample: int = 64,
     t_sample: float = 0.5,
     target: int = 1,
+    maskfile="mask.txt",
 ) -> List[DmTime]:
 
     if spectrum.type == SpectrumType.FIL:
@@ -37,6 +38,7 @@ def dedisperse_spec(
             time_downsample,
             t_sample,
             target,
+            maskfile,
         )
         return dmtimes
 
@@ -51,6 +53,7 @@ def dedisperse_spec(
         dm_step,
         time_downsample,
         t_sample,
+        maskfile
     )
 
     basename = os.path.basename(spectrum.filename).split(".")[0]
@@ -232,6 +235,7 @@ def dedispered_fil(
     time_downsample: int = 64,
     t_sample: float = 0.5,
     target: int = 1,
+    maskfile = "mask.txt",
 ) -> List[DmTime]:
     """
     Perform GPU/OpenMP-accelerated dedispersion on filterbank data.
@@ -337,6 +341,7 @@ def dedispered_fil(
         time_downsample,
         t_sample,
         target=target,  # 0 for CPU, 1 for GPU
+        mask_file=maskfile,
     )
     basename = os.path.basename(file_path).split(".")[0]
     result = []

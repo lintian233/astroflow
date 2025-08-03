@@ -60,6 +60,12 @@ class SpectrumBase(ABC):
         self._core_data = None
         self._core_header = None
 
+    def settype(self, spectrum_type: SpectrumType):
+        """
+        Set the type of the spectrum.
+        """
+        self._type = spectrum_type
+
     @abstractmethod
     def get_spectrum(self) -> np.ndarray:
         """

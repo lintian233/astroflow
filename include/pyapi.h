@@ -18,13 +18,15 @@ namespace py = pybind11;
 dedisperseddata dedispered_fil(std::string filename, float dm_low,
                                float dm_high, float freq_start, float freq_end,
                                float dm_step = 1, int time_downsample = 64,
-                               float t_sample = 0.5, int target = 0);
+                               float t_sample = 0.5, int target = 0,
+                                 std::string mask_file = "mask.txt");
 
 template <typename T>
 dedisperseddata
 dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
-                   float dm_step, int time_downsample, float t_sample);
+                   float dm_step, int time_downsample, float t_sample,
+                   std::string mask_file);
 
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
