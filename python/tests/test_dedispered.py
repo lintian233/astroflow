@@ -14,7 +14,7 @@ from astroflow.dedispered import (
 from astroflow import Spectrum, Filterbank
 from astroflow.io.data import Header
 from astroflow.io.psrfits import PsrFits
-from astroflow.plotter import PlotterManager
+from python.astroflow.plotter import PlotterManager
 
 
 class TestDedispered(unittest.TestCase):

@@ -340,7 +340,6 @@ def muti_pulsar_search_detect(
     
     for candinfo in candidates: #type: ignore
         dm, toa = candinfo[0], candinfo[1]
-        logger.info(f"origin_toa: {origin_toa}, detected_toa: {toa}, origin_dm: {origin_dm}, detected_dm: {dm}")
         ref_toa = get_freq_end_toa(
             origin_data.header(), 
             ref_freq=config.freq_end, 
