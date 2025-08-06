@@ -609,15 +609,22 @@ def _prepare_dm_data(dmt: DmTime):
     return dm_data, time_axis, dm_axis
 
 
-def _calculate_spectrum_time_window(toa: float, time_band_ms: float):
-    """Calculate spectrum time window around TOA."""
-    time_size = time_band_ms / 2000  # Convert ms to seconds and divide by 2
+def _calculate_spectrum_time_window(toa: float, pulse_width_samples: float, tsamp: float, multiplier: float = 40.0):
+    """Calculate spectrum time window around TOA based on pulse width."""
+    if pulse_width_samples > 0:
+        # Use pulse width to determine window size: 50 × pulse_width
+        pulse_width_seconds = pulse_width_samples * tsamp
+        time_size = multiplier * pulse_width_seconds / 2  # Half window on each side
+    else:
+        # Fallback to default 25ms half-window if pulse width unavailable
+        time_size = 0.025  # 25ms
+    
     spec_tstart = max(0, toa - time_size)
     spec_tend = toa + time_size
     return np.round(spec_tstart, 3), np.round(spec_tend, 3)
 
 
-def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax):
+def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, toa):
     """Setup DM-Time subplot components."""
     ax_time = fig.add_subplot(gs[0, 0])
     ax_main = fig.add_subplot(gs[1, 0], sharex=ax_time)
@@ -636,6 +643,28 @@ def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax):
     ax_main.set_xlabel("Time (s)", fontsize=12, labelpad=10)
     ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
     
+    # Add dashed circle around the candidate region instead of straight lines
+    time_range = time_axis[-1] - time_axis[0]
+    dm_range = dm_axis[-1] - dm_axis[0]
+    
+    # Calculate circle radius as a fraction of the plot dimensions
+    radius_time = time_range * 0.05  # 5% of time range
+    radius_dm = dm_range * 0.07      # 5% of DM range
+    
+    # Create ellipse (circle in data coordinates) around the candidate
+    circle = mpatches.Ellipse(
+        (toa, dm), 
+        width=2*radius_time, 
+        height=2*radius_dm,
+        fill=False, 
+        linestyle='--', 
+        linewidth=2, 
+        edgecolor='white', 
+        alpha=0.7,
+        label=f'Candidate: DM={dm:.2f}, TOA={toa:.3f}s'
+    )
+    ax_main.add_patch(circle)
+
     # DM marginal plot
     dm_sum = np.max(dm_data, axis=1)
     ax_dm.plot(dm_sum, dm_axis, lw=1.5, color="darkblue")
@@ -647,13 +676,15 @@ def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax):
     ax_time.plot(time_axis, time_sum, lw=1.5, color="darkred")
     ax_time.tick_params(axis="x", labelbottom=False)
     ax_time.grid(alpha=0.3)
-    
+    ax_time.text(0.02, 0.954, f"DM: {dm:.2f} pc $cm^{{-3}}$ \n TOA: {toa:.3f}s", 
+                  transform=ax_time.transAxes, fontsize=10, verticalalignment='top', 
+                  bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
     return ax_time, ax_main, ax_dm
 
 
 def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis, 
                                  spec_tstart, spec_tend, spec_vim, spec_vmax, header, 
-                                 toa=None, dm=None, pulse_width=None):
+                                 toa=None, dm=None, pulse_width=None, snr=None):
     """Setup spectrum subplot components with subband analysis for enhanced weak pulse visibility."""
     ax_spec_time = fig.add_subplot(gs[0, 2])
     ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
@@ -714,14 +745,15 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     ax_spec_time.plot(subband_time_centers, subband_time_series, "-", color="black", 
                      linewidth=1, alpha=0.9, label="Subband Enhanced")
     
-    ax_spec_time.text(0.02, 0.98, f"Time Bin: {time_bin_duration*1000:.3f} ms ({time_bin_size} samples)", 
+    ax_spec_time.text(0.02, 0.96, f"SNR: {snr:.2f} \n"
+                      f"pulse width: {pulse_width * header.tsamp * 1000:.2f} ms",
                      transform=ax_spec_time.transAxes, fontsize=10, 
                      verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", 
                      facecolor="white", alpha=0.8))
     
     # Add TOA line if provided
     if toa is not None:
-        ax_spec_time.axvline(toa, color='blue', linestyle='--', linewidth=1, 
+        ax_spec_time.axvline(toa, color='black', linestyle='--', linewidth=0.8, 
                            alpha=0.8, label=f'TOA: {toa:.3f}s')
     
     ax_spec_time.set_ylabel("Integrated Power")
@@ -763,7 +795,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     # Add TOA line to main spectrum plot
     if toa is not None:
-        ax_spec.axvline(toa, color='blue', linestyle='--', linewidth=0.7, 
+        ax_spec.axvline(toa, color='white', linestyle='--', linewidth=0.8, 
                        alpha=0.8, label='TOA')
     
     # Add grid to show subband boundaries
@@ -777,10 +809,10 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         ax_spec.axvline(time_boundary, color='white', linestyle='-', 
                        linewidth=0.3, alpha=0.2)
     
-    ax_spec.set_ylabel(f"Frequency (MHz) - {n_freq_subbands} Subbands\n"
+    ax_spec.set_ylabel(f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size} channels each)\n"
                       f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
     ax_spec.set_xlabel(f"Time (s) - {n_time_bins} Bins ({time_bin_duration*1000:.3f} ms each)\n"
-                      f"TSAMP={header.tsamp:.6e}s, Bin Size={time_bin_size} samples")
+                      f"TSAMP={header.tsamp:.6e}s, Bin Size={time_bin_size} samples duration={n_time_bins * time_bin_duration*1000:.1f} ms")
     ax_spec.set_xlim(spec_tstart, spec_tend)
     
     return ax_spec_time, ax_spec, ax_spec_freq
@@ -838,7 +870,7 @@ def plot_candidate(
             [dmtconfig.get("minpercentile", 5), dmtconfig.get("maxpercentile", 99.9)]
         )
         
-        ax_time, ax_main, ax_dm = _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax)
+        ax_time, ax_main, ax_dm = _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, toa)
         
         # Load and process spectrum data
         origin_data = None
@@ -846,31 +878,39 @@ def plot_candidate(
             origin_data = _load_data_file(file_path)
             header = origin_data.header()
             
-            # Calculate spectrum time window
+            # First pass: get initial spectrum for pulse width estimation
             time_band_ms = specconfig.get("tband", 50)
-            spec_tstart, spec_tend = _calculate_spectrum_time_window(toa, time_band_ms)
+            initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp)  # Use fallback window
             
-            # Generate dedispersed spectrum
+            # Generate initial dedispersed spectrum for SNR calculation
+            initial_spectrum = dedisperse_spec_with_dm(
+                origin_data, initial_spec_tstart, initial_spec_tend, dm, freq_start, freq_end
+            )
+            initial_spec_data = initial_spectrum.data
+            
+            # Calculate SNR and pulse characteristics with TOA-centered fitting
+            toa_sample_idx = int((toa - initial_spec_tstart) / header.tsamp)
+            toa_sample_idx = max(0, min(toa_sample_idx, initial_spectrum.ntimes - 1))
+            
+            snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
+                initial_spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
+            )
+            
+            # Now calculate proper spectrum window based on pulse width (50 × pulse_width)
+            spec_tstart, spec_tend = _calculate_spectrum_time_window(toa, pulse_width, header.tsamp, multiplier=35)
+            
+            # Generate final spectrum with optimized window
             spectrum = dedisperse_spec_with_dm(
                 origin_data, spec_tstart, spec_tend, dm, freq_start, freq_end
             )
             spec_data = spectrum.data
-            
-            # Calculate SNR and pulse characteristics with TOA-centered fitting
-            # Convert TOA to sample index for precise fitting
-            toa_sample_idx = int((toa - spec_tstart) / header.tsamp)
-            toa_sample_idx = max(0, min(toa_sample_idx, spectrum.ntimes - 1))
-        
-
-            snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
-                    spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
-                )
 
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1  # Convert to milliseconds
             peak_time = spec_tstart + (peak_idx + 0.5) * header.tsamp
             
             print(f"TOA: {toa:.3f}s, Peak Time: {peak_time:.3f}s")
             print(f"SNR: {snr:.2f}, Pulse Width: {pulse_width_ms:.2f} ms")
+            print(f"Spectrum window: {spec_tstart:.3f}s - {spec_tend:.3f}s (50 × pulse_width)")
             
             # Prepare spectrum plot parameters
             spec_vim, spec_vmax = np.percentile(
@@ -893,7 +933,7 @@ def plot_candidate(
             # Setup subband spectrum plots (replaces _setup_spectrum_plots)
             _setup_subband_spectrum_plots(
                 fig, gs, spec_data, spec_time_axis, spec_freq_axis,
-                spec_tstart, spec_tend, spec_vim, spec_vmax, header, toa=toa, dm=dm, pulse_width=pulse_width
+                spec_tstart, spec_tend, spec_vim, spec_vmax, header, toa=toa, dm=dm, pulse_width=pulse_width, snr=snr
             )
             
         except Exception as e:
@@ -904,7 +944,7 @@ def plot_candidate(
         # Create title and save plot
         basename = os.path.basename(file_path).split(".")[0]
         fig.suptitle(
-            f"FILE: {basename} - DM: {dm} - TOA: {toa:.3f}s - SNR: {snr:.2f} - "
+            f"FILE: {basename} - DM: {dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
             f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
             fontsize=16,
             y=0.96,
