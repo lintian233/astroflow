@@ -21,6 +21,6 @@ if __name__ == "__main__":
     taskconfig = TaskConfig(taskconfig_filepath)
     count_frb_dataset(
         dataset_path=taskconfig.input,
-        candidate_path="fast_prefix_candidate.csv",
+        candidate_path="/home/lingh/work/astroflow/candidate_check.csv",
         task_config=taskconfig,
     )

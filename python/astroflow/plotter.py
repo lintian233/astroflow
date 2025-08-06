@@ -7,6 +7,7 @@ import gc
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy as sp
 import seaborn
 import matplotlib.patches as mpatches
 from scipy.ndimage import gaussian_filter
@@ -48,6 +49,7 @@ class PlotterManager:
                 "minpercentile": 5,
                 "maxpercentile": 99,
                 "tband": 50,  # 50ms
+                "mode": "subband" 
             }
     def pack_background(self, dmt: DmTime, candinfo, save_path, file_path):
         self.pool.apply_async(
@@ -682,8 +684,77 @@ def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, 
     return ax_time, ax_main, ax_dm
 
 
+def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis, 
+                          spec_tstart, spec_tend, specconfig, header, 
+                          toa=None, dm=None, pulse_width=None, snr=None):
+    """Setup standard spectrum subplot components without subband analysis."""
+    ax_spec_time = fig.add_subplot(gs[0, 2])
+    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+    
+    # Time series (sum over frequency axis)
+    time_series = np.sum(spec_data, axis=1)
+    ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
+    
+    # Add TOA line if provided
+    if toa is not None:
+        ax_spec_time.axvline(toa, color='blue', linestyle='--', linewidth=1, 
+                           alpha=0.8, label=f'TOA: {toa:.3f}s')
+    
+    # Add SNR and pulse width info
+    if snr is not None and pulse_width is not None:
+        pulse_width_ms = pulse_width * header.tsamp * 1000 if pulse_width > 0 else -1
+        ax_spec_time.text(0.02, 0.96, f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms",
+                         transform=ax_spec_time.transAxes, fontsize=10, 
+                         verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", 
+                         facecolor="white", alpha=0.8))
+    
+    ax_spec_time.set_ylabel("Integrated Power")
+    ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.grid(True, alpha=0.3)
+    if toa is not None:
+        ax_spec_time.legend(fontsize=9, loc='upper right')
+    
+    # Frequency marginal (sum over time axis)
+    freq_series = np.sum(spec_data, axis=0)
+    ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
+    ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
+    ax_spec_freq.grid(True, alpha=0.3)
+    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
+    
+    spec_vmin = np.percentile(spec_data, specconfig.get("minpercentile", 0.1))
+    spec_vmax = np.percentile(spec_data, specconfig.get("maxpercentile", 99.9))
+    if spec_vmin == 0:
+        non_zero_values = spec_data[spec_data > 0]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
+    
+    # Main spectrum plot
+    extent = [spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]]
+    im = ax_spec.imshow(
+        spec_data.T,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=extent,
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+    )
+    
+    # Add TOA line to main spectrum plot
+    # if toa is not None:
+    #     ax_spec.axvline(toa, color='white', linestyle='--', linewidth=1, 
+    #                    alpha=0.8)
+    
+    ax_spec.set_ylabel(f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
+    ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
+    ax_spec.set_xlim(spec_tstart, spec_tend)
+    
+    return ax_spec_time, ax_spec, ax_spec_freq
+
+
 def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis, 
-                                 spec_tstart, spec_tend, spec_vim, spec_vmax, header, 
+                                 spec_tstart, spec_tend, specconfig, header, 
                                  toa=None, dm=None, pulse_width=None, snr=None):
     """Setup spectrum subplot components with subband analysis for enhanced weak pulse visibility."""
     ax_spec_time = fig.add_subplot(gs[0, 2])
@@ -743,7 +814,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     # Plot only subband time series
     subband_time_centers = 0.5 * (subband_time_axis[:-1] + subband_time_axis[1:])
     ax_spec_time.plot(subband_time_centers, subband_time_series, "-", color="black", 
-                     linewidth=1, alpha=0.9, label="Subband Enhanced")
+                     linewidth=1, alpha=0.9)
     
     ax_spec_time.text(0.02, 0.96, f"SNR: {snr:.2f} \n"
                       f"pulse width: {pulse_width * header.tsamp * 1000:.2f} ms",
@@ -753,7 +824,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     # Add TOA line if provided
     if toa is not None:
-        ax_spec_time.axvline(toa, color='black', linestyle='--', linewidth=0.8, 
+        ax_spec_time.axvline(toa, color='blue', linestyle='--', linewidth=1, 
                            alpha=0.8, label=f'TOA: {toa:.3f}s')
     
     ax_spec_time.set_ylabel("Integrated Power")
@@ -768,19 +839,23 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     subband_freq_centers = 0.5 * (subband_freq_axis[:-1] + subband_freq_axis[1:])
     
     ax_spec_freq.plot(subband_freq_series, subband_freq_centers, "-", color="black", linewidth=1, 
-                     alpha=0.8, label="Subband Integrated")
+                     alpha=0.8)
     
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
     ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
-    ax_spec_freq.legend(fontsize=9, loc='upper right')
     
     # Main subband spectrum plot
     extent_subband = [subband_time_axis[0], subband_time_axis[-1], 
                      subband_freq_axis[0], subband_freq_axis[-1]]
     
-    spec_vim = np.percentile(subband_matrix, 1)
-    spec_vmax = np.percentile(subband_matrix, 99.9)
+    spec_vmin = np.percentile(subband_matrix, specconfig.get("minpercentile", 0.1))
+    spec_vmax = np.percentile(subband_matrix, specconfig.get("maxpercentile", 99.9))
+
+    if spec_vmin == 0:
+        non_zero_values = subband_matrix[subband_matrix > 0]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
 
     im = ax_spec.imshow(
         subband_matrix.T,
@@ -788,7 +863,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         origin="lower", 
         cmap="viridis",
         extent=extent_subband,
-        vmin=spec_vim,
+        vmin=spec_vmin,
         vmax=spec_vmax,
         interpolation='nearest'  # Use nearest neighbor to preserve subband structure
     )
@@ -896,6 +971,8 @@ def plot_candidate(
                 initial_spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
             )
             
+            peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
+
             # Now calculate proper spectrum window based on pulse width (50 × pulse_width)
             spec_tstart, spec_tend = _calculate_spectrum_time_window(toa, pulse_width, header.tsamp, multiplier=35)
             
@@ -906,23 +983,12 @@ def plot_candidate(
             spec_data = spectrum.data
 
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1  # Convert to milliseconds
-            peak_time = spec_tstart + (peak_idx + 0.5) * header.tsamp
+            
             
             print(f"TOA: {toa:.3f}s, Peak Time: {peak_time:.3f}s")
             print(f"SNR: {snr:.2f}, Pulse Width: {pulse_width_ms:.2f} ms")
             print(f"Spectrum window: {spec_tstart:.3f}s - {spec_tend:.3f}s (50 × pulse_width)")
-            
-            # Prepare spectrum plot parameters
-            spec_vim, spec_vmax = np.percentile(
-                spec_data, 
-                [specconfig.get("minpercentile", 5), specconfig.get("maxpercentile", 99.9)]
-            )
-            
-            # Handle zero minimum values
-            if spec_vim == 0:
-                non_zero_values = spec_data[spec_data > 0]
-                if non_zero_values.size > 0:
-                    spec_vim = non_zero_values.min()
+        
             
             # Create time and frequency axes
             spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
@@ -931,10 +997,18 @@ def plot_candidate(
             spec_freq_axis = np.linspace(freq_start, freq_end, spectrum.nchans)
             
             # Setup subband spectrum plots (replaces _setup_spectrum_plots)
-            _setup_subband_spectrum_plots(
-                fig, gs, spec_data, spec_time_axis, spec_freq_axis,
-                spec_tstart, spec_tend, spec_vim, spec_vmax, header, toa=toa, dm=dm, pulse_width=pulse_width, snr=snr
-            )
+            if specconfig.get("mode") == "subband":
+                _setup_subband_spectrum_plots(
+                    fig, gs, spec_data, spec_time_axis, spec_freq_axis,
+                    spec_tstart, spec_tend, specconfig, header, toa=peak_time, dm=dm, pulse_width=pulse_width, snr=snr
+                )
+            elif specconfig.get("mode") == "standard" or specconfig.get("mode") is None:
+                _setup_spectrum_plots(
+                    fig, gs, spec_data, spec_time_axis, spec_freq_axis,
+                    spec_tstart, spec_tend, specconfig, header, toa=peak_time, dm=dm, pulse_width=pulse_width, snr=snr
+                )
+            else:
+                raise ValueError(f"Unsupported spectrum mode: {specconfig.get('mode')}")
             
         except Exception as e:
             print(f"Warning: Failed to process spectrum data: {e}")
