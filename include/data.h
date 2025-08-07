@@ -13,7 +13,9 @@
 #include <pybind11/stl.h>
 #include <stdexcept>
 #include <string>
+#include <omp.h>
 #include <vector>
+#include <opencv2/opencv.hpp>
 
 namespace py = pybind11;
 
@@ -44,6 +46,24 @@ struct Header {
     ndata = header.attr("ndata").cast<long int>();
   }
 };
+
+struct dedisperseddata_uint8 {
+  std::vector<std::shared_ptr<uint8_t[]>> dm_times;
+
+  std::vector<size_t> shape;
+
+  int dm_ndata;            // = H
+  int downtsample_ndata;   // = W
+
+  float dm_low;
+  float dm_high;
+  float dm_step;
+  float tsample;
+  std::string filname;
+};
+
+
+
 
 struct dedisperseddata {
   std::vector<std::shared_ptr<uint64_t[]>> dm_times;
@@ -200,5 +220,79 @@ private:
 
   friend class Proxy;
 };
+
+
+inline dedisperseddata_uint8
+preprocess_dedisperseddata(const dedisperseddata& in,
+                           int target_size = 512)
+{
+    omp_set_num_threads(32);
+    /* ---------- 输入检查 ---------- */
+    if (in.shape.size() < 2)
+        throw std::runtime_error("dedisperseddata.shape 长度必须 ≥ 2");
+    const int src_rows = static_cast<int>(in.shape[0]);
+    const int src_cols = static_cast<int>(in.shape[1]);
+    if (src_rows <= 0 || src_cols <= 0)
+        throw std::runtime_error("dedisperseddata.shape 非法");
+
+    /* ---------- 元数据填充 ---------- */
+    dedisperseddata_uint8 out;
+    out.dm_low   = in.dm_low;
+    out.dm_high  = in.dm_high;
+    out.dm_step  = in.dm_step;
+    out.tsample  = in.tsample;
+    out.filname  = in.filname;
+
+    out.shape = {static_cast<size_t>(target_size),
+                 static_cast<size_t>(target_size),
+                 3};
+    out.dm_ndata          = target_size;
+    out.downtsample_ndata = target_size;
+
+    /* ---------- 预分配输出容器 ---------- */
+    const size_t n_frames = in.dm_times.size();
+    out.dm_times.resize(n_frames);
+
+    /* ---------- OpenMP 并行处理 ---------- */
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t idx = 0; idx < static_cast<ptrdiff_t>(n_frames); ++idx)
+    {
+        const auto& frame_ptr = in.dm_times[idx];
+
+        /* 1) uint64 → float32  (并行像素拷贝) */
+        cv::Mat1f src32(src_rows, src_cols);
+        const uint64_t* raw = frame_ptr.get();
+#pragma omp parallel for schedule(static) collapse(2)
+        for (int r = 0; r < src_rows; ++r)
+            for (int c = 0; c < src_cols; ++c)
+                src32(r, c) = static_cast<float>(raw[r * src_cols + c]);
+
+        /* 2) resize 到 512×512 */
+        cv::Mat resized;
+        int interp = (src_rows > target_size && src_cols > target_size)
+                   ? cv::INTER_AREA
+                   : cv::INTER_LINEAR;
+        cv::resize(src32, resized, {target_size, target_size}, 0, 0, interp);
+
+        /* 3) 归一化 0-255、灰度→RGB、Viridis */
+        cv::Mat norm8u, rgb, viridis;
+        cv::normalize(resized, norm8u, 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::cvtColor(norm8u, rgb, cv::COLOR_GRAY2RGB);
+        cv::applyColorMap(rgb, viridis, cv::COLORMAP_VIRIDIS);
+
+        /* 4) 拷贝到 4096 对齐缓冲区 */
+        const size_t bytes = viridis.total() * viridis.elemSize(); // 512*512*3
+        auto deleter = [](uint8_t* p){ operator delete[](p, std::align_val_t{4096}); };
+        std::shared_ptr<uint8_t[]> buf(
+            reinterpret_cast<uint8_t*>(operator new[](bytes, std::align_val_t{4096})),
+            deleter);
+
+        std::memcpy(buf.get(), viridis.data, bytes);
+        out.dm_times[idx] = std::move(buf);
+    }
+
+    return out;
+}
+
 
 #endif //_DATA_H

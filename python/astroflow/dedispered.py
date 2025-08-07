@@ -1,9 +1,11 @@
 import os
 import numpy as np
+import cv2
 
 from typing import List
 
 import _astroflow_core as _astro_core  # type: ignore
+
 
 from .utils import timeit, Config
 from .dmtime import DmTime
@@ -59,7 +61,6 @@ def dedisperse_spec(
     basename = os.path.basename(spectrum.filename).split(".")[0]
     result = []
     for idx, dmt in enumerate(data.dm_times[:-1]):
-        dmt = dmt.reshape(data.shape[0], data.shape[1])
         tstart = idx * t_sample
         tend = (idx + 1) * t_sample
         result.append(
@@ -346,7 +347,6 @@ def dedispered_fil(
     basename = os.path.basename(file_path).split(".")[0]
     result = []
     for idx, dmt in enumerate(data.dm_times[:-1]):
-        dmt = dmt.reshape(data.shape[0], data.shape[1])
         tstart = idx * t_sample
         tend = (idx + 1) * t_sample
         result.append(

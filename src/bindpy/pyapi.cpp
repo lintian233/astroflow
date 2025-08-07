@@ -3,7 +3,7 @@
 
 namespace py = pybind11;
 
-dedisperseddata dedispered_fil(std::string filename, float dm_low,
+dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
                                float dm_high, float freq_start, float freq_end,
                                float dm_step, int time_downsample,
                                float t_sample, int target, std::string mask_file) {
@@ -49,6 +49,51 @@ dedisperseddata dedispered_fil(std::string filename, float dm_low,
   }
   }
 };
+
+void bind_dedispersed_data_uint8(py::module &m, const char *class_name = "DedispersedDataUint8")
+{
+    using Data = dedisperseddata_uint8;
+    using T    = uint8_t;
+
+    py::class_<Data>(m, class_name)
+        .def(py::init<>())
+
+        // list[np.ndarray]，每个 ndarray 形状 (512, 512, 3)，dtype=uint8
+        .def_property_readonly("dm_times",
+            [](const Data &data) {
+                py::list out;
+                if (data.shape.size() != 3)
+                    throw std::runtime_error("shape must be {H,W,C}");
+
+                ssize_t H = data.shape[0];
+                ssize_t W = data.shape[1];
+                ssize_t C = data.shape[2];
+                std::vector<ssize_t> shape   = {H, W, C};
+                std::vector<ssize_t> strides = {W*C*sizeof(T),
+                                                C*sizeof(T),
+                                                sizeof(T)};
+
+                for (auto &ptr : data.dm_times) {
+                    auto sp = new std::shared_ptr<T[]>(ptr);
+                    py::capsule cap(sp, [](void *p) {
+                        delete static_cast<std::shared_ptr<T[]>*>(p);
+                    });
+                    int sum = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<ssize_t>());
+                    out.append(py::array_t<T>(shape, strides, ptr.get(), cap));
+                }
+                return out;
+            })
+
+        .def_readonly("shape",               &Data::shape)
+        .def_readonly("dm_ndata",            &Data::dm_ndata)
+        .def_readonly("downtsample_ndata",   &Data::downtsample_ndata)
+        .def_readonly("dm_low",              &Data::dm_low)
+        .def_readonly("dm_high",             &Data::dm_high)
+        .def_readonly("dm_step",             &Data::dm_step)
+        .def_readonly("tsample",             &Data::tsample)
+        .def_readonly("filname",             &Data::filname);
+}
+
 
 template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name) {
@@ -211,7 +256,7 @@ void bind_header(py::module &m) {
 }
 
 template <typename T>
-dedisperseddata
+dedisperseddata_uint8
 dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
                    float dm_step, int time_downsample, float t_sample, std::string mask_file) {
@@ -228,19 +273,19 @@ dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                                     time_downsample, t_sample, mask_file);
 }
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedisperse_spec_py<uint8_t>(py::array_t<uint8_t> data, Header header,
                             float dm_low, float dm_high, float freq_start,
                             float freq_end, float dm_step, int time_downsample,
                             float t_sample, std::string mask_file);
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedisperse_spec_py<uint16_t>(py::array_t<uint16_t> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,
                              float t_sample, std::string mask_file);
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedisperse_spec_py<uint32_t>(py::array_t<uint32_t> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,

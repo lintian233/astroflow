@@ -78,7 +78,15 @@ else
 fi
 
 cd "$build_dir" && \
-conan install .. --output-folder=. --build=missing && \
+
+conan install .. \
+    --output-folder=. \
+    --build=missing \
+    -s build_type=Release \
+    -c tools.system.package_manager:mode=install \
+    -c tools.system.package_manager:sudo=True   
+    && \
+
 source conanbuild.sh && \
 cmake .. -DCMAKE_BUILD_TYPE=Release && \
 make -j 16 && \

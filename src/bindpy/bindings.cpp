@@ -13,6 +13,7 @@ namespace py = pybind11;
 PYBIND11_MODULE(_astroflow_core, m) {
 
   bind_dedispersed_data<uint64_t>(m, "DedisperedData");
+  bind_dedispersed_data_uint8(m, "DedispersedDataUint8");
   bind_filterbank(m);
   bind_spectrum<uint8_t>(m, "Spectrum8");
   bind_spectrum<uint16_t>(m, "Spectrum16");

@@ -15,14 +15,14 @@ namespace py = pybind11;
 #define CPU_TARGET 0
 #define GPU_TARGET 1
 
-dedisperseddata dedispered_fil(std::string filename, float dm_low,
+dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
                                float dm_high, float freq_start, float freq_end,
                                float dm_step = 1, int time_downsample = 64,
                                float t_sample = 0.5, int target = 0,
                                  std::string mask_file = "mask.txt");
 
 template <typename T>
-dedisperseddata
+dedisperseddata_uint8 
 dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
                    float dm_step, int time_downsample, float t_sample,
@@ -35,6 +35,8 @@ Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
 
 template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name);
+
+void bind_dedispersed_data_uint8(py::module &m, const char *class_name);
 
 void bind_filterbank(py::module &m);
 
