@@ -6,6 +6,7 @@ include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
 
 # 启用CUDA支持
 enable_language(CUDA)
+find_package(OpenCV COMPONENTS core imgproc imgcodecs REQUIRED)
 find_package(pybind11 REQUIRED)
 find_package(GTest REQUIRED)
 
@@ -43,6 +44,8 @@ add_library(${TARGET_NAME} SHARED  ${SRC_FILES} ${SRC_BIND})
 target_link_libraries(${TARGET_NAME}
     PRIVATE 
         pybind11::module
+        opencv_core
+        opencv_imgproc
 )
 
 target_include_directories(${TARGET_NAME} PRIVATE
@@ -85,6 +88,8 @@ target_include_directories(${TEST_EXECUTABLE_NAME} PRIVATE
 target_link_libraries(${TEST_EXECUTABLE_NAME} PRIVATE
     gtest::gtest
     pybind11::embed
+    opencv_core
+    opencv_imgproc
 )
 
 include(GoogleTest)

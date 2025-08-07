@@ -180,14 +180,13 @@ def split_dmt_by_toa(dmts, toa, min_gap=0.0):
     return pulse, bg_pool
 
 def save_dmt_image(dmt, out_path, vmin_pct=0, vmax_pct=100):
-    img = np.array(dmt.data, dtype=np.float32)          # type: ignore
-    vmin, vmax = np.percentile(img, vmin_pct), np.percentile(img, vmax_pct)
-    img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_AREA)
-    # 如需统一对比度，可启用下一行：
-    # img = np.clip(img, vmin, vmax)
-    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+    # img = np.array(dmt.data, dtype=np.float32)          # type: ignore
+    # vmin, vmax = np.percentile(img, vmin_pct), np.percentile(img, vmax_pct)
+    # img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_AREA)
+    # img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    # img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    # img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+    img = dmt.data
     cv2.imwrite(out_path, img)
 
 def gen_label(dm, toa, imgsize, dm_low, dm_high, t_start, t_end):

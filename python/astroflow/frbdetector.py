@@ -105,7 +105,8 @@ class Yolo11nFrbDetector(FrbDetector):
         model = self.model
         npy_dmt_list = []
         for dmt in dmt_list:
-            img = self._preprocess(dmt.data)
+            # img = self._preprocess(dmt.data)
+            img = dmt.data
             npy_dmt_list.append(img)
         
         candidate = []

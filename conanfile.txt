@@ -1,6 +1,22 @@
 [requires]
 pybind11/2.13.6
 gtest/1.16.0
+opencv/4.12.0   
+
+[options]
+opencv/*:with_gtk=False
+opencv/*:with_qt=False
+opencv/*:with_highgui=False
+opencv/*:with_videoio=False
+opencv/*:with_ffmpeg=False
+opencv/*:with_gstreamer=False
+opencv/*:with_v4l=False
+opencv/*:with_gtk=False
+opencv/*:with_qt=False
+opencv/*:with_wayland=False
+xkbcommon/*:enable_tools=False
+xkbcommon/*:enable_x11=False
+xkbcommon/*:enable_wayland=False
 
 [tool_requires]
 cmake/3.31.6
@@ -8,4 +24,3 @@ cmake/3.31.6
 [generators]
 CMakeToolchain
 CMakeDeps
-

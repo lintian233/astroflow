@@ -602,9 +602,8 @@ def _load_data_file(file_path: str):
 def _prepare_dm_data(dmt: DmTime):
     """Prepare DM-Time data for plotting."""
     dm_data = np.array(dmt.data, dtype=np.float32)
-    dm_data = cv2.resize(dm_data, (512, 512), interpolation=cv2.INTER_AREA)
-    dm_data = cv2.normalize(dm_data, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-    
+    dm_data = cv2.cvtColor(dm_data,cv2.COLOR_BGR2GRAY)
+    dm_data = cv2.normalize(dm_data, None, 0, 255, cv2.NORM_MINMAX)
     time_axis = np.linspace(dmt.tstart, dmt.tend, dm_data.shape[1])
     dm_axis = np.linspace(dmt.dm_low, dmt.dm_high, dm_data.shape[0])
     
@@ -631,7 +630,8 @@ def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, 
     ax_time = fig.add_subplot(gs[0, 0])
     ax_main = fig.add_subplot(gs[1, 0], sharex=ax_time)
     ax_dm = fig.add_subplot(gs[1, 1], sharey=ax_main)
-    
+
+
     # Main DM-Time plot
     ax_main.imshow(
         dm_data,

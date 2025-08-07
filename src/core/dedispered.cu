@@ -75,7 +75,7 @@ pre_calculate_dedispersion_kernel(int *delay_table, float dm_low, float dm_high,
 }
 
 template <typename T>
-dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
+dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample, std::string mask_file) {
@@ -269,28 +269,28 @@ dedisperseddata dedispered_fil_cuda(Filterbank &fil, float dm_low,
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
 
-  return result;
+  return preprocess_dedisperseddata(result);
 }
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
                              float freq_start, float freq_end, float dm_step,
                              int ref_freq, int time_downsample, float t_sample, std::string mask_file);
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedispered_fil_cuda<uint16_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
                               float t_sample, std::string mask_file);
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
                               float t_sample, std::string mask_file);
 
 template <typename T>
-dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
+dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                                 float dm_high, float freq_start, float freq_end,
                                 float dm_step, int ref_freq,
                                 int time_downsample, float t_sample, std::string mask_file) { 
@@ -491,21 +491,21 @@ dedisperseddata dedisperse_spec(T *data, Header header, float dm_low,
   result.filname = header.filename;
   result.dm_ndata = dm_steps;
 
-  return result;
+  return preprocess_dedisperseddata(result);
 }
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedisperse_spec<uint8_t>(uint8_t *data, Header header, float dm_low,
                          float dm_high, float freq_start, float freq_end,
                          float dm_step, int ref_freq, int time_downsample,
                          float t_sample, std::string mask_file);
 
-template dedisperseddata
+template dedisperseddata_uint8
 dedisperse_spec<uint16_t>(uint16_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
                           float t_sample, std::string mask_file);
-template dedisperseddata
+template dedisperseddata_uint8
 dedisperse_spec<uint32_t>(uint32_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,

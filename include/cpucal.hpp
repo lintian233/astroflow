@@ -70,7 +70,7 @@ namespace cpucal {
  * 3. 对目标时间点的信号进行累加，得到去色散后的信号。
  */
 template <typename T>
-dedisperseddata
+dedisperseddata_uint8
 dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
                    float freq_start, float freq_end, float dm_step = 1,
                    int ref_freq = REF_FREQ_END, int time_downsample = 64,
@@ -194,7 +194,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
 
-  return result;
+  return preprocess_dedisperseddata(result, 512);
 }
 
 template <typename T>
