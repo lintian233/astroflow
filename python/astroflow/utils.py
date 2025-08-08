@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing
 
+from .io.data import Header, SpectrumBase
 
 def timeit(func):
     def wrapper(*args, **kwargs):
@@ -13,6 +14,26 @@ def timeit(func):
         return result
 
     return wrapper
+
+def get_freq_end_toa(header: Header, ref_freq: float, ref_freq_toa: float, dm: float) -> float:
+    """Convert TOA from reference frequency to header's freq_end frequency.
+    
+    Args:
+        header: Header object containing frequency information
+        ref_freq: Reference frequency where ref_freq_toa is measured
+        ref_freq_toa: Time of arrival at reference frequency
+        dm: Dispersion measure value
+        
+    Returns:
+        Time of arrival at header's freq_end frequency
+    """
+    DISPERSION_CONSTANT = 4148.808
+    fch1 = header.fch1
+    foff = header.foff
+    nchan = header.nchans
+    freq_end = fch1 + foff * (nchan - 1)
+    time_latency = DISPERSION_CONSTANT * dm * (1 / (ref_freq**2) - 1 / (freq_end**2))
+    return ref_freq_toa - time_latency
 
 
 class SingleDmConfig:

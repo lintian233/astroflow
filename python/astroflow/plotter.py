@@ -19,6 +19,7 @@ from .dmtime import DmTime
 from .io.filterbank import Filterbank
 from .io.psrfits import PsrFits
 from .spectrum import Spectrum
+from .utils import get_freq_end_toa
 
 # Gaussian kernel
 
@@ -868,10 +869,10 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         interpolation='nearest'  # Use nearest neighbor to preserve subband structure
     )
     
-    # Add TOA line to main spectrum plot
-    if toa is not None:
-        ax_spec.axvline(toa, color='white', linestyle='--', linewidth=0.8, 
-                       alpha=0.8, label='TOA')
+    # # Add TOA line to main spectrum plot
+    # if toa is not None:
+    #     ax_spec.axvline(toa, color='white', linestyle='--', linewidth=0.8, 
+    #                    alpha=0.8, label='TOA')
     
     # Add grid to show subband boundaries
     for i in range(1, n_freq_subbands):
@@ -952,7 +953,7 @@ def plot_candidate(
         try:
             origin_data = _load_data_file(file_path)
             header = origin_data.header()
-            
+            ref_toa = get_freq_end_toa(origin_data.header(), freq_end, toa, dm)
             # First pass: get initial spectrum for pulse width estimation
             time_band_ms = specconfig.get("tband", 50)
             initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp)  # Use fallback window
@@ -970,6 +971,8 @@ def plot_candidate(
             snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
                 initial_spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
             )
+
+            peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
             
             peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
 
