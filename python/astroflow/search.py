@@ -237,9 +237,6 @@ def muti_pulsar_search(
             origin_data.header(),candinfo[3], toa, dm
         )
         candinfo.append(ref_toa)
-        logger.info(
-            f"Found FRB in {file_basename} at DM: {candinfo[0]} at time: {candinfo[1]}"
-        )
         plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, detect_dir, file)
     del origin_data
     return candidate

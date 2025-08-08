@@ -84,8 +84,7 @@ conan install .. \
     --build=missing \
     -s build_type=Release \
     -c tools.system.package_manager:mode=install \
-    -c tools.system.package_manager:sudo=True   
-    && \
+    -c tools.system.package_manager:sudo=True && \
 
 source conanbuild.sh && \
 cmake .. -DCMAKE_BUILD_TYPE=Release && \

@@ -20,6 +20,81 @@
   }
 
 namespace gpucal {
+
+// Shared memory based dedispersion kernel implementing Algorithm 3
+template <typename T>
+__global__ void
+dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
+                                  size_t dm_steps, int time_downsample, 
+                                  size_t ndata, size_t nchans, 
+                                  size_t chan_start, size_t chan_end,
+                                  size_t start, size_t down_ndata,
+                                  size_t shared_mem_size) {
+  
+  // Get thread and block indices
+  size_t dmidx = blockIdx.y;
+  size_t tidx = blockIdx.x * blockDim.x + threadIdx.x;
+  
+  if (dmidx >= dm_steps || tidx >= down_ndata) {
+    return;
+  }
+  
+  // Shared memory buffer to store local copy of x(f,t)
+  extern __shared__ char shared_buffer[];
+  T* Bloc = reinterpret_cast<T*>(shared_buffer);
+  
+  // Initialize local accumulator
+  uint64_t Sloc = 0;
+  
+  // Initial time index
+  size_t Tini = start + blockIdx.x * blockDim.x * time_downsample;
+  
+  // Calculate number of channels per iteration
+  size_t Dch = (chan_end - chan_start + 1);
+  size_t Nch = min(shared_mem_size / blockDim.x, Dch);
+  
+  // Process channels in chunks
+  for (size_t c = 0; c < Dch; c += Nch) {
+    size_t channels_this_iter = min(Nch, Dch - c);
+    
+    // Data segment is stored into shared memory
+    for (size_t ch_offset = 0; ch_offset < channels_this_iter; ++ch_offset) {
+      size_t chan = chan_start + c + ch_offset;
+      if (chan < chan_end && threadIdx.x < blockDim.x) {
+        // Calculate the time index with dedispersion delay
+        size_t delay = delay_table[dmidx * Dch + chan - chan_start];
+        size_t time_idx = Tini + threadIdx.x * time_downsample + delay;
+        
+        // Bounds checking
+        if (time_idx < ndata) {
+          Bloc[ch_offset * blockDim.x + threadIdx.x] = 
+            input[chan + time_idx * nchans];
+        } else {
+          Bloc[ch_offset * blockDim.x + threadIdx.x] = 0;
+        }
+      }
+    }
+    
+    // Synchronize threads
+    __syncthreads();
+    
+    // Dedisperse local data into accumulators
+    for (size_t l = 0; l < channels_this_iter; ++l) {
+      if (threadIdx.x < blockDim.x) {
+        Sloc += Bloc[l * blockDim.x + threadIdx.x];
+      }
+    }
+    
+    // Synchronize before next iteration
+    __syncthreads();
+  }
+  
+  // Store local results into output DM(dm,t)
+  if (tidx < down_ndata) {
+    output[dmidx * down_ndata + tidx] = Sloc;
+  }
+}
+
 template <typename T>
 __global__ void
 dedispersion_kernel(uint64_t *output, T *input, int *delay_table,
@@ -30,6 +105,8 @@ dedispersion_kernel(uint64_t *output, T *input, int *delay_table,
   size_t down_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (dmidx >= dm_steps)
     return;
+
+    
   if (down_idx >= down_ndata)
     return;
 
@@ -78,7 +155,8 @@ template <typename T>
 dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
-                                    int time_downsample, float t_sample, std::string mask_file) {
+                                    int time_downsample, float t_sample, 
+                                    std::string mask_file, bool use_shared_memory) {
 
   // get all cuda devices
   int device_count;
@@ -91,7 +169,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   if (device_count == 1) {
     device_id = 0;
   } else if (device_count == 4) {
-    device_id = 1;
+    device_id = 2;
   } else {
     device_id = 0;
   }
@@ -101,7 +179,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   printf("Using device %d: %s\n", device_id, device_prop.name);
 
   CHECK_CUDA(cudaSetDevice(device_id));
-  // check if the device is compatible
 
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
@@ -114,6 +191,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
              freq_start, freq_end, fil_freq_min, fil_freq_max);
     throw std::invalid_argument(error_msg);
   }
+  
   size_t chan_start =
       static_cast<size_t>((freq_start - fil_freq_min) /
                           (fil_freq_max - fil_freq_min) * (fil.nchans - 1));
@@ -131,32 +209,14 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
              chan_end, fil.nchans);
     throw std::invalid_argument(error_msg);
   }
-  if (time_downsample < 1) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Invalid time_downsample value %d, "
-             "must be greater than 1",
-             time_downsample);
-    throw std::invalid_argument(error_msg);
-  }
-  if (dm_low > dm_high || dm_low < 0 || dm_step <= 0) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Invalid DM range [%.3f-%.3f] with step %.3f", dm_low, dm_high,
-             dm_step);
-  }
-  if (t_sample > fil.ndata * fil.tsamp) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Invalid t_sample value %.3f, must be less than %.3f", t_sample,
-             fil.ndata * fil.tsamp);
-  }
 
   const size_t nchans = fil.nchans;
   const size_t dm_steps = static_cast<size_t>((dm_high - dm_low) / dm_step) + 1;
-
   const float ref_freq_value = ref_freq ? fil.frequency_table[chan_end]
                                         : fil.frequency_table[chan_start];
+
+  // Calculate the full downsampled time dimensions
+  const size_t down_ndata = (fil.ndata + time_downsample - 1) / time_downsample;
 
   int *d_delay_table;
   CHECK_CUDA(cudaMallocManaged(
@@ -177,20 +237,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
-  // check the delay table
-  int *delay_table = new int[dm_steps * (chan_end - chan_start + 1)];
-  CHECK_CUDA(cudaMemcpy(delay_table, d_delay_table,
-                        dm_steps * (chan_end - chan_start + 1) * sizeof(int),
-                        cudaMemcpyDeviceToHost));
-  // PRINT_ARR(delay_table, dm_steps * (chan_end - chan_start + 1));
-
-  const size_t samples_per_tsample =
-      static_cast<size_t>(std::round(t_sample / fil.tsamp));
-  const size_t total_slices =
-      (fil.ndata + samples_per_tsample - 1) / samples_per_tsample;
-
-  const size_t down_ndata_t =
-      (samples_per_tsample + time_downsample - 1) / time_downsample;
 
   T *d_input;
   uint64_t *d_output;
@@ -199,101 +245,82 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   rfi_marker.mark_rfi(data, fil.nchans, fil.ndata);
 
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint64_t)));
-  CHECK_CUDA(
-      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
+  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
 
   CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
-  dedisperseddata result;
+  printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
 
-  std::vector<std::shared_ptr<uint64_t[]>> dm_times;
-  float total_time = fil.ndata * fil.tsamp;
-  printf("Total time: %.3f s\n", total_time);
-  for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
-    const size_t start = slice_idx * samples_per_tsample;
-    const size_t end =
-        std::min(start + samples_per_tsample, static_cast<size_t>(fil.ndata));
-    const size_t slice_duration = end - start;
-    const size_t down_ndata =
-        (slice_duration + time_downsample - 1) / time_downsample;
-    // printf("ndata: %zu\n", fil.ndata);
-    // printf("totolidx: %zu\n", fil.ndata * fil.nchans);
-    // printf("current times: %.3f s\n", start * fil.tsamp);
-    // printf("current slice_idx: %zu\n", slice_idx);
-    // printf("end_time: %.3f s\n", end * fil.tsamp);
-    // printf("current_idata: %zu\n", start * fil.nchans);
-    // printf("current_slice_duration: %zu\n", slice_duration);
-    // printf("end_idata: %zu\n", end * fil.nchans);
+  int THREADS_PER_BLOCK = 256;
+  dim3 threads(THREADS_PER_BLOCK);
+  dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
 
-    if (slice_idx == 0) {
-      result.downtsample_ndata = down_ndata;
-      result.shape = {dm_steps, down_ndata};
-      // PRINT_VAR(down_ndata);
-      // PRINT_VAR(result.shape[0]);
-      // PRINT_VAR(result.shape[1]);
-    }
-    CHECK_CUDA(
-        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
-
-    int THREADS_PER_BLOCK = 256;
-    dim3 threads(THREADS_PER_BLOCK);
-    dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
-
+  if (use_shared_memory) {
+    // Calculate shared memory size needed
+    size_t max_shared_mem = device_prop.sharedMemPerBlock;
+    size_t shared_mem_size = std::min(max_shared_mem / sizeof(T), 
+                                     (chan_end - chan_start + 1) * THREADS_PER_BLOCK);
+    
+    // Ensure we don't exceed shared memory limits
+    size_t actual_shared_mem = shared_mem_size * sizeof(T);
+    
+    printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
+    
+    dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
+        d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
+        nchans, chan_start, chan_end, 0, down_ndata, shared_mem_size);
+  } else {
+    printf("Using global memory kernel\n");
     dedispersion_kernel<T><<<grids, threads>>>(
         d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
-        nchans, chan_start, chan_end, start, down_ndata);
-
-    CHECK_CUDA(cudaGetLastError());
-    CHECK_CUDA(cudaDeviceSynchronize());
-
-    auto dm_array = std::shared_ptr<uint64_t[]>(
-        new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata_t](),
-        [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
-
-    CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                          dm_steps * down_ndata * sizeof(uint64_t),
-                          cudaMemcpyDeviceToHost));
-
-    dm_times.emplace_back(std::move(dm_array));
+        nchans, chan_start, chan_end, 0, down_ndata);
   }
+
+  CHECK_CUDA(cudaGetLastError());
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  // Copy back the full result
+  auto dm_array = std::shared_ptr<uint64_t[]>(
+      new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata](),
+      [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
+
+  CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
+                        dm_steps * down_ndata * sizeof(uint64_t),
+                        cudaMemcpyDeviceToHost));
+
   CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
+  CHECK_CUDA(cudaFree(d_delay_table));
+  CHECK_CUDA(cudaFree(d_freq_table));
 
-  result.dm_times = std::move(dm_times);
+  // Create single large dedisperseddata with all time samples
+  dedisperseddata result;
+  result.dm_times.emplace_back(std::move(dm_array));
   result.dm_low = dm_low;
   result.dm_high = dm_high;
   result.dm_step = dm_step;
   result.tsample = t_sample;
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
+  result.downtsample_ndata = down_ndata;
+  result.shape = {dm_steps, down_ndata};
 
-  return preprocess_dedisperseddata(result);
+  printf("Full dedispersion completed. Now applying preprocessing with slicing...\n");
+  // 对于Filterbank，需要构造Header结构
+  Header temp_header;
+  temp_header.tsamp = fil.tsamp;
+  temp_header.filename = fil.filename;
+  return preprocess_dedisperseddata_with_slicing(result, temp_header, time_downsample, t_sample);
 }
-
-template dedisperseddata_uint8
-dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
-                             float freq_start, float freq_end, float dm_step,
-                             int ref_freq, int time_downsample, float t_sample, std::string mask_file);
-
-template dedisperseddata_uint8
-dedispered_fil_cuda<uint16_t>(Filterbank &fil, float dm_low, float dm_high,
-                              float freq_start, float freq_end, float dm_step,
-                              int ref_freq, int time_downsample,
-                              float t_sample, std::string mask_file);
-
-template dedisperseddata_uint8
-dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
-                              float freq_start, float freq_end, float dm_step,
-                              int ref_freq, int time_downsample,
-                              float t_sample, std::string mask_file);
 
 template <typename T>
 dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                                 float dm_high, float freq_start, float freq_end,
                                 float dm_step, int ref_freq,
-                                int time_downsample, float t_sample, std::string mask_file) { 
+                                int time_downsample, float t_sample, 
+                                std::string mask_file, bool use_shared_memory) { 
   // get all cuda devices
   int device_count;
   CHECK_CUDA(cudaGetDeviceCount(&device_count));
@@ -305,7 +332,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   if (device_count == 1) {
     device_id = 0;
   } else if (device_count == 4) {
-    device_id = 1;
+    device_id = 2;
   } else {
     device_id = 0;
   }
@@ -315,11 +342,8 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   printf("Using device %d: %s\n", device_id, device_prop.name);
 
   CHECK_CUDA(cudaSetDevice(device_id));
-  // check if the device is compatible
   
-  
-  
-                                  // Calculate frequency table from header info
+  // Calculate frequency table from header info
   const size_t nchans = header.nchans;
   std::vector<double> frequency_table(nchans);
   float fch1 = header.fch1;
@@ -358,34 +382,12 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     throw std::invalid_argument(error_msg);
   }
 
-  if (time_downsample < 1) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Invalid time_downsample value %d, "
-             "must be greater than or equal to 1",
-             time_downsample);
-    throw std::invalid_argument(error_msg);
-  }
-
-  if (dm_low > dm_high || dm_low < 0 || dm_step <= 0) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Invalid DM range [%.3f-%.3f] with step %.3f", dm_low, dm_high,
-             dm_step);
-    throw std::invalid_argument(error_msg);
-  }
-
-  if (t_sample > header.ndata * header.tsamp) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Invalid t_sample value %.3f, must be less than %.3f", t_sample,
-             header.ndata * header.tsamp);
-    throw std::invalid_argument(error_msg);
-  }
-
   const size_t dm_steps = static_cast<size_t>((dm_high - dm_low) / dm_step) + 1;
   const float ref_freq_value =
       ref_freq ? frequency_table[chan_end] : frequency_table[chan_start];
+
+  // Calculate the full downsampled time dimensions
+  const size_t down_ndata = (header.ndata + time_downsample - 1) / time_downsample;
 
   // Allocate and initialize delay table on GPU
   int *d_delay_table;
@@ -409,72 +411,56 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 
-  // Process data in slices
-  const size_t samples_per_tsample =
-      static_cast<size_t>(std::round(t_sample / header.tsamp));
-  const size_t total_slices =
-      (header.ndata + samples_per_tsample - 1) / samples_per_tsample;
-
-  const size_t down_ndata_t =
-      (samples_per_tsample + time_downsample - 1) / time_downsample;
-
   RfiMarker<T> rfi_marker(mask_file);
   rfi_marker.mark_rfi(data, header.nchans, header.ndata);
 
   T *d_input;
   uint64_t *d_output;
-  PRINT_VAR(header.ndata * nchans * sizeof(T));
-  PRINT_VAR(header.ndata);
-  PRINT_VAR(nchans);
-  PRINT_VAR(sizeof(T));
   CHECK_CUDA(cudaMalloc(&d_input, header.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata_t * sizeof(uint64_t)));
-  CHECK_CUDA(
-      cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
+  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
 
   CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
-  dedisperseddata result;
-  std::vector<std::shared_ptr<uint64_t[]>> dm_times;
+  printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
 
-  for (size_t slice_idx = 0; slice_idx < total_slices - 1; ++slice_idx) {
-    const size_t start = slice_idx * samples_per_tsample;
-    const size_t end = std::min(start + samples_per_tsample,
-                                static_cast<size_t>(header.ndata));
-    const size_t slice_duration = end - start;
-    const size_t down_ndata =
-        (slice_duration + time_downsample - 1) / time_downsample;
+  int THREADS_PER_BLOCK = 256;
+  dim3 threads(THREADS_PER_BLOCK);
+  dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
 
-    if (slice_idx == 0) {
-      result.downtsample_ndata = down_ndata;
-      result.shape = {dm_steps, down_ndata};
-    }
-
-    CHECK_CUDA(
-        cudaMemset(d_output, 0, dm_steps * down_ndata_t * sizeof(uint64_t)));
-
-    int THREADS_PER_BLOCK = 256;
-    dim3 threads(THREADS_PER_BLOCK);
-    dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
-
+  if (use_shared_memory) {
+    // Calculate shared memory size needed
+    size_t max_shared_mem = device_prop.sharedMemPerBlock;
+    size_t shared_mem_size = std::min(max_shared_mem / sizeof(T), 
+                                     (chan_end - chan_start + 1) * THREADS_PER_BLOCK);
+    
+    // Ensure we don't exceed shared memory limits
+    size_t actual_shared_mem = shared_mem_size * sizeof(T);
+    
+    printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
+    
+    dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
+        d_output, d_input, d_delay_table, dm_steps, time_downsample, header.ndata,
+        nchans, chan_start, chan_end, 0, down_ndata, shared_mem_size);
+  } else {
+    printf("Using global memory kernel\n");
     dedispersion_kernel<T><<<grids, threads>>>(
         d_output, d_input, d_delay_table, dm_steps, time_downsample,
-        header.ndata, nchans, chan_start, chan_end, start, down_ndata);
-    PRINT_VAR(slice_idx);
-    CHECK_CUDA(cudaGetLastError());
-    CHECK_CUDA(cudaDeviceSynchronize());
-
-    auto dm_array = std::shared_ptr<uint64_t[]>(
-        new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata_t](),
-        [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
-
-    CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                          dm_steps * down_ndata * sizeof(uint64_t),
-                          cudaMemcpyDeviceToHost));
-
-    dm_times.emplace_back(std::move(dm_array));
+        header.ndata, nchans, chan_start, chan_end, 0, down_ndata);
   }
+
+  CHECK_CUDA(cudaGetLastError());
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  // Copy back the full result
+  auto dm_array = std::shared_ptr<uint64_t[]>(
+      new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata](),
+      [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
+
+  CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
+                        dm_steps * down_ndata * sizeof(uint64_t),
+                        cudaMemcpyDeviceToHost));
 
   // Clean up GPU resources
   CHECK_CUDA(cudaFree(d_input));
@@ -482,33 +468,57 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
 
-  // Fill result structure
-  result.dm_times = std::move(dm_times);
+  // Create single large dedisperseddata with all time samples
+  dedisperseddata result;
+  result.dm_times.emplace_back(std::move(dm_array));
   result.dm_low = dm_low;
   result.dm_high = dm_high;
   result.dm_step = dm_step;
   result.tsample = t_sample;
   result.filname = header.filename;
   result.dm_ndata = dm_steps;
+  result.downtsample_ndata = down_ndata;
+  result.shape = {dm_steps, down_ndata};
 
-  return preprocess_dedisperseddata(result);
+  printf("Full dedispersion completed. Now applying preprocessing with slicing...\n");
+  return preprocess_dedisperseddata_with_slicing(result, header, time_downsample, t_sample);
+
 }
+
+template dedisperseddata_uint8
+dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
+                             float freq_start, float freq_end, float dm_step,
+                             int ref_freq, int time_downsample, float t_sample, 
+                             std::string mask_file, bool use_shared_memory);
+
+template dedisperseddata_uint8
+dedispered_fil_cuda<uint16_t>(Filterbank &fil, float dm_low, float dm_high,
+                              float freq_start, float freq_end, float dm_step,
+                              int ref_freq, int time_downsample,
+                              float t_sample, std::string mask_file, bool use_shared_memory);
+
+template dedisperseddata_uint8
+dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
+                              float freq_start, float freq_end, float dm_step,
+                              int ref_freq, int time_downsample,
+                              float t_sample, std::string mask_file, bool use_shared_memory);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint8_t>(uint8_t *data, Header header, float dm_low,
                          float dm_high, float freq_start, float freq_end,
                          float dm_step, int ref_freq, int time_downsample,
-                         float t_sample, std::string mask_file);
+                         float t_sample, std::string mask_file, bool use_shared_memory);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint16_t>(uint16_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
-                          float t_sample, std::string mask_file);
+                          float t_sample, std::string mask_file, bool use_shared_memory);
+                          
 template dedisperseddata_uint8
 dedisperse_spec<uint32_t>(uint32_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
-                          float t_sample, std::string mask_file);
+                          float t_sample, std::string mask_file, bool use_shared_memory);
 
 } // namespace gpucal

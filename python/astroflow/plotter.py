@@ -19,6 +19,7 @@ from .dmtime import DmTime
 from .io.filterbank import Filterbank
 from .io.psrfits import PsrFits
 from .spectrum import Spectrum
+from .utils import get_freq_end_toa
 
 # Gaussian kernel
 
@@ -932,7 +933,7 @@ def plot_candidate(
         try:
             origin_data = _load_data_file(file_path)
             header = origin_data.header()
-            
+            ref_toa = get_freq_end_toa(origin_data.header(), freq_end, toa, dm)
             # First pass: get initial spectrum for pulse width estimation
             time_band_ms = specconfig.get("tband", 50)
             initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp)  # Use fallback window
@@ -950,6 +951,8 @@ def plot_candidate(
             snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
                 initial_spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
             )
+
+            peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
             
             peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
             # Now calculate proper spectrum window based on pulse width (50 × pulse_width)

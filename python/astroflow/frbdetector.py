@@ -63,7 +63,7 @@ class BinaryChecker(ABC):
 class Yolo11nFrbDetector(FrbDetector):
     def __init__(self, dm_limt=None, preprocess=None, confidence=0.5, batch_size=1024):
         super().__init__(dm_limt, preprocess, confidence)
-        self.device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         print(
             f"Using device: {self.device} NAME: {torch.cuda.get_device_name(self.device)}"
         )
