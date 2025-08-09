@@ -23,15 +23,14 @@
 
 namespace gpucal {
 
-// Shared memory based dedispersion kernel implementing Algorithm 3
+// Shared memory based dedispersion kernel implementing Algorithm 3 (adapted for pre-binned data)
 template <typename T>
 __global__ void
 dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
                                   size_t dm_steps, int time_downsample, 
-                                  size_t ndata, size_t nchans, 
+                                  size_t down_ndata, size_t nchans, 
                                   size_t chan_start, size_t chan_end,
-                                  size_t start, size_t down_ndata,
-                                  size_t shared_mem_size) {
+                                  size_t start, size_t shared_mem_size) {
   
   // Get thread and block indices
   size_t dmidx = blockIdx.y;
@@ -48,8 +47,8 @@ dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
   // Initialize local accumulator
   uint64_t Sloc = 0;
   
-  // Initial time index
-  size_t Tini = start + blockIdx.x * blockDim.x * time_downsample;
+  // Initial time index (already in downsampled space)
+  size_t Tini = start + blockIdx.x * blockDim.x;
   
   // Calculate number of channels per iteration
   size_t Dch = (chan_end - chan_start + 1);
@@ -63,12 +62,13 @@ dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
     for (size_t ch_offset = 0; ch_offset < channels_this_iter; ++ch_offset) {
       size_t chan = chan_start + c + ch_offset;
       if (chan < chan_end && threadIdx.x < blockDim.x) {
-        // Calculate the time index with dedispersion delay
-        size_t delay = delay_table[dmidx * Dch + chan - chan_start];
-        size_t time_idx = Tini + threadIdx.x * time_downsample + delay;
+        // Calculate the time index with dedispersion delay (in downsampled space)
+        int original_delay = delay_table[dmidx * Dch + chan - chan_start];
+        size_t delay_in_bins = original_delay / time_downsample; // 转换为降采样后的延迟
+        size_t time_idx = Tini + threadIdx.x + delay_in_bins;
         
         // Bounds checking
-        if (time_idx < ndata) {
+        if (time_idx < down_ndata) {
           Bloc[ch_offset * blockDim.x + threadIdx.x] = 
             input[chan + time_idx * nchans];
         } else {
@@ -100,33 +100,30 @@ dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
 template <typename T>
 __global__ void
 dedispersion_kernel(uint64_t *output, T *input, int *delay_table,
-                    size_t dm_steps, int time_downsample, size_t ndata,
+                    size_t dm_steps, size_t down_ndata, int time_downsample,
                     size_t nchans, size_t chan_start, size_t chan_end,
-                    size_t start, size_t down_ndata) {
+                    size_t start) {
   size_t dmidx = blockIdx.y;
   size_t down_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (dmidx >= dm_steps)
     return;
-
     
   if (down_idx >= down_ndata)
     return;
 
-  size_t base_idx = down_idx * time_downsample + start;
+  // 在已经降采样的数据上进行去色散
+  size_t base_idx = down_idx + start;
   uint64_t sum = 0;
   for (size_t chan = chan_start; chan < chan_end; ++chan) {
-    size_t target_idx =
-        base_idx +
-        delay_table[dmidx * (chan_end - chan_start + 1) + chan - chan_start];
-    if (target_idx > 0 && target_idx < ndata) {
+    // 延迟表中的延迟已经按照原始tsamp计算，需要除以time_downsample转换为降采样后的延迟
+    int original_delay = delay_table[dmidx * (chan_end - chan_start + 1) + chan - chan_start];
+    size_t delay_in_bins = original_delay / time_downsample; // 参数化的time_downsample
+    size_t target_idx = base_idx + delay_in_bins;
+    
+    if (target_idx < down_ndata) {
       sum += input[chan + target_idx * nchans];
-    } else {
-      sum += 0;
     }
   }
-  /* if (down_idx == 4000) {
-    printf("sum %d\n", sum);
-  } */
   output[dmidx * down_ndata + down_idx] = sum;
 }
 
@@ -151,6 +148,36 @@ pre_calculate_dedispersion_kernel(int *delay_table, float dm_low, float dm_high,
   float delay = 4148.808f * dm * (1.0f / freq_2 - 1.0f / ref_2);
   delay_table[dmidx * (chan_end - chan_start + 1) + chan - chan_start] =
       static_cast<int>(roundf(delay / tsamp));
+}
+
+// 时间分bin降采样kernel - 将连续的时间样本累加到bin中 (优化版本，使用1D配置)
+template <typename T>
+__global__ void
+time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata, 
+                   int time_downsample, size_t down_ndata) {
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t total_elements = nchans * down_ndata;
+  
+  if (idx >= total_elements) {
+    return;
+  }
+  
+  // 计算当前元素的channel和time index
+  size_t chan = idx % nchans;
+  size_t down_idx = idx / nchans;
+  
+  // 计算当前bin的起始和结束时间索引
+  size_t start_time = down_idx * time_downsample;
+  size_t end_time = min(start_time + time_downsample, ndata);
+  
+  // 累加当前bin内的所有时间样本
+  uint64_t sum = 0;
+  for (size_t t = start_time; t < end_time; ++t) {
+    sum += input[chan + t * nchans];
+  }
+  
+  // 存储累加结果
+  output[chan + down_idx * nchans] = static_cast<T>(sum);
 }
 
 template <typename T>
@@ -241,19 +268,52 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaDeviceSynchronize());
 
   T *d_input;
-  uint64_t *d_output;
+  T *d_binned_input; // 存储分bin后的数据
   T *data = static_cast<T *>(fil.data);
   RfiMarker<T> rfi_marker(mask_file);
   rfi_marker.mark_rfi(data, fil.nchans, fil.ndata);
 
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
-  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
-
   CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
+  if (time_downsample > 1) {
+    // 需要进行时间分bin降采样
+    CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata * nchans * sizeof(T)));
+    
+    printf("Performing time binning: %zu -> %zu time samples (factor %d)\n", 
+           fil.ndata, down_ndata, time_downsample);
+    
+    // 使用1D grid配置来避免grid大小限制问题
+    const size_t total_elements = nchans * down_ndata;
+    const int threads_per_block = 256;
+    const size_t blocks_needed = (total_elements + threads_per_block - 1) / threads_per_block;
+    
+    printf("Binning kernel config: %zu total elements, %zu blocks, %d threads per block\n", 
+           total_elements, blocks_needed, threads_per_block);
+    
+    auto binning_start = std::chrono::high_resolution_clock::now();
+    time_binning_kernel<T><<<blocks_needed, threads_per_block>>>(
+        d_binned_input, d_input, nchans, fil.ndata, time_downsample, down_ndata);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+    auto binning_end = std::chrono::high_resolution_clock::now();
+    auto binning_duration = std::chrono::duration_cast<std::chrono::milliseconds>(binning_end - binning_start);
+    printf("Time binning completed in %lld ms\n", binning_duration.count());
+    
+    // 释放原始输入数据
+    CHECK_CUDA(cudaFree(d_input));
+  } else {
+    // 不需要分bin，直接使用原始数据
+    printf("No time binning needed (factor = 1)\n");
+    d_binned_input = d_input;
+  }
+
   printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
+
+  uint64_t *d_output;
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
+  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
 
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
@@ -270,19 +330,19 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     
     printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
     dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
-        d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
-        nchans, chan_start, chan_end, 0, down_ndata, shared_mem_size);
+        d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
+        nchans, chan_start, chan_end, 0, shared_mem_size);
   } else {
     printf("Using global memory kernel\n");
     dedispersion_kernel<T><<<grids, threads>>>(
-        d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
-        nchans, chan_start, chan_end, 0, down_ndata);
+        d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
+        nchans, chan_start, chan_end, 0);
   }
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
   auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-  
+
   printf("Dedispersion completed in %lld ms\n", duration.count());
 
   // Copy back the full result
@@ -294,7 +354,12 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                         dm_steps * down_ndata * sizeof(uint64_t),
                         cudaMemcpyDeviceToHost));
 
-  CHECK_CUDA(cudaFree(d_input));
+  // 清理GPU资源
+  if (time_downsample > 1) {
+    CHECK_CUDA(cudaFree(d_binned_input));
+  } else {
+    CHECK_CUDA(cudaFree(d_input)); // d_binned_input == d_input when no binning
+  }
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
@@ -305,7 +370,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   result.dm_low = dm_low;
   result.dm_high = dm_high;
   result.dm_step = dm_step;
-  result.tsample = t_sample;
+  result.tsample = (time_downsample > 1) ? fil.tsamp * time_downsample : fil.tsamp; // 只有分bin时才更新时间分辨率
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
   result.downtsample_ndata = down_ndata;
@@ -314,9 +379,9 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   printf("Full dedispersion completed. Now applying preprocessing with slicing...\n");
   // 对于Filterbank，需要构造Header结构
   Header temp_header;
-  temp_header.tsamp = fil.tsamp;
+  temp_header.tsamp = (time_downsample > 1) ? fil.tsamp * time_downsample : fil.tsamp; // 只有分bin时才更新时间分辨率
   temp_header.filename = fil.filename;
-  return preprocess_dedisperseddata_with_slicing(result, temp_header, time_downsample, t_sample);
+  return preprocess_dedisperseddata_with_slicing(result, temp_header, 1, t_sample); // time_downsample设为1，因为已经分bin完成或不需要分bin
 }
 
 template <typename T>
@@ -419,15 +484,48 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   rfi_marker.mark_rfi(data, header.nchans, header.ndata);
 
   T *d_input;
-  uint64_t *d_output;
+  T *d_binned_input; // 存储分bin后的数据
   CHECK_CUDA(cudaMalloc(&d_input, header.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
-  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
-
   CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata * nchans * sizeof(T),
                         cudaMemcpyHostToDevice));
 
+  if (time_downsample > 1) {
+    // 需要进行时间分bin降采样
+    CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata * nchans * sizeof(T)));
+    
+    printf("Performing time binning: %zu -> %zu time samples (factor %d)\n", 
+           header.ndata, down_ndata, time_downsample);
+    
+    // 使用1D grid配置来避免grid大小限制问题
+    const size_t total_elements = nchans * down_ndata;
+    const int threads_per_block = 256;
+    const size_t blocks_needed = (total_elements + threads_per_block - 1) / threads_per_block;
+    
+    printf("Binning kernel config: %zu total elements, %zu blocks, %d threads per block\n", 
+           total_elements, blocks_needed, threads_per_block);
+    
+    auto binning_start = std::chrono::high_resolution_clock::now();
+    time_binning_kernel<T><<<blocks_needed, threads_per_block>>>(
+        d_binned_input, d_input, nchans, header.ndata, time_downsample, down_ndata);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+    auto binning_end = std::chrono::high_resolution_clock::now();
+    auto binning_duration = std::chrono::duration_cast<std::chrono::milliseconds>(binning_end - binning_start);
+    printf("Time binning completed in %lld ms\n", binning_duration.count());
+    
+    // 释放原始输入数据
+    CHECK_CUDA(cudaFree(d_input));
+  } else {
+    // 不需要分bin，直接使用原始数据
+    printf("No time binning needed (factor = 1)\n");
+    d_binned_input = d_input;
+  }
+
   printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
+
+  uint64_t *d_output;
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
+  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
 
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
@@ -445,13 +543,13 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
     
     dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
-        d_output, d_input, d_delay_table, dm_steps, time_downsample, header.ndata,
-        nchans, chan_start, chan_end, 0, down_ndata, shared_mem_size);
+        d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
+        nchans, chan_start, chan_end, 0, shared_mem_size);
   } else {
     printf("Using global memory kernel\n");
     dedispersion_kernel<T><<<grids, threads>>>(
-        d_output, d_input, d_delay_table, dm_steps, time_downsample,
-        header.ndata, nchans, chan_start, chan_end, 0, down_ndata);
+        d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
+        nchans, chan_start, chan_end, 0);
   }
 
   CHECK_CUDA(cudaGetLastError());
@@ -467,7 +565,11 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                         cudaMemcpyDeviceToHost));
 
   // Clean up GPU resources
-  CHECK_CUDA(cudaFree(d_input));
+  if (time_downsample > 1) {
+    CHECK_CUDA(cudaFree(d_binned_input));
+  } else {
+    CHECK_CUDA(cudaFree(d_input)); // d_binned_input == d_input when no binning
+  }
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
@@ -478,14 +580,16 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   result.dm_low = dm_low;
   result.dm_high = dm_high;
   result.dm_step = dm_step;
-  result.tsample = t_sample;
+  result.tsample = (time_downsample > 1) ? header.tsamp * time_downsample : header.tsamp; // 只有分bin时才更新时间分辨率
   result.filname = header.filename;
   result.dm_ndata = dm_steps;
   result.downtsample_ndata = down_ndata;
   result.shape = {dm_steps, down_ndata};
 
   printf("Full dedispersion completed. Now applying preprocessing with slicing...\n");
-  return preprocess_dedisperseddata_with_slicing(result, header, time_downsample, t_sample);
+  Header updated_header = header;
+  updated_header.tsamp = (time_downsample > 1) ? header.tsamp * time_downsample : header.tsamp; // 只有分bin时才更新时间分辨率
+  return preprocess_dedisperseddata_with_slicing(result, updated_header, 1, t_sample); // time_downsample设为1，因为已经分bin完成或不需要分bin
 
 }
 
