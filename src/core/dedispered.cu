@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <vector_types.h>
 #include "rfimarker.h"
+// timeit
+#include <chrono>
 
 // cuda atomicAdd
 
@@ -256,7 +258,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
   dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
-
+  auto start_time = std::chrono::high_resolution_clock::now();
   if (use_shared_memory) {
     // Calculate shared memory size needed
     size_t max_shared_mem = device_prop.sharedMemPerBlock;
@@ -267,7 +269,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     size_t actual_shared_mem = shared_mem_size * sizeof(T);
     
     printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
-    
     dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
         d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
         nchans, chan_start, chan_end, 0, down_ndata, shared_mem_size);
@@ -277,9 +278,12 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         d_output, d_input, d_delay_table, dm_steps, time_downsample, fil.ndata,
         nchans, chan_start, chan_end, 0, down_ndata);
   }
-
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+  
+  printf("Dedispersion completed in %lld ms\n", duration.count());
 
   // Copy back the full result
   auto dm_array = std::shared_ptr<uint64_t[]>(
