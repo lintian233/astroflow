@@ -22,7 +22,6 @@ class SingleDmConfig:
         self.freq_end = freq_end
         self.t_sample = t_sample
 
-
 class Config:
     def __init__(
         self,

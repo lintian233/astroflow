@@ -79,6 +79,21 @@ class PlotterManager:
         self.pool.close()
         self.pool.join()
 
+def _parse_candidate_info(candinfo):
+    """Parse candidate information into structured format."""
+    if len(candinfo) == 7:
+        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
+        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, (x, y, w, h)
+    
+    elif len(candinfo) == 6:
+        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
+        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, None
+    else:
+        dm, toa, freq_start, freq_end, dmt_idx = candinfo
+        ref_toa = toa
+        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, None
+
+
 def pack_candidate(dmt, candinfo, save_path, file_path):
     IMAGE_PATH = os.path.join(save_path,"frb","images").lower()
     LABEL_PATH = os.path.join(save_path,"frb","labels").lower()
@@ -86,20 +101,9 @@ def pack_candidate(dmt, candinfo, save_path, file_path):
     os.makedirs(IMAGE_PATH, exist_ok=True)
     os.makedirs(LABEL_PATH, exist_ok=True)
 
-    if len(candinfo) == 7:
-        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
-    elif len(candinfo) == 6:
-        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-    else:
-        dm, toa, freq_start, freq_end, dmt_idx = candinfo
-        ref_toa = toa
+    dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
 
-    dmt_data = np.array(dmt.data, dtype=np.float32)
-    img = cv2.resize(dmt_data, (512, 512), interpolation=cv2.INTER_AREA)
-    
-    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+    img = dmt.data
     
     name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
     label_name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.txt"
@@ -119,21 +123,9 @@ def pack_background(dmt, candinfo, save_path, file_path):
     os.makedirs(IMAGE_PATH, exist_ok=True)
     os.makedirs(LABEL_PATH, exist_ok=True)
 
-    if len(candinfo) == 7:
-        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
-    elif len(candinfo) == 6:
-        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-    else:
-        dm, toa, freq_start, freq_end, dmt_idx = candinfo
-        ref_toa = toa
-
-    dmt_data = np.array(dmt.data, dtype=np.float32)
-    img = cv2.resize(dmt_data, (512, 512), interpolation=cv2.INTER_AREA)
+    dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
     
-    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
-    
+    img = dmt.data
     name = f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
     label_name = f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.txt"
 
@@ -576,18 +568,6 @@ def plot_dmtime(dmt: DmTime, save_path, imgsize=512):
     cv2.imwrite(f"{save_path}/{dmt.__str__()}.png", img_colored)
 
 
-def _parse_candidate_info(candinfo):
-    """Parse candidate information into structured format."""
-    if len(candinfo) == 7:
-        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
-        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, (x, y, w, h)
-    elif len(candinfo) == 6:
-        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, None
-    else:
-        dm, toa, freq_start, freq_end, dmt_idx = candinfo
-        return dm, toa, freq_start, freq_end, dmt_idx, toa, None
-
 
 def _load_data_file(file_path: str):
     """Load filterbank or psrfits data file."""
@@ -869,9 +849,9 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     )
     
     # Add TOA line to main spectrum plot
-    if toa is not None:
-        ax_spec.axvline(toa, color='white', linestyle='--', linewidth=0.8, 
-                       alpha=0.8, label='TOA')
+    # if toa is not None:
+    #     ax_spec.axvline(toa, color='white', linestyle='--', linewidth=0.8, 
+    #                    alpha=0.8, label='TOA')
     
     # Add grid to show subband boundaries
     for i in range(1, n_freq_subbands):
@@ -972,23 +952,34 @@ def plot_candidate(
             )
             
             peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
-
             # Now calculate proper spectrum window based on pulse width (50 × pulse_width)
-            spec_tstart, spec_tend = _calculate_spectrum_time_window(toa, pulse_width, header.tsamp, multiplier=35)
+            spec_tstart, spec_tend = _calculate_spectrum_time_window(peak_time, pulse_width, header.tsamp, multiplier=35)
             
             # Generate final spectrum with optimized window
             spectrum = dedisperse_spec_with_dm(
                 origin_data, spec_tstart, spec_tend, dm, freq_start, freq_end
             )
+
             spec_data = spectrum.data
 
+            snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
+                spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=int((toa - spec_tstart) / header.tsamp)
+            )
+
+            peak_time = spec_tstart + (peak_idx + 0.5) * header.tsamp
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1  # Convert to milliseconds
+
+            # Prepare spectrum plot parameters
+            spec_vim, spec_vmax = np.percentile(
+                spec_data, 
+                [specconfig.get("minpercentile", 5), specconfig.get("maxpercentile", 99.9)]
+            )
             
-            
-            print(f"TOA: {toa:.3f}s, Peak Time: {peak_time:.3f}s")
-            print(f"SNR: {snr:.2f}, Pulse Width: {pulse_width_ms:.2f} ms")
-            print(f"Spectrum window: {spec_tstart:.3f}s - {spec_tend:.3f}s (50 × pulse_width)")
-        
+            # Handle zero minimum values
+            if spec_vim == 0:
+                non_zero_values = spec_data[spec_data > 0]
+                if non_zero_values.size > 0:
+                    spec_vim = non_zero_values.min()
             
             # Create time and frequency axes
             spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
