@@ -1,4 +1,3 @@
-# type: ignore
 import multiprocessing
 import os
 import time
@@ -734,6 +733,251 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
     return ax_spec_time, ax_spec, ax_spec_freq
 
 
+
+
+def _detrend(data: np.ndarray, axis: int = -1, 
+             type: str = 'linear', bp=0, overwrite_data: bool = False) -> np.ndarray:
+    """Remove linear or constant trend along axis from data.
+    
+    Simplified version of scipy.signal.detrend for spectrum data preprocessing.
+    
+    Parameters
+    ----------
+    data : array_like
+        The input data.
+    axis : int, optional
+        The axis along which to detrend the data. By default this is the
+        last axis (-1).
+    type : {'linear', 'constant'}, optional
+        The type of detrending. If ``type == 'linear'`` (default),
+        the result of a linear least-squares fit to `data` is subtracted
+        from `data`.
+        If ``type == 'constant'``, only the mean of `data` is subtracted.
+    bp : array_like of ints, optional
+        A sequence of break points. If given, an individual linear fit is
+        performed for each part of `data` between two break points.
+        Break points are specified as indices into `data`. This parameter
+        only has an effect when ``type == 'linear'``.
+    overwrite_data : bool, optional
+        If True, perform in place detrending and avoid a copy. Default is False
+
+    Returns
+    -------
+    ret : ndarray
+        The detrended input data.
+    """
+    from scipy import linalg
+    
+    if type not in ['linear', 'l', 'constant', 'c']:
+        raise ValueError("Trend type must be 'linear' or 'constant'.")
+
+    data = np.asarray(data)
+    dtype = data.dtype.char
+    if dtype not in 'dfDF':
+        dtype = 'd'
+        
+    if type in ['constant', 'c']:
+        ret = data - np.mean(data, axis, keepdims=True)
+        return ret
+    else:
+        dshape = data.shape
+        N = dshape[axis]
+        bp = np.asarray(bp)
+        bp = np.sort(np.unique(np.concatenate(np.atleast_1d(0, bp, N))))
+        if np.any(bp > N):
+            raise ValueError("Breakpoints must be less than length "
+                             "of data along given axis.")
+
+        # Restructure data so that axis is along first dimension and
+        #  all other dimensions are collapsed into second dimension
+        rnk = len(dshape)
+        if axis < 0:
+            axis = axis + rnk
+        newdata = np.moveaxis(data, axis, 0)
+        newdata_shape = newdata.shape
+        newdata = newdata.reshape(N, -1)
+
+        if not overwrite_data:
+            newdata = newdata.copy()  # make sure we have a copy
+        if newdata.dtype.char not in 'dfDF':
+            newdata = newdata.astype(dtype)
+
+        # Find leastsq fit and remove it for each piece
+        for m in range(len(bp) - 1):
+            Npts = bp[m + 1] - bp[m]
+            A = np.ones((Npts, 2), dtype)
+            A[:, 0] = np.arange(1, Npts + 1, dtype=dtype) / Npts
+            sl = slice(bp[m], bp[m + 1])
+            coef, resids, rank, s = linalg.lstsq(A, newdata[sl])
+            newdata[sl] = newdata[sl] - A @ coef
+
+        # Put data back in original shape.
+        newdata = newdata.reshape(newdata_shape)
+        ret = np.moveaxis(newdata, 0, axis)
+        return ret
+
+
+def _setup_detrend_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis, 
+                                  spec_tstart, spec_tend, specconfig, header, 
+                                  toa=None, dm=None, pulse_width=None, snr=None,
+                                  detrend_type='linear'):
+    """Setup spectrum subplot components with detrending applied for better signal visibility.
+    
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure object to add subplots to
+    gs : matplotlib.gridspec.GridSpec
+        The grid specification for subplot layout
+    spec_data : numpy.ndarray
+        The spectrum data - expected shape (time, frequency) for consistency with other functions
+    spec_time_axis : numpy.ndarray
+        Time axis values
+    spec_freq_axis : numpy.ndarray
+        Frequency axis values
+    spec_tstart : float
+        Start time for spectrum window
+    spec_tend : float
+        End time for spectrum window
+    specconfig : dict
+        Configuration dictionary for spectrum plotting
+    header : object
+        Data file header with timing/frequency information
+    toa : float, optional
+        Time of arrival
+    dm : float, optional
+        Dispersion measure
+    pulse_width : float, optional
+        Pulse width in samples
+    snr : float, optional
+        Signal-to-noise ratio
+    detrend_type : str, optional
+        Type of detrending ('linear' or 'constant'), default 'linear'
+        Applied to each frequency channel along the time axis
+        
+    Returns
+    -------
+    tuple
+        (ax_spec_time, ax_spec, ax_spec_freq) - the three subplot axes
+        
+    Notes
+    -----
+    This function performs detrending on each frequency channel along the time axis.
+    The input data format is automatically detected and converted as needed.
+    Detrending is always applied in (frequency, time) format for optimal results.
+    """
+    ax_spec_time = fig.add_subplot(gs[0, 2])
+    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+    
+    # Check if we need to transpose based on axis lengths matching data dimensions
+    # If spec_time_axis matches spec_data.shape[1] and spec_freq_axis matches spec_data.shape[0],
+    # then spec_data is in (frequency, time) format 
+    data_is_freq_time = (len(spec_freq_axis) == spec_data.shape[0] and 
+                        len(spec_time_axis) == spec_data.shape[1])
+    
+    # For detrending, we need data in (frequency, time) format to detrend each frequency channel along time
+    if data_is_freq_time:
+        print(f"Data is in (frequency, time) format - perfect for detrending")
+        detrend_data = spec_data  # Keep original format for detrending
+        display_data = spec_data.T  # Transpose for display (time, frequency)
+        print(f"Detrend data shape: {detrend_data.shape} (freq, time)")
+        print(f"Display data shape: {display_data.shape} (time, freq)")
+    else:
+        print(f"Data is in (time, frequency) format - transposing for detrending")
+        detrend_data = spec_data.T  # Transpose to (frequency, time) for detrending
+        display_data = spec_data  # Keep original for display
+        print(f"Detrend data shape: {detrend_data.shape} (freq, time)")
+        print(f"Display data shape: {display_data.shape} (time, freq)")
+
+    # Apply detrending to the spectrum data in (frequency, time) format
+    # This detrends each frequency channel along the time axis (axis=1)
+    print(f"Applying {detrend_type} detrending along time axis (axis=1) for each frequency channel")
+    
+    try:
+        detrended_freq_time = _detrend(detrend_data, axis=1, type=detrend_type)  # Always detrend along time axis
+        print(f"Detrending successful. Original range: [{np.min(detrend_data):.3f}, {np.max(detrend_data):.3f}], "
+              f"Detrended range: [{np.min(detrended_freq_time):.3f}, {np.max(detrended_freq_time):.3f}]")
+        
+        # Convert detrended data back to (time, frequency) format for plotting
+        detrended_data = detrended_freq_time.T
+        print(f"Detrended data for plotting shape: {detrended_data.shape} (time, freq)")
+    except Exception as e:
+        print(f"Detrending failed: {e}, using original data")
+        detrended_data = display_data
+
+    toa_sample_idx = int((toa - spec_tstart) / header.tsamp)
+    
+    snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
+                detrended_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
+    )
+
+    toa = spec_tstart + (peak_idx + 0.5) * header.tsamp  # Convert peak index back to time
+
+    # Time series (sum over frequency axis) - use detrended data
+    time_series = np.sum(detrended_data, axis=1)
+    print(f"Time series length: {len(time_series)}, spec_time_axis length: {len(spec_time_axis)}")
+    ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
+    
+    # Add TOA line if provided
+    if toa is not None:
+        ax_spec_time.axvline(toa, color='blue', linestyle='--', linewidth=1, 
+                           alpha=0.8, label=f'TOA: {toa:.3f}s')
+    
+    # Add SNR and pulse width info with detrending information
+    info_text = f"SNR: {snr:.2f}" if snr is not None else "SNR: N/A"
+    if pulse_width is not None:
+        pulse_width_ms = pulse_width * header.tsamp * 1000 if pulse_width > 0 else -1
+        info_text += f"\nPulse Width: {pulse_width_ms:.2f} ms"
+    info_text += f"\nDetrend: {detrend_type} (per freq channel)"
+    
+    ax_spec_time.text(0.02, 0.96, info_text,
+                     transform=ax_spec_time.transAxes, fontsize=10, 
+                     verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", 
+                     facecolor="lightyellow", alpha=0.8))
+    
+    ax_spec_time.set_ylabel("Integrated Power\n(Detrended)")
+    ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.grid(True, alpha=0.3)
+    if toa is not None:
+        ax_spec_time.legend(fontsize=9, loc='upper right')
+    
+    # Frequency marginal (sum over time axis) - use detrended data
+    freq_series = np.sum(detrended_data, axis=0)
+    print(f"Freq series length: {len(freq_series)}, spec_freq_axis length: {len(spec_freq_axis)}")
+    ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
+    ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
+    ax_spec_freq.grid(True, alpha=0.3)
+    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power\n(Detrended)")
+    
+    # Calculate percentiles for detrended data
+    spec_vmin = np.percentile(detrended_data, specconfig.get("minpercentile", 0.1))
+    spec_vmax = np.percentile(detrended_data, specconfig.get("maxpercentile", 99.9))
+    if spec_vmin == 0:
+        non_zero_values = detrended_data[detrended_data > 0]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
+    
+    # Main spectrum plot with detrended data
+    extent = [spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]]
+    im = ax_spec.imshow(
+        detrended_data.T,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=extent,
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+    )
+    
+    ax_spec.set_ylabel(f"Frequency (MHz) - {detrend_type.title()} Detrended\n"
+                      f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
+    ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
+    ax_spec.set_xlim(spec_tstart, spec_tend)
+    
+    return ax_spec_time, ax_spec, ax_spec_freq
+
+
 def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis, 
                                  spec_tstart, spec_tend, specconfig, header, 
                                  toa=None, dm=None, pulse_width=None, snr=None):
@@ -953,8 +1197,6 @@ def plot_candidate(
             )
 
             peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
-            
-            peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
             # Now calculate proper spectrum window based on pulse width (50 × pulse_width)
             spec_tstart, spec_tend = _calculate_spectrum_time_window(peak_time, pulse_width, header.tsamp, multiplier=35)
             
@@ -978,12 +1220,6 @@ def plot_candidate(
                 [specconfig.get("minpercentile", 5), specconfig.get("maxpercentile", 99.9)]
             )
             
-            # Handle zero minimum values
-            if spec_vim == 0:
-                non_zero_values = spec_data[spec_data > 0]
-                if non_zero_values.size > 0:
-                    spec_vim = non_zero_values.min()
-            
             # Create time and frequency axes
             spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
             
@@ -1001,9 +1237,13 @@ def plot_candidate(
                     fig, gs, spec_data, spec_time_axis, spec_freq_axis,
                     spec_tstart, spec_tend, specconfig, header, toa=peak_time, dm=dm, pulse_width=pulse_width, snr=snr
                 )
+            elif specconfig.get("mode") == "detrend":
+                _setup_detrend_spectrum_plots(
+                    fig, gs, spec_data, spec_time_axis, spec_freq_axis,
+                    spec_tstart, spec_tend, specconfig, header, toa=peak_time, dm=dm, pulse_width=pulse_width, snr=snr
+                )
             else:
                 raise ValueError(f"Unsupported spectrum mode: {specconfig.get('mode')}")
-            
         except Exception as e:
             print(f"Warning: Failed to process spectrum data: {e}")
             # Set default values if spectrum processing fails
