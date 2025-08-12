@@ -928,7 +928,7 @@ def _setup_detrend_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         detrended_data = display_data
 
     toa_sample_idx = int((toa - spec_tstart) / header.tsamp)
-    
+
     snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
                 detrended_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
     )
