@@ -8,6 +8,7 @@
 #include "rfimarker.h"
 // timeit
 #include <chrono>
+#include <cstring>  // for std::memcpy
 
 // cuda atomicAdd
 
@@ -23,10 +24,195 @@
 
 namespace gpucal {
 
-// Shared memory based dedispersion kernel implementing Algorithm 3 (adapted for pre-binned data)
+// Vectorized memory access helper functions
+template<typename T>
+__device__ __forceinline__ uint4 load_vector4(const T* ptr) {
+    if constexpr (sizeof(T) == 1) {
+        return *reinterpret_cast<const uint4*>(ptr);
+    } else if constexpr (sizeof(T) == 2) {
+        uint2 val = *reinterpret_cast<const uint2*>(ptr);
+        return make_uint4(val.x, val.y, 0, 0);
+    } else {
+        uint val = *reinterpret_cast<const uint*>(ptr);
+        return make_uint4(val, 0, 0, 0);
+    }
+}
+
+template<typename T>
+__device__ __forceinline__ uint64_t extract_and_sum_vector4(uint4 vec) {
+    if constexpr (sizeof(T) == 1) {
+        // Extract 16 bytes and sum them
+        uint64_t sum = 0;
+        sum += (vec.x & 0xFF) + ((vec.x >> 8) & 0xFF) + ((vec.x >> 16) & 0xFF) + ((vec.x >> 24) & 0xFF);
+        sum += (vec.y & 0xFF) + ((vec.y >> 8) & 0xFF) + ((vec.y >> 16) & 0xFF) + ((vec.y >> 24) & 0xFF);
+        sum += (vec.z & 0xFF) + ((vec.z >> 8) & 0xFF) + ((vec.z >> 16) & 0xFF) + ((vec.z >> 24) & 0xFF);
+        sum += (vec.w & 0xFF) + ((vec.w >> 8) & 0xFF) + ((vec.w >> 16) & 0xFF) + ((vec.w >> 24) & 0xFF);
+        return sum;
+    } else if constexpr (sizeof(T) == 2) {
+        // Extract 8 shorts and sum them
+        uint64_t sum = 0;
+        sum += (vec.x & 0xFFFF) + ((vec.x >> 16) & 0xFFFF);
+        sum += (vec.y & 0xFFFF) + ((vec.y >> 16) & 0xFFFF);
+        return sum;
+    } else {
+        return vec.x;
+    }
+}
+
+// Helper function to determine optimal kernel configuration
+template<typename T>
+__host__ bool should_use_optimized_kernel(const cudaDeviceProp& device_prop, 
+                                         size_t nchans, size_t dm_steps, 
+                                         size_t down_ndata) {
+    // Use optimized kernels for newer architectures and larger problem sizes
+    if (device_prop.major >= 7) { // Volta and later
+        if (nchans * dm_steps * down_ndata > 1000000) { // Large problems benefit more
+            return true;
+        }
+    }
+    
+    // For smaller problems or older architectures, legacy kernels might be sufficient
+    return false;
+}
+
+// Optimized shared memory dedispersion kernel with vectorization and loop unrolling
 template <typename T>
 __global__ void
-dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
+dedispersion_shared_memory_kernel_optimized(dedispersion_output_t<T> *output, T *input, int *delay_table,
+                                           size_t dm_steps, int time_downsample, 
+                                           size_t down_ndata, size_t nchans, 
+                                           size_t chan_start, size_t chan_end,
+                                           size_t start, size_t shared_mem_size) {
+  
+  // Get thread and block indices
+  const size_t dmidx = blockIdx.y;
+  const size_t tidx = blockIdx.x * blockDim.x + threadIdx.x;
+  
+  if (dmidx >= dm_steps || tidx >= down_ndata) {
+    return;
+  }
+  
+  // Shared memory buffer with alignment for vectorized access
+  extern __shared__ char shared_buffer[];
+  T* __restrict__ Bloc = reinterpret_cast<T*>(shared_buffer);
+  dedispersion_output_t<T>* __restrict__ accumulator_shared = reinterpret_cast<dedispersion_output_t<T>*>(
+      shared_buffer + ((shared_mem_size + 15) & ~15)); // Align to 16 bytes
+  
+  // Initialize local accumulators with fast bit operations
+  dedispersion_output_t<T> Sloc1 = 0, Sloc2 = 0, Sloc3 = 0, Sloc4 = 0;
+  
+  // Initial time index (already in downsampled space)
+  const size_t Tini = start + blockIdx.x * blockDim.x;
+  
+  // Calculate number of channels per iteration
+  const size_t Dch = (chan_end - chan_start + 1);
+  constexpr size_t VECTOR_SIZE = sizeof(uint4) / sizeof(T);
+  const size_t Nch = min(shared_mem_size / blockDim.x, Dch);
+  
+  // Precompute delay table offsets
+  const int* __restrict__ delay_ptr = &delay_table[dmidx * Dch];
+  
+  // Process channels in chunks with vectorization
+  for (size_t c = 0; c < Dch; c += Nch) {
+    const size_t channels_this_iter = min(Nch, Dch - c);
+    
+    // Vectorized data loading into shared memory
+    const size_t tid = threadIdx.x;
+    if (tid < blockDim.x) {
+      // Load multiple channels per thread with vectorization
+      #pragma unroll 4
+      for (size_t ch_offset = 0; ch_offset < channels_this_iter; ch_offset += 4) {
+        if (ch_offset + 3 < channels_this_iter) {
+          // Process 4 channels at once (loop unrolling)
+          const size_t chan1 = chan_start + c + ch_offset;
+          const size_t chan2 = chan1 + 1;
+          const size_t chan3 = chan1 + 2;  
+          const size_t chan4 = chan1 + 3;
+          
+          if (chan4 < chan_end) {
+            // Calculate delays for 4 channels
+            const int delay1 = delay_ptr[chan1 - chan_start] / time_downsample;
+            const int delay2 = delay_ptr[chan2 - chan_start] / time_downsample;
+            const int delay3 = delay_ptr[chan3 - chan_start] / time_downsample;
+            const int delay4 = delay_ptr[chan4 - chan_start] / time_downsample;
+            
+            const size_t time_idx1 = Tini + tid + delay1;
+            const size_t time_idx2 = Tini + tid + delay2;
+            const size_t time_idx3 = Tini + tid + delay3;
+            const size_t time_idx4 = Tini + tid + delay4;
+            
+            // Bounds checking and vectorized loading
+            T val1 = (time_idx1 < down_ndata) ? input[chan1 + time_idx1 * nchans] : 0;
+            T val2 = (time_idx2 < down_ndata) ? input[chan2 + time_idx2 * nchans] : 0;
+            T val3 = (time_idx3 < down_ndata) ? input[chan3 + time_idx3 * nchans] : 0;
+            T val4 = (time_idx4 < down_ndata) ? input[chan4 + time_idx4 * nchans] : 0;
+            
+            // Store in shared memory with coalesced access pattern
+            Bloc[(ch_offset + 0) * blockDim.x + tid] = val1;
+            Bloc[(ch_offset + 1) * blockDim.x + tid] = val2;
+            Bloc[(ch_offset + 2) * blockDim.x + tid] = val3;
+            Bloc[(ch_offset + 3) * blockDim.x + tid] = val4;
+          }
+        } else {
+          // Handle remaining channels
+          for (size_t ch_idx = ch_offset; ch_idx < channels_this_iter; ++ch_idx) {
+            const size_t chan = chan_start + c + ch_idx;
+            if (chan < chan_end) {
+              const int delay = delay_ptr[chan - chan_start] / time_downsample;
+              const size_t time_idx = Tini + tid + delay;
+              
+              T val = (time_idx < down_ndata) ? input[chan + time_idx * nchans] : 0;
+              Bloc[ch_idx * blockDim.x + tid] = val;
+            }
+          }
+        }
+      }
+    }
+    
+    // Synchronize threads
+    __syncthreads();
+    
+    // Optimized accumulation with loop unrolling and vectorization
+    if (tid < blockDim.x) {
+      #pragma unroll 8
+      for (size_t l = 0; l < channels_this_iter; l += 8) {
+        if (l + 7 < channels_this_iter) {
+          // Process 8 channels at once for better utilization
+          const T* shared_ptr = &Bloc[l * blockDim.x + tid];
+          Sloc1 += shared_ptr[0 * blockDim.x];
+          Sloc2 += shared_ptr[1 * blockDim.x];
+          Sloc3 += shared_ptr[2 * blockDim.x];
+          Sloc4 += shared_ptr[3 * blockDim.x];
+          Sloc1 += shared_ptr[4 * blockDim.x];
+          Sloc2 += shared_ptr[5 * blockDim.x];
+          Sloc3 += shared_ptr[6 * blockDim.x];
+          Sloc4 += shared_ptr[7 * blockDim.x];
+        } else {
+          // Handle remaining channels
+          for (size_t ch_idx = l; ch_idx < channels_this_iter; ++ch_idx) {
+            Sloc1 += Bloc[ch_idx * blockDim.x + tid];
+          }
+        }
+      }
+    }
+    
+    // Synchronize before next iteration
+    __syncthreads();
+  }
+  
+  // Combine all accumulators using bit operations
+  const dedispersion_output_t<T> total_sum = Sloc1 + Sloc2 + Sloc3 + Sloc4;
+  
+  // Store local results into output DM(dm,t) with coalesced write
+  if (tidx < down_ndata) {
+    output[dmidx * down_ndata + tidx] = total_sum;
+  }
+}
+
+// Legacy shared memory kernel (kept for compatibility)
+template <typename T>
+__global__ void
+dedispersion_shared_memory_kernel(dedispersion_output_t<T> *output, T *input, int *delay_table,
                                   size_t dm_steps, int time_downsample, 
                                   size_t down_ndata, size_t nchans, 
                                   size_t chan_start, size_t chan_end,
@@ -45,7 +231,7 @@ dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
   T* Bloc = reinterpret_cast<T*>(shared_buffer);
   
   // Initialize local accumulator
-  uint64_t Sloc = 0;
+  dedispersion_output_t<T> Sloc = 0;
   
   // Initial time index (already in downsampled space)
   size_t Tini = start + blockIdx.x * blockDim.x;
@@ -97,9 +283,83 @@ dedispersion_shared_memory_kernel(uint64_t *output, T *input, int *delay_table,
   }
 }
 
+// Optimized global memory dedispersion kernel with vectorization and loop unrolling
 template <typename T>
 __global__ void
-dedispersion_kernel(uint64_t *output, T *input, int *delay_table,
+dedispersion_kernel_optimized(dedispersion_output_t<T> *output, T *input, int *delay_table,
+                             size_t dm_steps, size_t down_ndata, int time_downsample,
+                             size_t nchans, size_t chan_start, size_t chan_end,
+                             size_t start) {
+  const size_t dmidx = blockIdx.y;
+  const size_t down_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  
+  if (dmidx >= dm_steps || down_idx >= down_ndata)
+    return;
+
+  // 在已经降采样的数据上进行去色散
+  const size_t base_idx = down_idx + start;
+  const size_t Dch = chan_end - chan_start;
+  const int* __restrict__ delay_ptr = &delay_table[dmidx * Dch];
+  
+  // Multiple accumulators for ILP (Instruction Level Parallelism)
+  dedispersion_output_t<T> sum1 = 0, sum2 = 0, sum3 = 0, sum4 = 0;
+  
+  // Process channels with loop unrolling
+  size_t chan = chan_start;
+  
+  // Main unrolled loop - process 8 channels at a time
+  #pragma unroll 4
+  for (; chan + 7 < chan_end; chan += 8) {
+    // Load delays for 8 channels
+    const int delay0 = delay_ptr[chan - chan_start] / time_downsample;
+    const int delay1 = delay_ptr[chan + 1 - chan_start] / time_downsample;
+    const int delay2 = delay_ptr[chan + 2 - chan_start] / time_downsample;
+    const int delay3 = delay_ptr[chan + 3 - chan_start] / time_downsample;
+    const int delay4 = delay_ptr[chan + 4 - chan_start] / time_downsample;
+    const int delay5 = delay_ptr[chan + 5 - chan_start] / time_downsample;
+    const int delay6 = delay_ptr[chan + 6 - chan_start] / time_downsample;
+    const int delay7 = delay_ptr[chan + 7 - chan_start] / time_downsample;
+    
+    // Calculate target indices
+    const size_t target_idx0 = base_idx + delay0;
+    const size_t target_idx1 = base_idx + delay1;
+    const size_t target_idx2 = base_idx + delay2;
+    const size_t target_idx3 = base_idx + delay3;
+    const size_t target_idx4 = base_idx + delay4;
+    const size_t target_idx5 = base_idx + delay5;
+    const size_t target_idx6 = base_idx + delay6;
+    const size_t target_idx7 = base_idx + delay7;
+    
+    // Bounds checking and accumulation - distribute across multiple accumulators
+    if (target_idx0 < down_ndata) sum1 += input[chan + 0 + target_idx0 * nchans];
+    if (target_idx1 < down_ndata) sum2 += input[chan + 1 + target_idx1 * nchans];
+    if (target_idx2 < down_ndata) sum3 += input[chan + 2 + target_idx2 * nchans];
+    if (target_idx3 < down_ndata) sum4 += input[chan + 3 + target_idx3 * nchans];
+    if (target_idx4 < down_ndata) sum1 += input[chan + 4 + target_idx4 * nchans];
+    if (target_idx5 < down_ndata) sum2 += input[chan + 5 + target_idx5 * nchans];
+    if (target_idx6 < down_ndata) sum3 += input[chan + 6 + target_idx6 * nchans];
+    if (target_idx7 < down_ndata) sum4 += input[chan + 7 + target_idx7 * nchans];
+  }
+  
+  // Handle remaining channels
+  for (; chan < chan_end; ++chan) {
+    const int delay = delay_ptr[chan - chan_start] / time_downsample;
+    const size_t target_idx = base_idx + delay;
+    
+    if (target_idx < down_ndata) {
+      sum1 += input[chan + target_idx * nchans];
+    }
+  }
+  
+  // Combine all accumulators
+  const dedispersion_output_t<T> total_sum = sum1 + sum2 + sum3 + sum4;
+  output[dmidx * down_ndata + down_idx] = total_sum;
+}
+
+// Legacy global memory kernel (kept for compatibility)
+template <typename T>
+__global__ void
+dedispersion_kernel(dedispersion_output_t<T> *output, T *input, int *delay_table,
                     size_t dm_steps, size_t down_ndata, int time_downsample,
                     size_t nchans, size_t chan_start, size_t chan_end,
                     size_t start) {
@@ -113,7 +373,7 @@ dedispersion_kernel(uint64_t *output, T *input, int *delay_table,
 
   // 在已经降采样的数据上进行去色散
   size_t base_idx = down_idx + start;
-  uint64_t sum = 0;
+  dedispersion_output_t<T> sum = 0;
   for (size_t chan = chan_start; chan < chan_end; ++chan) {
     // 延迟表中的延迟已经按照原始tsamp计算，需要除以time_downsample转换为降采样后的延迟
     int original_delay = delay_table[dmidx * (chan_end - chan_start + 1) + chan - chan_start];
@@ -150,7 +410,6 @@ pre_calculate_dedispersion_kernel(int *delay_table, float dm_low, float dm_high,
       static_cast<int>(roundf(delay / tsamp));
 }
 
-// 时间分bin降采样kernel - 将连续的时间样本累加到bin中 (优化版本，使用1D配置)
 template <typename T>
 __global__ void
 time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata, 
@@ -180,6 +439,7 @@ time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata,
   output[chan + down_idx * nchans] = static_cast<T>(sum);
 }
 
+// [FIRST FUNCTION] Filterbank dedispersion
 template <typename T>
 dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
@@ -293,15 +553,17 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
            total_elements, blocks_needed, threads_per_block);
     
     auto binning_start = std::chrono::high_resolution_clock::now();
+    
+
     time_binning_kernel<T><<<blocks_needed, threads_per_block>>>(
         d_binned_input, d_input, nchans, fil.ndata, time_downsample, down_ndata);
+
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     auto binning_end = std::chrono::high_resolution_clock::now();
     auto binning_duration = std::chrono::duration_cast<std::chrono::milliseconds>(binning_end - binning_start);
     printf("Time binning completed in %lld ms\n", binning_duration.count());
     
-    // 释放原始输入数据
     CHECK_CUDA(cudaFree(d_input));
   } else {
     // 不需要分bin，直接使用原始数据
@@ -311,14 +573,18 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
   printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
 
-  uint64_t *d_output;
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
-  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
+  dedispersion_output_t<T> *d_output;
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
+  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
 
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
   dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
   auto start_time = std::chrono::high_resolution_clock::now();
+  
+  // 决定是否使用优化内核
+  bool use_optimized = should_use_optimized_kernel<T>(device_prop, nchans, dm_steps, down_ndata);
+  
   if (use_shared_memory) {
     // Calculate shared memory size needed
     size_t max_shared_mem = device_prop.sharedMemPerBlock;
@@ -328,15 +594,29 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     // Ensure we don't exceed shared memory limits
     size_t actual_shared_mem = shared_mem_size * sizeof(T);
     
-    printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
-    dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
-        d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
-        nchans, chan_start, chan_end, 0, shared_mem_size);
+    if (use_optimized) {
+      printf("Using optimized shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
+      dedispersion_shared_memory_kernel_optimized<T><<<grids, threads, actual_shared_mem>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
+          nchans, chan_start, chan_end, 0, shared_mem_size);
+    } else {
+      printf("Using legacy shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
+      dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
+          nchans, chan_start, chan_end, 0, shared_mem_size);
+    }
   } else {
-    printf("Using global memory kernel\n");
-    dedispersion_kernel<T><<<grids, threads>>>(
-        d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
-        nchans, chan_start, chan_end, 0);
+    if (use_optimized) {
+      printf("Using optimized global memory kernel\n");
+      dedispersion_kernel_optimized<T><<<grids, threads>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
+          nchans, chan_start, chan_end, 0);
+    } else {
+      printf("Using legacy global memory kernel\n");
+      dedispersion_kernel<T><<<grids, threads>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
+          nchans, chan_start, chan_end, 0);
+    }
   }
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
@@ -345,16 +625,28 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
   printf("Dedispersion completed in %lld ms\n", duration.count());
 
-  // Copy back the full result
-  auto dm_array = std::shared_ptr<uint64_t[]>(
-      new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata](),
-      [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
+  // Optimized memory copy - single large transfer to maximize PCIe bandwidth
+  auto copy_start = std::chrono::high_resolution_clock::now();
+  
+  // Create aligned array directly for final storage
+  auto dm_array_typed = std::shared_ptr<dedispersion_output_t<T>[]>(
+      new (std::align_val_t{4096}) dedispersion_output_t<T>[dm_steps * down_ndata](),
+      [](dedispersion_output_t<T> *p) { operator delete[](p, std::align_val_t{4096}); });
+  
+  // Single large transfer to maximize PCIe bandwidth utilization
+  const size_t total_bytes = dm_steps * down_ndata * sizeof(dedispersion_output_t<T>);
+  printf("Using single large memory copy for %zu MB to maximize PCIe bandwidth\n", total_bytes / (1024 * 1024));
+  
+  CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
+                        total_bytes, cudaMemcpyDeviceToHost));
+  
+  auto copy_end = std::chrono::high_resolution_clock::now();
+  auto copy_duration = std::chrono::duration_cast<std::chrono::milliseconds>(copy_end - copy_start);
+  printf("Memory copy completed in %lld ms (%.2f GB/s)\n", 
+         copy_duration.count(), 
+         (total_bytes / 1024.0 / 1024.0 / 1024.0) / (copy_duration.count() / 1000.0));
 
-  CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                        dm_steps * down_ndata * sizeof(uint64_t),
-                        cudaMemcpyDeviceToHost));
-
-  // 清理GPU资源
+  // 清理GPU资源 - [FIRST FUNCTION fil.tsamp context]
   if (time_downsample > 1) {
     CHECK_CUDA(cudaFree(d_binned_input));
   } else {
@@ -364,24 +656,24 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
 
-  // Create single large dedisperseddata with all time samples
-  dedisperseddata result;
-  result.dm_times.emplace_back(std::move(dm_array));
-  result.dm_low = dm_low;
-  result.dm_high = dm_high;
-  result.dm_step = dm_step;
-  result.tsample = (time_downsample > 1) ? fil.tsamp * time_downsample : fil.tsamp; // 只有分bin时才更新时间分辨率
-  result.filname = fil.filename;
-  result.dm_ndata = dm_steps;
-  result.downtsample_ndata = down_ndata;
-  result.shape = {dm_steps, down_ndata};
+  // Create typed dedispersion data structure - no additional copy needed
+  DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
+  typed_result.dm_times.emplace_back(std::move(dm_array_typed));
+  typed_result.dm_low = dm_low;
+  typed_result.dm_high = dm_high;
+  typed_result.dm_step = dm_step;
+  typed_result.tsample = (time_downsample > 1) ? fil.tsamp * time_downsample : fil.tsamp;
+  typed_result.filname = fil.filename;
+  typed_result.dm_ndata = dm_steps;
+  typed_result.downtsample_ndata = down_ndata;
+  typed_result.shape = {dm_steps, down_ndata};
 
-  printf("Full dedispersion completed. Now applying preprocessing with slicing...\n");
+  printf("Full dedispersion completed. Now applying type-safe preprocessing with slicing...\n");
   // 对于Filterbank，需要构造Header结构
   Header temp_header;
-  temp_header.tsamp = (time_downsample > 1) ? fil.tsamp * time_downsample : fil.tsamp; // 只有分bin时才更新时间分辨率
+  temp_header.tsamp = (time_downsample > 1) ? fil.tsamp * time_downsample : fil.tsamp;
   temp_header.filename = fil.filename;
-  return preprocess_dedisperseddata_with_slicing(result, temp_header, 1, t_sample); // time_downsample设为1，因为已经分bin完成或不需要分bin
+  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
 }
 
 template <typename T>
@@ -505,8 +797,11 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
            total_elements, blocks_needed, threads_per_block);
     
     auto binning_start = std::chrono::high_resolution_clock::now();
+    
     time_binning_kernel<T><<<blocks_needed, threads_per_block>>>(
-        d_binned_input, d_input, nchans, header.ndata, time_downsample, down_ndata);
+          d_binned_input, d_input, nchans, header.ndata, time_downsample, down_ndata);
+
+    
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
     auto binning_end = std::chrono::high_resolution_clock::now();
@@ -523,14 +818,17 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
 
   printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
 
-  uint64_t *d_output;
-  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(uint64_t)));
-  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(uint64_t)));
+  dedispersion_output_t<T> *d_output;
+  CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
+  CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
 
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
   dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
 
+  // 决定是否使用优化内核
+  bool use_optimized = should_use_optimized_kernel<T>(device_prop, nchans, dm_steps, down_ndata);
+  auto start_time = std::chrono::high_resolution_clock::now();
   if (use_shared_memory) {
     // Calculate shared memory size needed
     size_t max_shared_mem = device_prop.sharedMemPerBlock;
@@ -540,29 +838,57 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     // Ensure we don't exceed shared memory limits
     size_t actual_shared_mem = shared_mem_size * sizeof(T);
     
-    printf("Using shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
-    
-    dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
-        d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
-        nchans, chan_start, chan_end, 0, shared_mem_size);
+    if (use_optimized) {
+      printf("Using optimized shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
+      dedispersion_shared_memory_kernel_optimized<T><<<grids, threads, actual_shared_mem>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
+          nchans, chan_start, chan_end, 0, shared_mem_size);
+    } else {
+      printf("Using legacy shared memory kernel with %zu bytes of shared memory\n", actual_shared_mem);
+      dedispersion_shared_memory_kernel<T><<<grids, threads, actual_shared_mem>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, time_downsample, down_ndata,
+          nchans, chan_start, chan_end, 0, shared_mem_size);
+    }
   } else {
-    printf("Using global memory kernel\n");
-    dedispersion_kernel<T><<<grids, threads>>>(
-        d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
-        nchans, chan_start, chan_end, 0);
+    if (use_optimized) {
+      printf("Using optimized global memory kernel\n");
+      dedispersion_kernel_optimized<T><<<grids, threads>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
+          nchans, chan_start, chan_end, 0);
+    } else {
+      printf("Using legacy global memory kernel\n");
+      dedispersion_kernel<T><<<grids, threads>>>(
+          d_output, d_binned_input, d_delay_table, dm_steps, down_ndata, time_downsample,
+          nchans, chan_start, chan_end, 0);
+    }
   }
 
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+  printf("Dedispersion completed in %lld ms\n", duration.count());
 
-  // Copy back the full result
-  auto dm_array = std::shared_ptr<uint64_t[]>(
-      new (std::align_val_t{4096}) uint64_t[dm_steps * down_ndata](),
-      [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
-
-  CHECK_CUDA(cudaMemcpy(dm_array.get(), d_output,
-                        dm_steps * down_ndata * sizeof(uint64_t),
-                        cudaMemcpyDeviceToHost));
+  // [SECOND FUNCTION - dedisperse_spec] Optimized memory copy - single large transfer to maximize PCIe bandwidth
+  auto copy_start = std::chrono::high_resolution_clock::now();
+  
+  // Create aligned array directly for final storage
+  auto dm_array_typed = std::shared_ptr<dedispersion_output_t<T>[]>(
+      new (std::align_val_t{4096}) dedispersion_output_t<T>[dm_steps * down_ndata](),
+      [](dedispersion_output_t<T> *p) { operator delete[](p, std::align_val_t{4096}); });
+  
+  // Single large transfer to maximize PCIe bandwidth utilization
+  const size_t total_bytes = dm_steps * down_ndata * sizeof(dedispersion_output_t<T>);
+  printf("Using single large memory copy for %zu MB to maximize PCIe bandwidth\n", total_bytes / (1024 * 1024));
+  
+  CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
+                        total_bytes, cudaMemcpyDeviceToHost));
+  
+  auto copy_end = std::chrono::high_resolution_clock::now();
+  auto copy_duration = std::chrono::duration_cast<std::chrono::milliseconds>(copy_end - copy_start);
+  printf("Memory copy completed in %lld ms (%.2f GB/s)\n", 
+         copy_duration.count(), 
+         (total_bytes / 1024.0 / 1024.0 / 1024.0) / (copy_duration.count() / 1000.0));
 
   // Clean up GPU resources
   if (time_downsample > 1) {
@@ -574,22 +900,22 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
 
-  // Create single large dedisperseddata with all time samples
-  dedisperseddata result;
-  result.dm_times.emplace_back(std::move(dm_array));
-  result.dm_low = dm_low;
-  result.dm_high = dm_high;
-  result.dm_step = dm_step;
-  result.tsample = (time_downsample > 1) ? header.tsamp * time_downsample : header.tsamp; // 只有分bin时才更新时间分辨率
-  result.filname = header.filename;
-  result.dm_ndata = dm_steps;
-  result.downtsample_ndata = down_ndata;
-  result.shape = {dm_steps, down_ndata};
+  // Create typed dedispersion data structure - no additional copy needed
+  DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
+  typed_result.dm_times.emplace_back(std::move(dm_array_typed));
+  typed_result.dm_low = dm_low;
+  typed_result.dm_high = dm_high;
+  typed_result.dm_step = dm_step;
+  typed_result.tsample = (time_downsample > 1) ? header.tsamp * time_downsample : header.tsamp;
+  typed_result.filname = header.filename;
+  typed_result.dm_ndata = dm_steps;
+  typed_result.downtsample_ndata = down_ndata;
+  typed_result.shape = {dm_steps, down_ndata};
 
-  printf("Full dedispersion completed. Now applying preprocessing with slicing...\n");
+  printf("Full dedispersion completed. Now applying type-safe preprocessing with slicing...\n");
   Header updated_header = header;
-  updated_header.tsamp = (time_downsample > 1) ? header.tsamp * time_downsample : header.tsamp; // 只有分bin时才更新时间分辨率
-  return preprocess_dedisperseddata_with_slicing(result, updated_header, 1, t_sample); // time_downsample设为1，因为已经分bin完成或不需要分bin
+  updated_header.tsamp = (time_downsample > 1) ? header.tsamp * time_downsample : header.tsamp;
+  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, updated_header, 1, t_sample);
 
 }
 

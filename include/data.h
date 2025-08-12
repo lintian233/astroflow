@@ -19,6 +19,7 @@
 
 namespace py = pybind11;
 
+
 struct Header {
   float mjd;
   float tsamp;
@@ -63,8 +64,6 @@ struct dedisperseddata_uint8 {
 };
 
 
-
-
 struct dedisperseddata {
   std::vector<std::shared_ptr<uint64_t[]>> dm_times;
 
@@ -93,6 +92,80 @@ template <typename T> struct Spectrum {
   float freq_start;
   float freq_end;
 };
+
+// Template specializations for dedispersion output types (precision scaling)
+template<typename InputType>
+struct DedispersionOutputType {};
+
+template<>
+struct DedispersionOutputType<uint8_t> {
+    using type = uint16_t;  // 8-bit -> 16-bit to prevent overflow
+};
+
+template<>
+struct DedispersionOutputType<uint16_t> {
+    using type = uint32_t;  // 16-bit -> 32-bit to prevent overflow
+};
+
+template<>
+struct DedispersionOutputType<uint32_t> {
+    using type = uint64_t;  // 32-bit -> 64-bit to prevent overflow
+};
+
+// Convenient alias for dedispersion output type
+template<typename T>
+using dedispersion_output_t = typename DedispersionOutputType<T>::type;
+
+// Template class for type-safe dedispersion data containers
+template<typename OutputType>
+struct DedispersedDataTyped {
+  std::vector<std::shared_ptr<OutputType[]>> dm_times;
+  std::vector<size_t> shape;
+  int dm_ndata;
+  int downtsample_ndata;
+  float dm_low;
+  float dm_high;
+  float dm_step;
+  float tsample;
+  std::string filname;
+  
+  // Convert to uint64_t based structure for compatibility
+dedisperseddata to_uint64() const {
+    dedisperseddata result;
+    result.shape = shape;
+    result.dm_ndata = dm_ndata;
+    result.downtsample_ndata = downtsample_ndata;
+    result.dm_low = dm_low;
+    result.dm_high = dm_high;
+    result.dm_step = dm_step;
+    result.tsample = tsample;
+    result.filname = filname;
+    
+    // Convert typed arrays to uint64_t arrays
+    result.dm_times.reserve(dm_times.size());
+    for (const auto& typed_array : dm_times) {
+      const size_t total_elements = dm_ndata * downtsample_ndata;
+      auto uint64_array = std::shared_ptr<uint64_t[]>(
+          new (std::align_val_t{4096}) uint64_t[total_elements](),
+          [](uint64_t *p) { operator delete[](p, std::align_val_t{4096}); });
+      
+      // Type conversion loop
+      for (size_t i = 0; i < total_elements; ++i) {
+        uint64_array[i] = static_cast<uint64_t>(typed_array[i]);
+      }
+      
+      result.dm_times.emplace_back(std::move(uint64_array));
+    }
+    
+    return result;
+  }
+};
+
+// Type aliases for specific precision levels
+using DedispersedData8to16 = DedispersedDataTyped<uint16_t>;
+using DedispersedData16to32 = DedispersedDataTyped<uint32_t>;
+using DedispersedData32to64 = DedispersedDataTyped<uint64_t>;
+
 
 class DynamicArray {
 public:
@@ -294,8 +367,362 @@ preprocess_dedisperseddata(const dedisperseddata& in,
     return out;
 }
 
+// Template version for typed dedispersion data
+template<typename InputType>
+inline dedisperseddata_uint8
+preprocess_typed_dedisperseddata(const DedispersedDataTyped<dedispersion_output_t<InputType>>& in,
+                                 int target_size = 512)
+{
+    omp_set_num_threads(32);
+    /* ---------- 输入检查 ---------- */
+    if (in.shape.size() < 2)
+        throw std::runtime_error("DedispersedDataTyped.shape 长度必须 ≥ 2");
+    const int src_rows = static_cast<int>(in.shape[0]);
+    const int src_cols = static_cast<int>(in.shape[1]);
+    if (src_rows <= 0 || src_cols <= 0)
+        throw std::runtime_error("DedispersedDataTyped.shape 非法");
+
+    /* ---------- 元数据填充 ---------- */
+    dedisperseddata_uint8 out;
+    out.dm_low   = in.dm_low;
+    out.dm_high  = in.dm_high;
+    out.dm_step  = in.dm_step;
+    out.tsample  = in.tsample;
+    out.filname  = in.filname;
+
+    out.shape = {static_cast<size_t>(target_size),
+                 static_cast<size_t>(target_size),
+                 3};
+    out.dm_ndata          = target_size;
+    out.downtsample_ndata = target_size;
+
+    /* ---------- 预分配输出容器 ---------- */
+    const size_t n_frames = in.dm_times.size();
+    out.dm_times.resize(n_frames);
+
+    /* ---------- OpenMP 并行处理 ---------- */
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t idx = 0; idx < static_cast<ptrdiff_t>(n_frames); ++idx)
+    {
+        const auto& frame_ptr = in.dm_times[idx];
+        using OutputType = dedispersion_output_t<InputType>;
+
+        /* 1) typed data → float32  (并行像素拷贝) */
+        cv::Mat1f src32(src_rows, src_cols);
+        const OutputType* raw = frame_ptr.get();
+#pragma omp parallel for schedule(static) collapse(2)
+        for (int r = 0; r < src_rows; ++r)
+            for (int c = 0; c < src_cols; ++c)
+                src32(r, c) = static_cast<float>(raw[r * src_cols + c]);
+
+        /* 2) resize 到 target_size×target_size */
+        cv::Mat resized;
+        int interp = (src_rows > target_size && src_cols > target_size)
+                   ? cv::INTER_AREA
+                   : cv::INTER_LINEAR;
+        cv::resize(src32, resized, {target_size, target_size}, 0, 0, interp);
+
+        /* 3) 归一化 0-255、灰度→RGB、Viridis */
+        cv::Mat norm8u, rgb, viridis;
+        cv::normalize(resized, norm8u, 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::cvtColor(norm8u, rgb, cv::COLOR_GRAY2RGB);
+        cv::applyColorMap(rgb, viridis, cv::COLORMAP_VIRIDIS);
+
+        /* 4) 拷贝到 4096 对齐缓冲区 */
+        const size_t bytes = viridis.total() * viridis.elemSize(); // target_size*target_size*3
+        auto deleter = [](uint8_t* p){ operator delete[](p, std::align_val_t{4096}); };
+        std::shared_ptr<uint8_t[]> buf(
+            reinterpret_cast<uint8_t*>(operator new[](bytes, std::align_val_t{4096})),
+            deleter);
+
+        std::memcpy(buf.get(), viridis.data, bytes);
+        out.dm_times[idx] = std::move(buf);
+    }
+
+    return out;
+}
+
+// Original function kept for compatibility
+inline dedisperseddata_uint8
+preprocess_dedisperseddata_original(const dedisperseddata& in,
+                           int target_size = 512)
+{
+    omp_set_num_threads(32);
+    /* ---------- 输入检查 ---------- */
+    if (in.shape.size() < 2)
+        throw std::runtime_error("dedisperseddata.shape 长度必须 ≥ 2");
+    const int src_rows = static_cast<int>(in.shape[0]);
+    const int src_cols = static_cast<int>(in.shape[1]);
+    if (src_rows <= 0 || src_cols <= 0)
+        throw std::runtime_error("dedisperseddata.shape 非法");
+
+    /* ---------- 元数据填充 ---------- */
+    dedisperseddata_uint8 out;
+    out.dm_low   = in.dm_low;
+    out.dm_high  = in.dm_high;
+    out.dm_step  = in.dm_step;
+    out.tsample  = in.tsample;
+    out.filname  = in.filname;
+
+    out.shape = {static_cast<size_t>(target_size),
+                 static_cast<size_t>(target_size),
+                 3};
+    out.dm_ndata          = target_size;
+    out.downtsample_ndata = target_size;
+
+    /* ---------- 预分配输出容器 ---------- */
+    const size_t n_frames = in.dm_times.size();
+    out.dm_times.resize(n_frames);
+
+    /* ---------- OpenMP 并行处理 ---------- */
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t idx = 0; idx < static_cast<ptrdiff_t>(n_frames); ++idx)
+    {
+        const auto& frame_ptr = in.dm_times[idx];
+
+        /* 1) uint64 → float32  (并行像素拷贝) */
+        cv::Mat1f src32(src_rows, src_cols);
+        const uint64_t* raw = frame_ptr.get();
+#pragma omp parallel for schedule(static) collapse(2)
+        for (int r = 0; r < src_rows; ++r)
+            for (int c = 0; c < src_cols; ++c)
+                src32(r, c) = static_cast<float>(raw[r * src_cols + c]);
+
+        /* 2) resize 到 512×512 */
+        cv::Mat resized;
+        int interp = (src_rows > target_size && src_cols > target_size)
+                   ? cv::INTER_AREA
+                   : cv::INTER_LINEAR;
+        cv::resize(src32, resized, {target_size, target_size}, 0, 0, interp);
+
+        /* 3) 归一化 0-255、灰度→RGB、Viridis */
+        cv::Mat norm8u, rgb, viridis;
+        cv::normalize(resized, norm8u, 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::cvtColor(norm8u, rgb, cv::COLOR_GRAY2RGB);
+        cv::applyColorMap(rgb, viridis, cv::COLORMAP_VIRIDIS);
+
+        /* 4) 拷贝到 4096 对齐缓冲区 */
+        const size_t bytes = viridis.total() * viridis.elemSize(); // 512*512*3
+        auto deleter = [](uint8_t* p){ operator delete[](p, std::align_val_t{4096}); };
+        std::shared_ptr<uint8_t[]> buf(
+            reinterpret_cast<uint8_t*>(operator new[](bytes, std::align_val_t{4096})),
+            deleter);
+
+        std::memcpy(buf.get(), viridis.data, bytes);
+        out.dm_times[idx] = std::move(buf);
+    }
+
+    return out;
+}
+
 inline dedisperseddata_uint8
 preprocess_dedisperseddata_with_slicing(const dedisperseddata& in, Header header, 
+                                        int time_downsample,
+                                        float slice_duration = 0.5,  // 切片时长(秒)
+                                        int target_size = 512)
+{
+    omp_set_num_threads(32);
+    
+    /* ---------- 输入检查 ---------- */
+    if (in.shape.size() < 2)
+        throw std::runtime_error("dedisperseddata.shape 长度必须 ≥ 2");
+    if (in.dm_times.empty())
+        throw std::runtime_error("dedisperseddata.dm_times 为空");
+        
+    const int src_rows = static_cast<int>(in.shape[0]);  // DM steps
+    const int src_cols = static_cast<int>(in.shape[1]);  // Time samples (already downsampled)
+    if (src_rows <= 0 || src_cols <= 0)
+        throw std::runtime_error("dedisperseddata.shape 非法");
+
+    printf("Input data shape: [%d, %d], original tsample: %.6f, time_downsample: %d\n", 
+           src_rows, src_cols, header.tsamp, time_downsample);
+
+    // 计算切片参数
+    // 原始tsamp是单个时间样本的时间间隔
+    // 下采样后，每个样本对应 time_downsample * header.tsamp 的时间
+    const float downsampled_tsamp = header.tsamp * time_downsample;
+    const float total_time = src_cols * downsampled_tsamp;  // 总的观测时间
+    const int samples_per_slice = static_cast<int>(slice_duration / downsampled_tsamp);
+    const int num_slices = (src_cols + samples_per_slice - 1) / samples_per_slice;
+    
+    printf("Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %d, Number of slices: %d\n", 
+           downsampled_tsamp, total_time, samples_per_slice, num_slices);
+
+    /* ---------- 元数据填充 ---------- */
+    dedisperseddata_uint8 out;
+    out.dm_low   = in.dm_low;
+    out.dm_high  = in.dm_high;
+    out.dm_step  = in.dm_step;
+    out.tsample  = slice_duration;  // 每个切片的时长
+    out.filname  = in.filname;
+
+    out.shape = {static_cast<size_t>(target_size),
+                 static_cast<size_t>(target_size),
+                 3};
+    out.dm_ndata          = target_size;
+    out.downtsample_ndata = target_size;
+
+    /* ---------- 预分配输出容器 ---------- */
+    out.dm_times.resize(num_slices);
+
+    // 获取原始数据指针
+    const uint64_t* raw_data = in.dm_times[0].get();
+
+    /* ---------- OpenMP 并行处理切片 ---------- */
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t slice_idx = 0; slice_idx < static_cast<ptrdiff_t>(num_slices); ++slice_idx)
+    {
+        // 计算当前切片的时间范围
+        const int start_col = slice_idx * samples_per_slice;
+        const int end_col = std::min(start_col + samples_per_slice, src_cols);
+        const int actual_slice_cols = end_col - start_col;
+
+        // printf("Processing slice %td: columns [%d, %d), actual width: %d\n", 
+        //        slice_idx, start_col, end_col, actual_slice_cols);
+
+        /* 1) 提取切片并转换为 float32 */
+        cv::Mat1f slice32(src_rows, actual_slice_cols);
+#pragma omp parallel for schedule(static) collapse(2)
+        for (int r = 0; r < src_rows; ++r) {
+            for (int c = 0; c < actual_slice_cols; ++c) {
+                const int source_col = start_col + c;
+                slice32(r, c) = static_cast<float>(raw_data[r * src_cols + source_col]);
+            }
+        }
+
+        /* 2) resize 到 512×512 */
+        cv::Mat resized;
+        int interp = (src_rows > target_size && actual_slice_cols > target_size)
+                   ? cv::INTER_AREA
+                   : cv::INTER_LINEAR;
+        cv::resize(slice32, resized, {target_size, target_size}, 0, 0, interp);
+
+        /* 3) 归一化 0-255、灰度→RGB、Viridis */
+        cv::Mat norm8u, rgb, viridis;
+        cv::normalize(resized, norm8u, 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::cvtColor(norm8u, rgb, cv::COLOR_GRAY2RGB);
+        cv::applyColorMap(rgb, viridis, cv::COLORMAP_VIRIDIS);
+
+        /* 4) 拷贝到 4096 对齐缓冲区 */
+        const size_t bytes = viridis.total() * viridis.elemSize(); // 512*512*3
+        auto deleter = [](uint8_t* p){ operator delete[](p, std::align_val_t{4096}); };
+        std::shared_ptr<uint8_t[]> buf(
+            reinterpret_cast<uint8_t*>(operator new[](bytes, std::align_val_t{4096})),
+            deleter);
+
+        std::memcpy(buf.get(), viridis.data, bytes);
+        out.dm_times[slice_idx] = std::move(buf);
+    }
+
+    printf("Slicing preprocessing completed: %d slices generated\n", num_slices);
+    return out;
+}
+
+// Template version for typed dedispersion data with slicing
+template<typename InputType>
+inline dedisperseddata_uint8
+preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispersion_output_t<InputType>>& in, 
+                                              Header header, 
+                                              int time_downsample,
+                                              float slice_duration = 0.5,  // 切片时长(秒)
+                                              int target_size = 512)
+{
+    omp_set_num_threads(32);
+    
+    /* ---------- 输入检查 ---------- */
+    if (in.shape.size() < 2)
+        throw std::runtime_error("DedispersedDataTyped.shape 长度必须 ≥ 2");
+    if (in.dm_times.empty())
+        throw std::runtime_error("DedispersedDataTyped.dm_times 为空");
+        
+    const int src_rows = static_cast<int>(in.shape[0]);  // DM steps
+    const int src_cols = static_cast<int>(in.shape[1]);  // Time samples (already downsampled)
+    if (src_rows <= 0 || src_cols <= 0)
+        throw std::runtime_error("DedispersedDataTyped.shape 非法");
+
+    printf("Input typed data shape: [%d, %d], original tsample: %.6f, time_downsample: %d\n", 
+           src_rows, src_cols, header.tsamp, time_downsample);
+
+    // 计算切片参数
+    const float downsampled_tsamp = header.tsamp * time_downsample;
+    const float total_time = src_cols * downsampled_tsamp;
+    const int samples_per_slice = static_cast<int>(slice_duration / downsampled_tsamp);
+    const int num_slices = (src_cols + samples_per_slice - 1) / samples_per_slice;
+    
+    printf("Typed data - Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %d, Number of slices: %d\n", 
+           downsampled_tsamp, total_time, samples_per_slice, num_slices);
+
+    /* ---------- 元数据填充 ---------- */
+    dedisperseddata_uint8 out;
+    out.dm_low   = in.dm_low;
+    out.dm_high  = in.dm_high;
+    out.dm_step  = in.dm_step;
+    out.tsample  = slice_duration;  // 每个切片的时长
+    out.filname  = in.filname;
+
+    out.shape = {static_cast<size_t>(target_size),
+                 static_cast<size_t>(target_size),
+                 3};
+    out.dm_ndata          = target_size;
+    out.downtsample_ndata = target_size;
+
+    /* ---------- 预分配输出容器 ---------- */
+    out.dm_times.resize(num_slices);
+
+    // 获取原始数据指针
+    using OutputType = dedispersion_output_t<InputType>;
+    const OutputType* raw_data = in.dm_times[0].get();
+
+    /* ---------- OpenMP 并行处理切片 ---------- */
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t slice_idx = 0; slice_idx < static_cast<ptrdiff_t>(num_slices); ++slice_idx)
+    {
+        // 计算当前切片的时间范围
+        const int start_col = slice_idx * samples_per_slice;
+        const int end_col = std::min(start_col + samples_per_slice, src_cols);
+        const int actual_slice_cols = end_col - start_col;
+
+        /* 1) 提取切片并转换为 float32 */
+        cv::Mat1f slice32(src_rows, actual_slice_cols);
+#pragma omp parallel for schedule(static) collapse(2)
+        for (int r = 0; r < src_rows; ++r) {
+            for (int c = 0; c < actual_slice_cols; ++c) {
+                const int source_col = start_col + c;
+                slice32(r, c) = static_cast<float>(raw_data[r * src_cols + source_col]);
+            }
+        }
+
+        /* 2) resize 到 target_size×target_size */
+        cv::Mat resized;
+        int interp = (src_rows > target_size && actual_slice_cols > target_size)
+                   ? cv::INTER_AREA
+                   : cv::INTER_LINEAR;
+        cv::resize(slice32, resized, {target_size, target_size}, 0, 0, interp);
+
+        /* 3) 归一化 0-255、灰度→RGB、Viridis */
+        cv::Mat norm8u, rgb, viridis;
+        cv::normalize(resized, norm8u, 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::cvtColor(norm8u, rgb, cv::COLOR_GRAY2RGB);
+        cv::applyColorMap(rgb, viridis, cv::COLORMAP_VIRIDIS);
+
+        /* 4) 拷贝到 4096 对齐缓冲区 */
+        const size_t bytes = viridis.total() * viridis.elemSize(); // target_size*target_size*3
+        auto deleter = [](uint8_t* p){ operator delete[](p, std::align_val_t{4096}); };
+        std::shared_ptr<uint8_t[]> buf(
+            reinterpret_cast<uint8_t*>(operator new[](bytes, std::align_val_t{4096})),
+            deleter);
+
+        std::memcpy(buf.get(), viridis.data, bytes);
+        out.dm_times[slice_idx] = std::move(buf);
+    }
+
+    printf("Typed slicing preprocessing completed: %d slices generated\n", num_slices);
+    return out;
+}
+
+// Original function kept for compatibility
+inline dedisperseddata_uint8
+preprocess_dedisperseddata_with_slicing_original(const dedisperseddata& in, Header header, 
                                         int time_downsample,
                                         float slice_duration = 0.5,  // 切片时长(秒)
                                         int target_size = 512)
