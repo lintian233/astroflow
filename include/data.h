@@ -635,21 +635,21 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     if (in.dm_times.empty())
         throw std::runtime_error("DedispersedDataTyped.dm_times 为空");
         
-    const int src_rows = static_cast<int>(in.shape[0]);  // DM steps
-    const int src_cols = static_cast<int>(in.shape[1]);  // Time samples (already downsampled)
-    if (src_rows <= 0 || src_cols <= 0)
+    const size_t src_rows = in.shape[0];  // DM steps
+    const size_t src_cols = in.shape[1];  // Time samples (already downsampled)
+    if (src_rows == 0 || src_cols == 0)
         throw std::runtime_error("DedispersedDataTyped.shape 非法");
 
-    printf("Input typed data shape: [%d, %d], original tsample: %.6f, time_downsample: %d\n", 
+    printf("Input typed data shape: [%zu, %zu], original tsample: %.6f, time_downsample: %d\n", 
            src_rows, src_cols, header.tsamp, time_downsample);
 
     // 计算切片参数
     const float downsampled_tsamp = header.tsamp * time_downsample;
-    const float total_time = src_cols * downsampled_tsamp;
-    const int samples_per_slice = static_cast<int>(slice_duration / downsampled_tsamp);
-    const int num_slices = (src_cols + samples_per_slice - 1) / samples_per_slice;
+    const float total_time = static_cast<float>(src_cols) * downsampled_tsamp;
+    const size_t samples_per_slice = static_cast<size_t>(slice_duration / downsampled_tsamp);
+    const size_t num_slices = (src_cols + samples_per_slice - 1) / samples_per_slice;
     
-    printf("Typed data - Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %d, Number of slices: %d\n", 
+    printf("Typed data - Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %zu, Number of slices: %zu\n", 
            downsampled_tsamp, total_time, samples_per_slice, num_slices);
 
     /* ---------- 元数据填充 ---------- */
@@ -678,23 +678,23 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     for (ptrdiff_t slice_idx = 0; slice_idx < static_cast<ptrdiff_t>(num_slices); ++slice_idx)
     {
         // 计算当前切片的时间范围
-        const int start_col = slice_idx * samples_per_slice;
-        const int end_col = std::min(start_col + samples_per_slice, src_cols);
-        const int actual_slice_cols = end_col - start_col;
+        const size_t start_col = static_cast<size_t>(slice_idx) * samples_per_slice;
+        const size_t end_col = std::min(start_col + samples_per_slice, src_cols);
+        const size_t actual_slice_cols = end_col - start_col;
 
         /* 1) 提取切片并转换为 float32 */
-        cv::Mat1f slice32(src_rows, actual_slice_cols);
+        cv::Mat1f slice32(static_cast<int>(src_rows), static_cast<int>(actual_slice_cols));
 #pragma omp parallel for schedule(static) collapse(2)
-        for (int r = 0; r < src_rows; ++r) {
-            for (int c = 0; c < actual_slice_cols; ++c) {
-                const int source_col = start_col + c;
-                slice32(r, c) = static_cast<float>(raw_data[r * src_cols + source_col]);
+        for (size_t r = 0; r < src_rows; ++r) {
+            for (size_t c = 0; c < actual_slice_cols; ++c) {
+                const size_t source_col = start_col + c;
+                slice32(static_cast<int>(r), static_cast<int>(c)) = static_cast<float>(raw_data[r * src_cols + source_col]);
             }
         }
 
         /* 2) resize 到 target_size×target_size */
         cv::Mat resized;
-        int interp = (src_rows > target_size && actual_slice_cols > target_size)
+        int interp = (static_cast<int>(src_rows) > target_size && static_cast<int>(actual_slice_cols) > target_size)
                    ? cv::INTER_AREA
                    : cv::INTER_LINEAR;
         cv::resize(slice32, resized, {target_size, target_size}, 0, 0, interp);
@@ -716,7 +716,7 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
         out.dm_times[slice_idx] = std::move(buf);
     }
 
-    printf("Typed slicing preprocessing completed: %d slices generated\n", num_slices);
+    printf("Typed slicing preprocessing completed: %zu slices generated\n", num_slices);
     return out;
 }
 
