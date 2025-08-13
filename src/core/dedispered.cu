@@ -447,7 +447,8 @@ time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata,
     // 强信号压缩: 平方根压缩，保持强爆发信号的可检测性
     double sqrt_sum = sqrt(static_cast<double>(sum));
     double sqrt_max_possible = sqrt(static_cast<double>(max_value * sample_count));
-    result = static_cast<T>((sqrt_sum / sqrt_max_possible) * max_value);
+    double compressed_value = (sqrt_sum / sqrt_max_possible) * max_value;
+    result = static_cast<T>(min(compressed_value, static_cast<double>(max_value)));
   #else
     // 默认策略: 饱和处理
     result = static_cast<T>(min(sum, max_value));
