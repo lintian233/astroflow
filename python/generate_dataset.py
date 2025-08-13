@@ -33,54 +33,10 @@ def delay_samples_to_dm(delay_samples, f_low, f_high, dt_sample):
     delay_s = delay_samples * dt_sample
     return delay_s / (DISPERSION_CONSTANT * (1.0/f_low**2 - 1.0/f_high**2))
 
-# # ---------- 生成模拟脉冲谱图 ----------
-# def generate_test_spectrogram(file_path, dm, toa, pulse_width_ms, pulse_amp_ratio,
-#                               t_len, freq_min, freq_max):
-#     # 读入基底数据
-#     base = Filterbank(file_path) if file_path.endswith('.fil') else PsrFits(file_path)
-#     hdr = base.core_data[1]
-#     dt, n_f, n_t = hdr.tsamp, hdr.nchans, hdr.ndata
-#     f_low = hdr.fch1
-#     f_high = f_low + hdr.foff * (n_f-1)
 
-#     toa_samples      = int(toa / dt)
-#     width_samples    = int(pulse_width_ms/1000 / dt)
-#     base.settype(SpectrumType.CUSTOM)                  # type: ignore
-#     spec = base.get_spectrum().astype(np.uint16)       # type: ignore
-#     max_amp = spec.max()
-
-#     # 写入脉冲
-#     freqs = np.linspace(f_low, f_high, n_f)
-#     for i, f in enumerate(freqs):
-#         if not (freq_min <= f <= freq_max):
-#             continue
-#         dly = dm_to_delay_samples(dm, f, f_high, dt)
-#         center = toa_samples + dly + np.random.randint(-50, 50)
-#         if center < 0 or center >= n_t: continue
-#         t0 = max(0, center - width_samples) + np.random.randint(-30, 30)
-#         t1 = min(n_t, center + width_samples) + np.random.randint(-30, 30)
-#         t_idx = np.arange(t0, t1)
-#         gauss = (pulse_amp_ratio*max_amp *
-#                  np.exp(-0.5*((t_idx-center)/width_samples)**2) +
-#                  np.random.normal(0, 0.005*pulse_amp_ratio*max_amp, t_idx.shape)
-#                 ).astype(np.uint16)
-#         spec[t0:t1, i] += gauss
-#     spec = np.clip(spec, 0, 255).astype(np.uint8)
-#     base.spectrumset(spec.ravel())                     # type: ignore
-
-#     # 截取 pulse 附近若干时长用于做后续 dedispersion
-#     t_clip   = int(t_len / dt)
-#     start_t  = max(0, toa_samples)
-#     end_t    = min(n_t, start_t + t_clip)
-#     clip_spec = spec[start_t:end_t]
-
-#     return clip_spec, base
-
-
-# ---------- 生成模拟脉冲谱图（加速版：等价逻辑） ----------
 def generate_test_spectrogram(file_path, dm, toa, pulse_width_ms, pulse_amp_ratio,
                               t_len, freq_min, freq_max):
-    # 读入基底数据
+
     base = Filterbank(file_path) if file_path.endswith('.fil') else PsrFits(file_path)
     hdr = base.core_data[1]
     dt      = hdr.tsamp
@@ -112,7 +68,6 @@ def generate_test_spectrogram(file_path, dm, toa, pulse_width_ms, pulse_amp_rati
         # 延时（秒） -> 样本数（四舍五入）
         delays = np.rint(DISPERSION_CONSTANT * dm * (inv_f2 - inv_fhigh2) / dt).astype(np.int64)
 
-        # -------- 主循环：仅对有效通道写脉冲 --------
         for j in range(valid_idx.size):
             i = int(valid_idx[j])
             center = toa_samples + int(delays[j]) + np.random.randint(-50, 50)
@@ -127,18 +82,16 @@ def generate_test_spectrogram(file_path, dm, toa, pulse_width_ms, pulse_amp_rati
             if t1 <= t0:
                 continue
 
-            # 时间索引与高斯
             t_idx = np.arange(t0, t1, dtype=np.int32)
-            # 用 float32 足够且更快
+
             g = amp * np.exp(-0.5 * ((t_idx - center) / float(width_samples))**2, dtype=np.float64)
             if noise_scale > 0:
                 g += np.random.normal(0.0, noise_scale, size=g.shape)
 
-            # 转回 uint16 后就地累加
             g = g.astype(np.uint16, copy=False)
             spec[t0:t1, i] += g
 
-    # 裁剪并转回 uint8（就地，避免分配）
+    
     np.clip(spec, 0, 255, out=spec)
     spec = spec.astype(np.uint8, copy=False)
     base.spectrumset(spec.ravel())                                # type: ignore
@@ -161,7 +114,7 @@ def dedisperse_get_list(spectrum, dm_low, dm_high, f_start, f_end,
     return dedisperse_spec(spectrum, dm_low, dm_high,
                            f_start, f_end, dm_step,
                            t_down, t_sample,
-                           mask_file="/home/lingh/work/astroflow/python/none.txt")
+                           maskfile="/home/lingh/work/astroflow/python/none.txt")
 
 def split_dmt_by_toa(dmts, toa, min_gap=0.0):
     """
@@ -211,8 +164,8 @@ def main():
     cand_dm_rng   = (32, 950)
     freq_min_rng  = (1030, 1250)
     freq_max_rng  = (1310, 1450)     # 确保 freq_max - freq_min ≥100
-    width_rng_ms  = (0.1, 3.3)
-    amp_ratio_rng = (0.03, 0.1)
+    width_rng_ms  = (2, 10)
+    amp_ratio_rng = (0.01, 0.03)
     t_clip_len    = 0.5              # s
 
     # dedispersion 参数
