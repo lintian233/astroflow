@@ -99,7 +99,7 @@ struct DedispersionOutputType {};
 
 template<>
 struct DedispersionOutputType<uint8_t> {
-    using type = uint16_t;  // 8-bit -> 16-bit to prevent overflow
+    using type = uint32_t;  // 8-bit -> 32-bit to prevent overflow
 };
 
 template<>
