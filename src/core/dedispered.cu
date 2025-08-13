@@ -421,22 +421,39 @@ time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata,
     return;
   }
   
-  // 计算当前元素的channel和time index
   size_t chan = idx % nchans;
   size_t down_idx = idx / nchans;
   
-  // 计算当前bin的起始和结束时间索引
-  size_t start_time = down_idx * time_downsample;
-  size_t end_time = min(start_time + time_downsample, ndata);
+  size_t start_time = down_idx * static_cast<size_t>(time_downsample);
+  size_t end_time = min(start_time + static_cast<size_t>(time_downsample), ndata);
   
-  // 累加当前bin内的所有时间样本
   uint64_t sum = 0;
+  constexpr uint64_t max_value = static_cast<uint64_t>(std::numeric_limits<T>::max());
+  size_t sample_count = end_time - start_time;
+  
   for (size_t t = start_time; t < end_time; ++t) {
-    sum += input[chan + t * nchans];
+    sum += static_cast<uint64_t>(input[chan + t * nchans]);
   }
   
-  // 存储累加结果
-  output[chan + down_idx * nchans] = static_cast<T>(sum);
+  T result;
+  #define USE_SQRT_COMPRESSION
+  #ifdef USE_AVERAGE_BINNING
+    // 脉冲星搜索: 平均值，保持周期性信号的相对强度关系
+    result = static_cast<T>(sum / sample_count);
+  #elif defined(USE_RANDOM_SAMPLING)
+    // 单脉冲搜索: 选择第一个样本，保持时间分辨率和峰值特征
+    result = input[chan + start_time * nchans];
+  #elif defined(USE_SQRT_COMPRESSION)
+    // 强信号压缩: 平方根压缩，保持强爆发信号的可检测性
+    double sqrt_sum = sqrt(static_cast<double>(sum));
+    double sqrt_max_possible = sqrt(static_cast<double>(max_value * sample_count));
+    result = static_cast<T>((sqrt_sum / sqrt_max_possible) * max_value);
+  #else
+    // 默认策略: 饱和处理
+    result = static_cast<T>(min(sum, max_value));
+  #endif
+  
+  output[chan + down_idx * nchans] = result;
 }
 
 // [FIRST FUNCTION] Filterbank dedispersion
