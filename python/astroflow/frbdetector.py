@@ -72,7 +72,7 @@ class Yolo11nFrbDetector(FrbDetector):
         self.batch_size = batch_size  # 添加批处理大小参数
 
     def _load_model(self):
-        model = YOLO("yolo11n_0802.pt")
+        model = YOLO("yolo11n_0801.pt")
         return model
 
     def filter(self, img):
