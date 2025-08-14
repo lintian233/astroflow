@@ -72,7 +72,7 @@ class Yolo11nFrbDetector(FrbDetector):
         self.batch_size = batch_size  # 添加批处理大小参数
 
     def _load_model(self):
-        model = YOLO("yolo11n_0801.pt")
+        model = YOLO("yolo11n_0814_v2.pt")
         return model
 
     def filter(self, img):
@@ -115,7 +115,7 @@ class Yolo11nFrbDetector(FrbDetector):
         if total_samples <= self.batch_size:
             
             results = model(
-                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.1, stream=True
+                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.45, stream=True
             )
             self._process_results(results, dmt_list, candidate, start_index=0)
             print(f"Processed {total_samples} samples in one batch.")

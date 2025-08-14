@@ -87,20 +87,9 @@ def pack_candidate(dmt, candinfo, save_path, file_path):
     os.makedirs(IMAGE_PATH, exist_ok=True)
     os.makedirs(LABEL_PATH, exist_ok=True)
 
-    if len(candinfo) == 7:
-        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
-    elif len(candinfo) == 6:
-        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-    else:
-        dm, toa, freq_start, freq_end, dmt_idx = candinfo
-        ref_toa = toa
+    dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
 
-    dmt_data = np.array(dmt.data, dtype=np.float32)
-    img = cv2.resize(dmt_data, (512, 512), interpolation=cv2.INTER_AREA)
-    
-    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
+    img = dmt.data
     
     name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
     label_name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.txt"
@@ -120,21 +109,9 @@ def pack_background(dmt, candinfo, save_path, file_path):
     os.makedirs(IMAGE_PATH, exist_ok=True)
     os.makedirs(LABEL_PATH, exist_ok=True)
 
-    if len(candinfo) == 7:
-        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
-    elif len(candinfo) == 6:
-        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-    else:
-        dm, toa, freq_start, freq_end, dmt_idx = candinfo
-        ref_toa = toa
-
-    dmt_data = np.array(dmt.data, dtype=np.float32)
-    img = cv2.resize(dmt_data, (512, 512), interpolation=cv2.INTER_AREA)
+    dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
     
-    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
-    
+    img = dmt.data
     name = f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
     label_name = f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.txt"
 

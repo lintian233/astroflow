@@ -22,7 +22,7 @@ for d in [FRB_IMG_DIR, FRB_LAB_DIR, RFI_IMG_DIR, RFI_LAB_DIR, WEAK_FRB_IMG_DIR, 
     os.makedirs(d, exist_ok=True)
 
 # 每个候选要生成的背景图片张数
-BG_NUM = 3  # ← 改这个即可
+BG_NUM = 1  # ← 改这个即可
 
 # ---------------- 基础工具 ----------------
 def dm_to_delay_samples(dm, f_low, f_high, dt_sample):
@@ -70,7 +70,7 @@ def generate_test_spectrogram(file_path, dm, toa, pulse_width_ms, pulse_amp_rati
 
         for j in range(valid_idx.size):
             i = int(valid_idx[j])
-            center = toa_samples + int(delays[j]) + np.random.randint(-50, 50)
+            center = toa_samples + int(delays[j]) + np.random.randint(-15, 15)  # TOA添加随机偏移
             if center <= 0 or center >= n_t:
                 continue
 
@@ -156,22 +156,23 @@ def gen_label(dm, toa, imgsize, dm_low, dm_high, t_start, t_end):
 # ---------------- 主流程 ----------------
 def main():
     # ---------- 超参数 ----------
-    CAND_NUM   = 100_100
-    file_dir   = '/data/QL/naocdata/FRB20220529/20250729/'
-    fil_files  = [os.path.join(file_dir, f) for f in os.listdir(file_dir) if f.endswith('.fil')]
-    toa_range  = (10, 110)       # s
+    CAND_NUM   = 2000
+    file_dir   = '/data/QL/lingh/FAST_RFI'
+    fil_files  = [os.path.join(file_dir, f) for f in os.listdir(file_dir) if (f.endswith('.fil') or f.endswith('.fits'))]
+    
+    toa_range  = (1, 4)       # s
     # 候选随机参数空间
-    cand_dm_rng   = (32, 950)
-    freq_min_rng  = (1030, 1250)
-    freq_max_rng  = (1310, 1450)     # 确保 freq_max - freq_min ≥100
-    width_rng_ms  = (2, 10)
-    amp_ratio_rng = (0.01, 0.03)
+    cand_dm_rng   = (400, 670)
+    freq_min_rng  = (1000, 1300)
+    freq_max_rng  = (1150, 1470)     # 确保 freq_max - freq_min ≥100
+    width_rng_ms  = (0.1, 6)
+    amp_ratio_rng = (0.001, 0.02)
     t_clip_len    = 0.5              # s
 
     # dedispersion 参数
-    dm_low, dm_high, dm_step   = 0, 1000, 1
+    dm_low, dm_high, dm_step   = 350, 750, 0.6
     f_start, f_end             = 1025.0, 1450.0
-    t_down, t_sample           = 2, 0.5
+    t_down, t_sample           = 1, 0.5
 
     for i in tqdm(range(CAND_NUM), desc='Generating'):
         # ---- 随机化参数 ----
@@ -192,7 +193,7 @@ def main():
 
         dmts = dedisperse_get_list(base, dm_low, dm_high, f_start, f_end,
                                    dm_step, t_down, t_sample)
-        frb_dmt, bg_pool = split_dmt_by_toa(dmts, ref_toa, min_gap=10)
+        frb_dmt, bg_pool = split_dmt_by_toa(dmts, ref_toa, min_gap=1)
 
         if frb_dmt is None:
             print(f'[Skip] 未找到包含脉冲的 DMT (DM={dm:.2f}, TOA={toa:.2f})')
@@ -232,8 +233,8 @@ def main():
             for kk, idx in enumerate(idxs):
                 bg_dmt = bg_pool[idx]
                 bg_tag  = f'bg_{stem}_{i:06d}_b{kk:02d}'
-                bg_img  = f'{RFI_IMG_DIR}/{bg_tag}.png'
-                bg_lab  = f'{RFI_LAB_DIR}/{bg_tag}.txt'
+                bg_img  = f'{RFI_IMG_DIR}/{bg_tag}_{dm:.2f}_{toa:.2f}.png'
+                bg_lab  = f'{RFI_LAB_DIR}/{bg_tag}_{dm:.2f}_{toa:.2f}.txt'
                 save_dmt_image(bg_dmt, bg_img, 0, 100)
                 open(bg_lab, 'w').close()   # 空标签文件
 
