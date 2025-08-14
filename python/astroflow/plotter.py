@@ -79,21 +79,6 @@ class PlotterManager:
         self.pool.close()
         self.pool.join()
 
-def _parse_candidate_info(candinfo):
-    """Parse candidate information into structured format."""
-    if len(candinfo) == 7:
-        dm, toa, freq_start, freq_end, dmt_idx, (x, y, w, h), ref_toa = candinfo
-        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, (x, y, w, h)
-    
-    elif len(candinfo) == 6:
-        dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, None
-    else:
-        dm, toa, freq_start, freq_end, dmt_idx = candinfo
-        ref_toa = toa
-        return dm, toa, freq_start, freq_end, dmt_idx, ref_toa, None
-
-
 def pack_candidate(dmt, candinfo, save_path, file_path):
     IMAGE_PATH = os.path.join(save_path,"frb","images").lower()
     LABEL_PATH = os.path.join(save_path,"frb","labels").lower()
