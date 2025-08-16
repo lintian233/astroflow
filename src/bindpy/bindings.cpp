@@ -29,15 +29,15 @@ PYBIND11_MODULE(_astroflow_core, m) {
   m.def("_dedispered_fil_with_dm_uint8",
         &cpucal::dedispered_fil_with_dm<uint8_t>, py::arg("fil"),
         py::arg("tstart"), py::arg("tend"), py::arg("dm"),
-        py::arg("freq_start"), py::arg("freq_end"));
+        py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"));
   m.def("_dedispered_fil_with_dm_uint16",
         &cpucal::dedispered_fil_with_dm<uint16_t>, py::arg("fil"),
         py::arg("tstart"), py::arg("tend"), py::arg("dm"),
-        py::arg("freq_start"), py::arg("freq_end"));
+        py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"));
   m.def("_dedispered_fil_with_dm_uint32",
         &cpucal::dedispered_fil_with_dm<uint32_t>, py::arg("fil"),
         py::arg("tstart"), py::arg("tend"), py::arg("dm"),
-        py::arg("freq_start"), py::arg("freq_end"));
+        py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"));
   m.def("_dedisperse_spec", &dedisperse_spec_py<uint8_t>, py::arg("data"),
         py::arg("header"), py::arg("dm_low"), py::arg("dm_high"),
         py::arg("freq_start"), py::arg("dm_step") = 1,
@@ -56,11 +56,11 @@ PYBIND11_MODULE(_astroflow_core, m) {
 
   m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint8_t>,
         py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
-        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"));
+        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"));
   m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint16_t>,
         py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
-        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"));
+        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"));
   m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint32_t>,
         py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
-        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"));
+        py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"));
 }

@@ -436,6 +436,7 @@ time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata,
   }
   
   T result;
+  // #define USE_AVERAGE_BINNING
   #define USE_SQRT_COMPRESSION
   #ifdef USE_AVERAGE_BINNING
     // 脉冲星搜索: 平均值，保持周期性信号的相对强度关系

@@ -31,7 +31,7 @@ dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
                                        float dm, float tstart, float tend,
-                                       float freq_start, float freq_end);
+                                       float freq_start, float freq_end, std::string maskfile);
 
 template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name);

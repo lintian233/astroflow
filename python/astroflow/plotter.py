@@ -13,6 +13,7 @@ from scipy.ndimage import gaussian_filter
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from .config.taskconfig import TaskConfig
 from .dedispered import dedisperse_spec_with_dm
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
@@ -353,8 +354,8 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_id
     
     # Step 2: Determine fitting region centered on TOA
     if fitting_window_samples is None:
-        # Auto-determine fitting window: 20% of total length or minimum 50 samples
-        fitting_window_samples = max(50, int(0.2 * n_time))
+        # Auto-determine fitting window: 30% of total length or minimum 50 samples
+        fitting_window_samples = max(50, int(0.3 * n_time))
     
     if toa_sample_idx is not None:
         # Center fitting window around provided TOA
@@ -1013,7 +1014,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         subband_matrix[:, f_bin] = freq_column_norm
     
     print(f"Applied frequency-direction normalization to subband matrix")
-    
+
     # Step 4: Create axes for subband visualization
     subband_time_axis = np.linspace(spec_tstart, spec_tend, n_time_bins + 1)
     subband_freq_axis = np.linspace(spec_freq_axis[0], spec_freq_axis[-1], n_freq_subbands + 1)
@@ -1167,9 +1168,18 @@ def plot_candidate(
             time_band_ms = specconfig.get("tband", 50)
             initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp)  # Use fallback window
             
+            taskconfig = TaskConfig()
+            basename = os.path.basename(file_path).split(".")[0]
+            mask_file_dir = taskconfig.maskdir
+            maskfile = f"{mask_file_dir}/{basename}_your_rfi_mask.bad_chans"
+    
+            if not os.path.exists(maskfile):
+                maskfile = taskconfig.maskfile
+
+            print(f"maskfile:{maskfile}")
             # Generate initial dedispersed spectrum for SNR calculation
             initial_spectrum = dedisperse_spec_with_dm(
-                origin_data, initial_spec_tstart, initial_spec_tend, dm, freq_start, freq_end
+                origin_data, initial_spec_tstart, initial_spec_tend, dm, freq_start, freq_end, maskfile
             )
             initial_spec_data = initial_spectrum.data
             
@@ -1187,7 +1197,7 @@ def plot_candidate(
             
             # Generate final spectrum with optimized window
             spectrum = dedisperse_spec_with_dm(
-                origin_data, spec_tstart, spec_tend, dm, freq_start, freq_end
+                origin_data, spec_tstart, spec_tend, dm, freq_start, freq_end, maskfile
             )
 
             spec_data = spectrum.data

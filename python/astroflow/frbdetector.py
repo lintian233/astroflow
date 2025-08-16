@@ -72,7 +72,7 @@ class Yolo11nFrbDetector(FrbDetector):
         self.batch_size = batch_size  # 添加批处理大小参数
 
     def _load_model(self):
-        model = YOLO("yolo11n_0814_v2.pt")
+        model = YOLO("yolo11n_0816_v1.pt")
         return model
 
     def filter(self, img):
@@ -88,16 +88,8 @@ class Yolo11nFrbDetector(FrbDetector):
 
     def _preprocess(self, img):
         img = np.ascontiguousarray(img, dtype=np.float32)
-
-        if img.shape[0] > 512 and img.shape[1] > 512: 
-            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_AREA)
-        else:
-            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
-
-        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-        img = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
-
+        min_percentile, max_percentile = np.percentile(img, (1, 99.9))
+        np.clip(img, min_percentile, max_percentile, out=img) 
         return img
 
     @override
@@ -141,25 +133,21 @@ class Yolo11nFrbDetector(FrbDetector):
                 dmt_index = start_index + i  
                 for box in xywh:
                     x, y, w, h = box
-                    left = int(x - w / 2)
-                    top = int(y - h / 2)
-                    right = int(x + w / 2)
-                    bottom = int(y + h / 2)
-
+                    # 直接使用x, y坐标，无需计算left, top, right, bottom
                     x_norm = np.round(x.cpu() / 512, 2)
                     y_norm = np.round(y.cpu() / 512, 2)
                     w_norm = np.round(w.cpu() / 512, 2)
                     h_norm = np.round(h.cpu() / 512, 2)
 
                     t_len = dmt.tend - dmt.tstart
-                    dm = ((top + bottom) / 2) * (
-                        (dmt.dm_high - dmt.dm_low) / 512
-                    ) + dmt.dm_low
+
+                    dm = y.cpu() * (dmt.dm_high - dmt.dm_low) / 512 + dmt.dm_low
                     dm_flag = self.check_dm(dm)
 
-                    toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
-                    toa = np.round(toa, 3)
-                    dm = np.round(dm, 3)
+                    toa = x.cpu() * (t_len / 512) + dmt.tstart
+                    toa = np.round(toa.item(), 3)
+                    dm = np.round(dm.item(), 3)
+                    # print(f"DM: {dm}, TOA: {toa}")
                     if dm_flag:
                         candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index, (x_norm, y_norm, w_norm, h_norm)])
     
@@ -169,25 +157,21 @@ class Yolo11nFrbDetector(FrbDetector):
         data = dmt.data
         img = self._preprocess(data)
         candidate = []
-        results = model(img, conf=self.confidence, device="cuda:2", iou=0.1)
+        results = model(img, conf=self.confidence, device=self.device, iou=0.45)
 
         for i, r in enumerate(results):
             xywh = r.boxes.xywh
             if xywh is not None and len(xywh) > 0:
                 for box in xywh:
                     x, y, w, h = box
-                    left = int(x - w / 2)
-                    top = int(y - h / 2)
-                    right = int(x + w / 2)
-                    bottom = int(y + w / 2)
-
+                    # 直接使用x, y坐标，无需计算left, top, right, bottom
                     t_len = dmt.tend - dmt.tstart
-                    dm = ((top + bottom) / 2) * (
-                        (dmt.dm_high - dmt.dm_low) / 512
-                    ) + dmt.dm_low
+                    # 直接使用y坐标计算dm
+                    dm = y * (dmt.dm_high - dmt.dm_low) / 512 + dmt.dm_low
                     dm_flag = self.check_dm(dm)
 
-                    toa = ((left + right) / 2) * (t_len / 512) + dmt.tstart
+                    # 直接使用x坐标计算toa
+                    toa = x * (t_len / 512) + dmt.tstart
                     toa = np.round(toa, 3)
                     dm = np.round(dm, 3)
                     if dm_flag:
