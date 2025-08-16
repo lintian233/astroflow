@@ -1,4 +1,5 @@
 import os
+from sympy import preorder_traversal
 import yaml
 
 CENTERNET = 0
@@ -146,6 +147,17 @@ class TaskConfig:
         if not os.path.exists(maskfile):
             raise FileNotFoundError(f"Mask file {maskfile} does not exist.")
         return maskfile
+    
+    @property
+    def maskdir(self):
+        maskdir = self._config_data.get("maskdir")
+        if maskdir is None:
+            return None
+        if not isinstance(maskdir, str):
+            raise ValueError("maskdir must be a string.")
+        if not os.path.exists(maskdir):
+            raise FileNotFoundError(f"Mask directory {maskdir} does not exist.")
+        return maskdir
     
     @property
     def dmtconfig(self):

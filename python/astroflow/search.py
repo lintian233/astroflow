@@ -211,6 +211,14 @@ def muti_pulsar_search(
     else:
         raise ValueError("Unknown file type")
 
+    taskconfig = TaskConfig()
+    base_name = os.path.basename(file).split(".")[0]
+    mask_file_dir = taskconfig.maskdir
+    mask_file = f"{mask_file_dir}/{base_name}_your_rfi_mask.bad_chans"
+    
+    if not os.path.exists(mask_file):
+        mask_file = taskconfig.maskfile
+
     dmtimes = dedisperse_spec(
         origin_data,
         config.dm_low,

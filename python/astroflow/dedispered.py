@@ -87,10 +87,11 @@ def dedisperse_spec_with_dm(
     dm: float,
     freq_start: float = -1,
     freq_end: float = -1,
+    maskfile="mask.txt",
 ) -> Spectrum:
     if spectrum.type == SpectrumType.FIL:
         fil = Filterbank(spectrum.filename)
-        return dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end)
+        return dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end, maskfile)
 
     spec, header = spectrum.core_data
     if freq_start == freq_end == -1:
@@ -98,7 +99,7 @@ def dedisperse_spec_with_dm(
         freq_end = header.fch1 + (header.nchans - 1) * header.foff
 
     data = _astro_core._dedisperse_spec_with_dm(
-        spec, header, tstart, tend, dm, freq_start, freq_end
+        spec, header, tstart, tend, dm, freq_start, freq_end, maskfile
     )
 
     return Spectrum.from_core_spectrum(data)
@@ -111,6 +112,7 @@ def dedispered_fil_with_dm(
     dm: float,
     freq_start: float = -1,
     freq_end: float = -1,
+    maskfile = "mask.txt",
 ) -> Spectrum:
     """
     Dedisperse filterbank data at a specific dispersion measure (DM).
@@ -209,15 +211,15 @@ def dedispered_fil_with_dm(
     nbits = header.nbits
     if nbits == 8:
         data = _astro_core._dedispered_fil_with_dm_uint8(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end
+            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile
         )
     elif nbits == 16:
         data = _astro_core._dedispered_fil_with_dm_uint16(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end
+            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile
         )
     elif nbits == 32:
         data = _astro_core._dedispered_fil_with_dm_uint32(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end
+            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile
         )
     else:
         raise ValueError(f"Unsupported number of bits: {nbits}")

@@ -70,7 +70,7 @@ def generate_test_spectrogram(file_path, dm, toa, pulse_width_ms, pulse_amp_rati
 
         for j in range(valid_idx.size):
             i = int(valid_idx[j])
-            center = toa_samples + int(delays[j]) + np.random.randint(-15, 15)  # TOA添加随机偏移
+            center = toa_samples + int(delays[j]) + np.random.randint(-10, 10)  # TOA添加随机偏移
             if center <= 0 or center >= n_t:
                 continue
 
@@ -149,30 +149,30 @@ def gen_label(dm, toa, imgsize, dm_low, dm_high, t_start, t_end):
     toa_pos = int((toa - t_start) / toa_range * imgsize[1])
     dm_pos = min(max(dm_pos, 0), imgsize[0] - 1)
     toa_pos = min(max(toa_pos, 0), imgsize[1] - 1)
-    dm_pos = np.round(dm_pos / imgsize[0], 2)
-    toa_pos = np.round(toa_pos / imgsize[1], 2)
+    dm_pos = np.round(dm_pos / imgsize[0], 4)
+    toa_pos = np.round(toa_pos / imgsize[1], 4)
     return (0, toa_pos, dm_pos, 0.2, 0.2)
 
 # ---------------- 主流程 ----------------
 def main():
     # ---------- 超参数 ----------
-    CAND_NUM   = 2000
+    CAND_NUM   = 400
     file_dir   = '/data/QL/lingh/FAST_RFI'
     fil_files  = [os.path.join(file_dir, f) for f in os.listdir(file_dir) if (f.endswith('.fil') or f.endswith('.fits'))]
     
     toa_range  = (1, 4)       # s
     # 候选随机参数空间
-    cand_dm_rng   = (400, 670)
+    cand_dm_rng   = (320, 570)
     freq_min_rng  = (1000, 1300)
-    freq_max_rng  = (1150, 1470)     # 确保 freq_max - freq_min ≥100
-    width_rng_ms  = (0.1, 6)
-    amp_ratio_rng = (0.001, 0.02)
+    freq_max_rng  = (1400, 1499)     # 确保 freq_max - freq_min ≥100
+    width_rng_ms  = (2, 6)
+    amp_ratio_rng = (0.007, 0.02)
     t_clip_len    = 0.5              # s
 
     # dedispersion 参数
-    dm_low, dm_high, dm_step   = 350, 750, 0.6
-    f_start, f_end             = 1025.0, 1450.0
-    t_down, t_sample           = 1, 0.5
+    dm_low, dm_high, dm_step   = 300, 600, 0.5
+    f_start, f_end             = 1000.0, 1499.0
+    t_down, t_sample           = 4, 1
 
     for i in tqdm(range(CAND_NUM), desc='Generating'):
         # ---- 随机化参数 ----
@@ -182,7 +182,9 @@ def main():
         width_ms   = np.random.uniform(*width_rng_ms)
         amp_ratio  = np.random.uniform(*amp_ratio_rng)
         f_min      = np.random.uniform(*freq_min_rng)
-        f_max      = max(f_min+100, np.random.uniform(*freq_max_rng))
+        f_max      = max(f_min+60, np.random.uniform(*freq_max_rng))
+
+        toa = min(max(toa, t_clip_len/2), 4 - t_clip_len/2)
 
         # ---- 生成含脉冲的滤波器数据 ----
         clip_spec, base = generate_test_spectrogram(
@@ -201,8 +203,8 @@ def main():
 
         # ---- 保存 FRB 样本 ----
         stem = os.path.splitext(os.path.basename(file_path))[0]
-        ftag = (f'{stem}_dm_{dm:.2f}_toa_{toa:.2f}_pw_{width_ms:.2f}_'
-                f'pa_{amp_ratio:.2f}_freq_{f_min:.2f}_{f_max:.2f}')
+        ftag = (f'{stem}_dm_{dm:.3f}_toa_{toa:.3f}_pw_{width_ms:.3f}_'
+                f'pa_{amp_ratio:.3f}_freq_{f_min:.3f}_{f_max:.3f}')
         
 
         if (width_ms <= 0.6) or (width_ms < 1 and amp_ratio <= 0.06):

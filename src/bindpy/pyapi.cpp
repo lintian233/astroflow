@@ -294,7 +294,7 @@ dedisperse_spec_py<uint32_t>(py::array_t<uint32_t> data, Header header,
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
                                        float tstart, float tend, float dm,
-                                       float freq_start, float freq_end) {
+                                       float freq_start, float freq_end, std::string maskfile) {
   auto data_ptr = data.request();
   T *data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
 
@@ -303,20 +303,20 @@ Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
   }
 
   return cpucal::dedisperse_spec_with_dm<T>(data_ptr_ptr, header, dm, tstart,
-                                            tend, freq_start, freq_end);
+                                            tend, freq_start, freq_end, maskfile);
 }
 
 template Spectrum<uint8_t>
 dedisperse_spec_with_dm_py<uint8_t>(py::array_t<uint8_t> data, Header header,
                                     float dm, float tstart, float tend,
-                                    float freq_start, float freq_end);
+                                    float freq_start, float freq_end, std::string maskfile);
 
 template Spectrum<uint16_t>
 dedisperse_spec_with_dm_py<uint16_t>(py::array_t<uint16_t> data, Header header,
                                      float dm, float tstart, float tend,
-                                     float freq_start, float freq_end);
+                                     float freq_start, float freq_end, std::string maskfile);
 
 template Spectrum<uint32_t>
 dedisperse_spec_with_dm_py<uint32_t>(py::array_t<uint32_t> data, Header header,
                                      float dm, float tstart, float tend,
-                                     float freq_start, float freq_end);
+                                     float freq_start, float freq_end, std::string maskfile);

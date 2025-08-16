@@ -21,8 +21,8 @@ DISPERSION_CONSTANT = 4148.808
 DEFAULT_IMAGE_SIZE = 512
 DEFAULT_BBOX_WIDTH = 20
 DEFAULT_BBOX_OFFSET = 10
-DM_TOLERANCE = 15
-TOA_TOLERANCE = 0.2
+DM_TOLERANCE = 20
+TOA_TOLERANCE = 0.3
 
 # File extensions
 SUPPORTED_EXTENSIONS = {'.fil': Filterbank, '.fits': PsrFits}
@@ -306,6 +306,16 @@ def muti_pulsar_search_detect(
     """Perform multi-pulsar search and detection."""
     origin_data = _load_spectrum_data(file)
 
+
+    taskconfig = TaskConfig()
+    basename = os.path.basename(file).split(".")[0]
+    mask_file_dir = taskconfig.maskdir
+    maskfile = f"{mask_file_dir}/{basename}_your_rfi_mask.bad_chans"
+    
+    if not os.path.exists(maskfile):
+        print("using maskfile:", taskconfig.maskfile)
+        maskfile = taskconfig.maskfile
+
     dmtimes = dedisperse_spec(
         origin_data,
         config.dm_low,
@@ -504,4 +514,4 @@ def count_frb_dataset(
 
     logger.info(f"Total candidates found: {current_candidates}/{total_candidates}")
     logger.info(f"Missed candidates: {len(missed_candiates)}")
-    logger.info(f"Missed candidate files: {', '.join(missed_candiates)}")
+    print(f"Missed candidate files: {'\n '.join(missed_candiates)}")

@@ -199,7 +199,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
 template <typename T>
 Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
-                                   float dm, float freq_start, float freq_end) {
+                                   float dm, float freq_start, float freq_end, std::string maskfile) {
 
   omp_set_num_threads(32);
 
@@ -227,9 +227,8 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(fil->nchans - 1), chan_end);
-  RfiMarker<T> rfi_marker;
 
-
+  RfiMarker<T> rfi_marker(maskfile);
   Spectrum<T> result;
   result.nbits = fil->nbits;
   result.ntimes = t_len;
@@ -279,7 +278,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
                                     float tstart, float tend, float freq_start,
-                                    float freq_end) {
+                                    float freq_end, std::string maskfile) {
   omp_set_num_threads(32);
   PRINT_VAR(header.tsamp);
   
@@ -326,7 +325,7 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
 
-  RfiMarker <T> rfi_marker;
+  RfiMarker <T> rfi_marker(maskfile);
   rfi_marker.mark_rfi(spec, header.nchans, header.ndata);
   printf("RFI marked, chan_start: %zu, chan_end: %zu\n", chan_start,
          chan_end);
