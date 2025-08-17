@@ -8,7 +8,7 @@ logger.remove()
 logger.add(
     "astroflow.log",
     level="INFO",
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {function}:{line} - {message}",
     rotation="10 MB",
     retention="10 days",
     encoding="utf-8",
