@@ -152,7 +152,7 @@ class TaskConfig:
 
     @property
     def mode(self):
-        MODE = ["single", "directory", "muti", "monitor"]
+        MODE = ["single", "directory", "muti", "monitor", "dataset"]
         mode = self._config_data.get("mode")
         if mode is None:
             raise ValueError("mode not found in config file. mode must be one of {MODE}.")
@@ -161,6 +161,19 @@ class TaskConfig:
         if mode not in MODE:
             raise ValueError(f"mode must be one of {MODE}, got {mode}.")
         return mode
+
+    @property
+    def candpath(self):
+        if self.mode == "dataset":
+            candpath = self._config_data.get("candpath")
+            if candpath is None:
+                raise ValueError("candpath not found in config file.")
+            if candpath is not None and not isinstance(candpath, str):
+                raise ValueError("candpath must be a string.")
+            if not os.path.exists(candpath):
+                raise FileNotFoundError(f"candpath {candpath} does not exist.")
+            return candpath
+        raise ValueError(f"mode is {self.mode} not `dataset`.")
 
     @property
     def modepath(self):
@@ -265,7 +278,10 @@ class TaskConfig:
 
     @property
     def output(self):
-        return self._config_data.get("output")
+        path =  self._config_data.get("output")
+        if not os.path.exists(path):
+            os.makedirs(path, exist_ok=True)
+        return path
 
     @property
     def timedownfactor(self):
