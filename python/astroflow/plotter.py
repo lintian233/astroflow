@@ -589,16 +589,15 @@ def _prepare_dm_data(dmt: DmTime):
     return dm_data, time_axis, dm_axis
 
 
-def _calculate_spectrum_time_window(toa: float, pulse_width_samples: float, tsamp: float, multiplier: float = 40.0):
+def _calculate_spectrum_time_window(toa: float, pulse_width_samples: float, tsamp: float, tband: float, multiplier: float = 40.0):
     """Calculate spectrum time window around TOA based on pulse width."""
     if pulse_width_samples > 0:
         # Use pulse width to determine window size: 50 × pulse_width
         pulse_width_seconds = pulse_width_samples * tsamp
         time_size = multiplier * pulse_width_seconds / 2  # Half window on each side
     else:
-        # Fallback to default 25ms half-window if pulse width unavailable
-        time_size = 0.025  # 25ms
-    
+        time_size = tband * 1e-3 / 2 
+
     spec_tstart = max(0, toa - time_size)
     spec_tend = toa + time_size
     return np.round(spec_tstart, 3), np.round(spec_tend, 3)
@@ -1178,8 +1177,8 @@ def plot_candidate(
             header = origin_data.header()
             ref_toa = get_freq_end_toa(origin_data.header(), freq_end, toa, dm)
             # First pass: get initial spectrum for pulse width estimation
-            time_band_ms = specconfig.get("tband", 50)
-            initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp)  # Use fallback window
+            tband = specconfig.get("tband", 0.5)  # Default to 0.5 seconds if not specified
+            initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp, tband)
             
             taskconfig = TaskConfig()
             basename = os.path.basename(file_path).split(".")[0]
@@ -1207,12 +1206,13 @@ def plot_candidate(
             peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
             # Now calculate proper spectrum window based on pulse width (50 × pulse_width)
 
-            spec_tstart, spec_tend = _calculate_spectrum_time_window(peak_time, pulse_width, header.tsamp, multiplier=35)
+            spec_tstart, spec_tend = _calculate_spectrum_time_window(peak_time, pulse_width, header.tsamp, tband, 35)
             
             # Generate final spectrum with optimized window
             spectrum = dedisperse_spec_with_dm(
                 origin_data, spec_tstart, spec_tend, dm, freq_start, freq_end, maskfile
             )
+
             spec_data = spectrum.data
 
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1  # Convert to milliseconds

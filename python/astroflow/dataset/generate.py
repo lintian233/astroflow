@@ -512,7 +512,8 @@ def count_frb_dataset(
         
         # CC Recall MISS
         logger.info(f"CC: {current_candidates}/{i + 1} R: {current_candidates / (i + 1) * 100:.2f}% MISS: {len(missed_candiates)}")
-
+    
+    plotter.close()
     logger.info(f"Total candidates found: {current_candidates}/{total_candidates}")
     logger.info(f"Missed candidates: {len(missed_candiates)}")
     print(f"Missed candidate files: {'\n '.join(missed_candiates)}")
