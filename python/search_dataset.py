@@ -13,6 +13,13 @@ def parse_args():
         type=str,
         help="Path to the task configuration file",
     )
+
+    parser.add_argument(
+        "candidate_path",
+        type=str,
+        help="Path to the candidate file containing Pulse Candidate"
+    )
+    
     args = parser.parse_args()
     return args
 
