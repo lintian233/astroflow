@@ -376,7 +376,7 @@ def _create_detector_and_plotter(task_config: TaskConfig) -> Tuple[Union[CenterN
     plotter = PlotterManager(
         task_config.dmtconfig,
         task_config.specconfig,
-        6,
+        16,
     )
     
     if task_config.modelname == CENTERNET:
@@ -510,7 +510,8 @@ def count_frb_dataset(
         except Exception as e:
             logger.error(f"Error processing file {file}: {e}")
         
-        logger.info(f"current candidates: {current_candidates}/{total_candidates}")
+        # CC Recall MISS
+        logger.info(f"CC: {current_candidates}/{i + 1} R: {current_candidates / (i + 1) * 100:.2f}% MISS: {len(missed_candiates)}")
 
     logger.info(f"Total candidates found: {current_candidates}/{total_candidates}")
     logger.info(f"Missed candidates: {len(missed_candiates)}")
