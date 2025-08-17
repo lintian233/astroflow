@@ -88,7 +88,7 @@ def pack_candidate(dmt, candinfo, save_path, file_path):
     os.makedirs(LABEL_PATH, exist_ok=True)
 
     dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
-
+    x,y, w, h = bbox if bbox else (0, 0, 0, 0)
     img = dmt.data
     
     name = f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png"
@@ -354,8 +354,8 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_id
     
     # Step 2: Determine fitting region centered on TOA
     if fitting_window_samples is None:
-        # Auto-determine fitting window: 30% of total length or minimum 50 samples
-        fitting_window_samples = max(50, int(0.3 * n_time))
+        # Auto-determine fitting window: 40% of total length or minimum 50 samples
+        fitting_window_samples = max(50, int(0.4 * n_time))
     
     if toa_sample_idx is not None:
         # Center fitting window around provided TOA
@@ -583,7 +583,7 @@ def _calculate_spectrum_time_window(toa: float, pulse_width_samples: float, tsam
         pulse_width_seconds = pulse_width_samples * tsamp
         time_size = multiplier * pulse_width_seconds / 2  # Half window on each side
     else:
-        time_size = tband * 1e-3 / 2 
+        time_size = (tband * 1e-3) / 2 
 
     spec_tstart = max(0, toa - time_size)
     spec_tend = toa + time_size

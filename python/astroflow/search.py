@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Union, Optional, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -18,78 +19,75 @@ from .logger import logger  # type: ignore
 
 from .io.filterbank import Filterbank, FilterbankPy
 from .io.psrfits import PsrFits
-from .plotter import PlotterManager, plot_dmtime
+from .io.data import SpectrumBase
+from .plotter import PlotterManager
 from .utils import Config, SingleDmConfig
 from .config.taskconfig import TaskConfig, CENTERNET, YOLOV11N, DETECTNET, COMBINENET
 
-
-def single_pulsar_search_with_dm_dir(
-    task_config: TaskConfig,
-):
-    if files_dir[-1] == "/":
-        files_dir = files_dir[:-1]
-    if output_dir[-1] == "/":
-        output_dir = output_dir[:-1]
-
-    confidence = task_config.confidence
-    files_dir = task_config.input
-    output_dir = task_config.output
-
-    all_files = os.listdir(files_dir)
-    base_dir = os.path.basename(files_dir)
-    base_dir += f"-{config.dm}DM-{config.freq_start}MHz-{config.freq_end}MHz"
-
-    frbchecker = ResNetBinaryChecker(confidence=confidence)
-    plotter = PlotterManager()
-    for file in tqdm.tqdm(all_files):
-        if not file.endswith(".fil") and not file.endswith(".fits"):
-            continue
-
-        file_path = os.path.join(files_dir, file)
-        print(f"Processing {file_path}")
-
-        cached = "cached"
-        file_dir = os.path.join(
-            output_dir, cached, base_dir, file.split(".")[0]
-        ).lower()
-
-        print(f"checking {file_dir}")
-        if os.path.exists(file_dir):
-            print(f"跳过已处理文件: {file} (输出目录 {file_dir} 已存在)")
-            continue
-
-        try:
-            single_pulsar_search_with_dm(
-                file_path,
-                os.path.join(output_dir, base_dir),
-                config,
-                frbchecker,
-                plotter,
-            )
-        except Exception as e:
-            print(f"Error processing {file_path}: {e}")
-            continue
-
-        os.makedirs(file_dir, exist_ok=True)
-    plotter.close()
+# Constants
+SUPPORTED_EXTENSIONS = {'.fil': Filterbank, '.fits': PsrFits}
 
 
-def single_pulsar_search_with_dm_file(
-    file: str,
-    output_dir: str,
-    config: SingleDmConfig,
-    confidence: float = 0.99,
-):
-    checker = ResNetBinaryChecker(confidence=confidence)
-    plotter = PlotterManager()
-    single_pulsar_search_with_dm(
-        file,
-        output_dir,
-        config,
-        checker,
-        plotter,
+def _validate_file_path(file_path: str) -> None:
+    """Validate file path and format."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise ValueError(f"Unsupported file format: {ext}. Supported formats: {list(SUPPORTED_EXTENSIONS.keys())}")
+
+
+def _load_spectrum_data(file_path: str) -> SpectrumBase:
+    """Load spectrum data based on file extension."""
+    _validate_file_path(file_path)
+    
+    ext = os.path.splitext(file_path)[1].lower()
+    data_class = SUPPORTED_EXTENSIONS[ext]
+    return data_class(file_path)
+
+
+def _create_detector_and_plotter(task_config: TaskConfig) -> Tuple[Union[CenterNetFrbDetector, Yolo11nFrbDetector], PlotterManager, bool]:
+    """Create detector and plotter instances based on configuration."""
+    plotter = PlotterManager(
+        task_config.dmtconfig,
+        task_config.specconfig,
+        6,
     )
-    plotter.close()
+    
+    mutidetect = False
+    if task_config.modelname == CENTERNET:
+        detector = CenterNetFrbDetector(
+            task_config.dm_limt, task_config.preprocess, task_config.confidence
+        )
+    elif task_config.modelname == YOLOV11N:
+        detector = Yolo11nFrbDetector(
+            task_config.dm_limt, task_config.preprocess, task_config.confidence
+        )
+        mutidetect = True
+    else:
+        logger.warning(f"Unknown model name {task_config.modelname}, using CenterNet")
+        detector = CenterNetFrbDetector(
+            task_config.dm_limt, task_config.preprocess, task_config.confidence
+        )
+    
+    return detector, plotter, mutidetect
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize directory path by removing trailing slash."""
+    return path.rstrip("/")
+
+
+def _get_cached_dir_path(output_dir: str, files_dir: str, config: Config) -> str:
+    """Generate cached directory path for configuration."""
+    base_dir = os.path.basename(files_dir)
+    base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
+    base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz" 
+    base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
+    
+    cached_dir = os.path.join(output_dir, "cached").lower()
+    return os.path.join(cached_dir, base_dir)
 
 
 def single_pulsar_search_with_dm(
@@ -99,12 +97,8 @@ def single_pulsar_search_with_dm(
     checker: BinaryChecker,
     plotter: PlotterManager,
 ) -> None:
-    if file.endswith(".fil"):
-        origin_data = Filterbank(file)
-    elif file.endswith(".fits"):
-        origin_data = PsrFits(file)
-    else:
-        raise ValueError("Unknown file type")
+    """Perform single pulsar search with specific DM."""
+    origin_data = _load_spectrum_data(file)
 
     os.makedirs(output_dir, exist_ok=True)
     detect_dir = os.path.join(output_dir, "detect")
@@ -147,17 +141,11 @@ def single_pulsar_search(
     file: str,
     output_dir: str,
     config: Config,
-    detector: CenterNetFrbDetector,
+    detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
     plotter: PlotterManager,
-) -> None:
-
-    origin_data = None
-    if file.endswith(".fil"):
-        origin_data = Filterbank(file)
-    elif file.endswith(".fits"):
-        origin_data = PsrFits(file)
-    else:
-        raise ValueError("Unknown file type")
+) -> List:
+    """Perform single pulsar search on a file."""
+    origin_data = _load_spectrum_data(file)
 
     dmtimes = dedisperse_spec(
         origin_data,
@@ -172,44 +160,29 @@ def single_pulsar_search(
 
     detect_dir = os.path.join(output_dir, "detect").lower()
     file_basename = os.path.basename(file).split(".")[0]
-    # save_path = os.path.join(output_dir, file_basename).lower()
 
     os.makedirs(detect_dir, exist_ok=True)
-    # os.makedirs(save_path, exist_ok=True)
 
+    candidates = []
     for idx, data in enumerate(dmtimes):
         candidate = detector.detect(data)
         for i, candinfo in enumerate(candidate):
-            dm = candinfo[0]
-            toa = candinfo[1]
-            ref_toa = get_freq_end_toa(
-            origin_data.header(),candinfo[3], toa, dm
-            )
-            candinfo.append(idx)
-            candinfo.append(ref_toa)
-            logger.info(
-                f"Found FRB in {file_basename} at DM: {candinfo[0]} at time: {candinfo[1]}"
-            )
             plotter.plot_candidate(data, candinfo, detect_dir, file)
+            candidates.extend(candidate)
+    
     del origin_data
-    return candidate
+    return candidates
 
 
 def muti_pulsar_search(
     file: str,
     output_dir: str,
     config: Config,
-    detector: CenterNetFrbDetector,
+    detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
     plotter: PlotterManager,
-) -> None:
-
-    origin_data = None
-    if file.endswith(".fil"):
-        origin_data = Filterbank(file)
-    elif file.endswith(".fits"):
-        origin_data = PsrFits(file)
-    else:
-        raise ValueError("Unknown file type")
+) -> List:
+    """Perform multi pulsar search on a file."""
+    origin_data = _load_spectrum_data(file)
 
     taskconfig = TaskConfig()
     base_name = os.path.basename(file).split(".")[0]
@@ -232,214 +205,161 @@ def muti_pulsar_search(
 
     detect_dir = os.path.join(output_dir, "detect").lower()
     file_basename = os.path.basename(file).split(".")[0]
-    # save_path = os.path.join(output_dir, file_basename).lower()
 
     os.makedirs(detect_dir, exist_ok=True)
-    # os.makedirs(save_path, exist_ok=True)
 
-    candidate = detector.mutidetect(dmtimes)
-    for i, candinfo in enumerate(candidate):
-        dm = candinfo[0]
-        toa = candinfo[1]
-        ref_toa = get_freq_end_toa(
-            origin_data.header(),candinfo[3], toa, dm
-        )
-        candinfo.append(ref_toa)
+    candidates = detector.mutidetect(dmtimes)
+    if candidates is None:
+        candidates = []
+        
+    for i, candinfo in enumerate(candidates):
         plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, detect_dir, file)
+    
     del origin_data
-    return candidate
+    return candidates
+
+    
+def _process_single_file_search(
+    file_path: str,
+    task_config: TaskConfig,
+    detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
+    plotter: PlotterManager,
+    output_dir: str,
+    mutidetect: bool
+) -> None:
+    """Process a single file with all parameter combinations for search."""
+    for dm_item in task_config.dmrange:
+        for freq_item in task_config.freqrange:
+            for tsample_item in task_config.tsample:
+                config = Config(
+                    dm_low=dm_item["dm_low"],
+                    dm_high=dm_item["dm_high"],
+                    dm_step=dm_item["dm_step"],
+                    freq_start=freq_item["freq_start"],
+                    freq_end=freq_item["freq_end"],
+                    t_sample=tsample_item["t"],
+                    confidence=task_config.confidence,
+                    time_downsample=task_config.timedownfactor,
+                )
+                
+                # Check if already processed
+                file_basename = os.path.basename(file_path).split(".")[0]
+                cached_dir_path = _get_cached_dir_path(output_dir, task_config.input, config)
+                file_dir = os.path.join(cached_dir_path, file_basename).lower()
+                
+                print(f"checking {file_dir}")
+                if os.path.exists(file_dir):
+                    continue
+
+                try:
+                    if mutidetect:
+                        muti_pulsar_search(
+                            file_path,
+                            output_dir,
+                            config,
+                            detector,
+                            plotter,
+                        )
+                    else:
+                        single_pulsar_search(
+                            file_path,
+                            output_dir,
+                            config,
+                            detector,
+                            plotter,
+                        )
+                    os.makedirs(file_dir, exist_ok=True)
+                except Exception as e:
+                    logger.error(f"Error processing {file_path}: {e}")
 
 
 def single_pulsar_search_dir(task_config: TaskConfig) -> None:
+    """Perform pulsar search on all files in a directory."""
+    files_dir = _normalize_path(task_config.input)
+    output_dir = _normalize_path(task_config.output)
 
-    files_dir = task_config.input
-    output_dir = task_config.output
-    confidence = task_config.confidence
+    if not os.path.exists(files_dir):
+        raise FileNotFoundError(f"Input directory not found: {files_dir}")
 
-    if files_dir[-1] == "/":
-        files_dir = files_dir[:-1]
-    if output_dir[-1] == "/":
-        output_dir = output_dir[:-1]
+    # Get all supported files
+    all_files = sorted([f for f in os.listdir(files_dir) 
+                       if any(f.endswith(ext) for ext in SUPPORTED_EXTENSIONS)])
+    
+    if not all_files:
+        logger.warning(f"No supported files found in {files_dir}")
+        return
 
-    all_files = os.listdir(files_dir)
-    mutidetect = False
-    plotter = PlotterManager(
-        task_config.dmtconfig,
-        task_config.specconfig,
-        6,
-    )
-    if task_config.modelname == CENTERNET:
-        frb_detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, confidence
-        )
-    elif task_config.modelname == YOLOV11N:
-        frb_detector = Yolo11nFrbDetector(
-            task_config.dm_limt, task_config.preprocess, confidence
-        )
-        mutidetect = True
-    else:
-        frb_detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, confidence
-        )
+    # Initialize detector and plotter
+    detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
 
-    dms = task_config.dmrange
-    freq_range = task_config.freqrange
-    tsamples = task_config.tsample
+    try:
+        for file in tqdm.tqdm(all_files):
+            file_path = os.path.join(files_dir, file)
+            logger.info(f"Processing {file_path}")
 
-    for file in tqdm.tqdm(all_files):
-        if not file.endswith(".fil") and not file.endswith(".fits"):
-            continue
+            _process_single_file_search(
+                file_path, task_config, detector, plotter, output_dir, mutidetect
+            )
+    finally:
+        plotter.close()
 
-        file_path = os.path.join(files_dir, file)
-        print(f"Processing {file_path}")
 
-        for dm_item in dms:
-            dm_low = dm_item["dm_low"]
-            dm_high = dm_item["dm_high"]
-            dm_step = dm_item["dm_step"]
-            dm_name = dm_item["name"]
+def single_pulsar_search_file(task_config: TaskConfig) -> None:
+    """Perform pulsar search on a single file."""
+    file_path = os.path.abspath(task_config.input)
+    
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    
+    logger.info(f"Processing file: {file_path}")
+    
+    # Initialize detector and plotter
+    detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
 
-            for freq_item in freq_range:
-                freq_start = freq_item["freq_start"]
-                freq_end = freq_item["freq_end"]
-                freq_name = freq_item["name"]
-
-                for tsample_item in tsamples:
-                    t_sample = tsample_item["t"]
-                    t_name = tsample_item["name"]
-
+    try:
+        for dm_item in task_config.dmrange:
+            for freq_item in task_config.freqrange:
+                for tsample_item in task_config.tsample:
                     config = Config(
-                        dm_low=dm_low,
-                        dm_high=dm_high,
-                        dm_step=dm_step,
-                        freq_start=freq_start,
-                        freq_end=freq_end,
-                        t_sample=t_sample,
-                        confidence=confidence,
+                        dm_low=dm_item["dm_low"],
+                        dm_high=dm_item["dm_high"],
+                        dm_step=dm_item["dm_step"],
+                        freq_start=freq_item["freq_start"],
+                        freq_end=freq_item["freq_end"],
+                        t_sample=tsample_item["t"],
+                        confidence=task_config.confidence,
                         time_downsample=task_config.timedownfactor,
                     )
-                    cacheddir = os.path.join(output_dir, "cached").lower()
-                    base_dir = os.path.basename(files_dir)
-                    base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
-                    base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
-                    base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
-
-                    os.makedirs(cacheddir, exist_ok=True)
-                    file_dir = os.path.join(
-                        cacheddir, base_dir, file.split(".")[0]
-                    ).lower()
-
-                    print(f"checking {file_dir}")
-                    if os.path.exists(file_dir):
-                        print(f"跳过已处理文件: {file} (输出目录 {file_dir} 已存在)")
-                        continue
 
                     logger.info(
-                        f"Processing {file} with DM: {dm_name}, Freq: {freq_name}, TSample: {t_name}"
+                        f"Processing {file_path} with DM: {dm_item['name']}, "
+                        f"Freq: {freq_item['name']}, TSample: {tsample_item['name']}"
                     )
                     logger.info(
-                        f"DM Range: {dm_low}-{dm_high}, Freq Range: {freq_start}-{freq_end}, TSample: {t_sample}"
+                        f"DM Range: {config.dm_low}-{config.dm_high}, "
+                        f"Freq Range: {config.freq_start}-{config.freq_end}, "
+                        f"TSample: {config.t_sample}"
                     )
-
+                    
                     try:
                         if mutidetect:
                             muti_pulsar_search(
                                 file_path,
-                                output_dir,
+                                task_config.output,
                                 config,
-                                frb_detector,
+                                detector,
                                 plotter,
                             )
                         else:
                             single_pulsar_search(
                                 file_path,
-                                output_dir,
+                                task_config.output,
                                 config,
-                                frb_detector,
+                                detector,
                                 plotter,
                             )
-                        os.makedirs(file_dir, exist_ok=True)
                     except Exception as e:
-                        print(f"Error processing {file_path}: {e}")
-
-    plotter.close()
-
-
-def single_pulsar_search_file(task_config: TaskConfig) -> None:
-
-    confidence = task_config.confidence
-    file = task_config.input
-    file = os.path.abspath(file)
-    print(f"Processing file: {file}")
-    mutildetect = False
-    if task_config.modelname == CENTERNET:
-        frb_detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, confidence
-        )
-    elif task_config.modelname == YOLOV11N:
-        frb_detector = Yolo11nFrbDetector(
-            task_config.dm_limt, task_config.preprocess, confidence
-        )
-        mutildetect = True
-    else:
-        frb_detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, confidence
-        )
-
-    plotter = PlotterManager(task_config.dmtconfig, task_config.specconfig, 6)
-    dms = task_config.dmrange
-    dm_range = task_config.dmrange
-    freq_range = task_config.freqrange
-    tsmaple = task_config.tsample
-    for dm_item in dms:
-        dm_low = dm_item["dm_low"]
-        dm_high = dm_item["dm_high"]
-        dm_step = dm_item["dm_step"]
-        dm_name = dm_item["name"]
-
-        for freq_item in freq_range:
-            freq_start = freq_item["freq_start"]
-            freq_end = freq_item["freq_end"]
-            freq_name = freq_item["name"]
-
-            for tsample in tsmaple:
-                t_sample = tsample["t"]
-                t_name = tsample["name"]
-
-                config = Config(
-                    dm_low=dm_low,
-                    dm_high=dm_high,
-                    dm_step=dm_step,
-                    freq_start=freq_start,
-                    freq_end=freq_end,
-                    t_sample=t_sample,
-                    confidence=confidence,
-                    time_downsample=task_config.timedownfactor,
-                )
-
-                logger.info(
-                    f"Processing {file} with DM: {dm_name}, Freq: {freq_name}, TSample: {t_name}"
-                )
-                logger.info
-                (
-                    f"DM Range: {dm_low}-{dm_high}, Freq Range: {freq_start}-{freq_end}, TSample: {t_sample}"
-                )
-                if mutildetect:
-                    muti_pulsar_search(
-                        file,
-                        task_config.output,
-                        config,
-                        frb_detector,
-                        plotter,
-                    )
-                else:
-                    single_pulsar_search(
-                        file,
-                        task_config.output,
-                        config,
-                        frb_detector,
-                        plotter,
-                    )
-
-    plotter.close()
+                        logger.error(f"Error processing {file_path} with config: {e}")
+    finally:
+        plotter.close()
 

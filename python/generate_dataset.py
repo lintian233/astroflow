@@ -24,6 +24,7 @@ for d in [FRB_IMG_DIR, FRB_LAB_DIR, RFI_IMG_DIR, RFI_LAB_DIR, WEAK_FRB_IMG_DIR, 
 # 每个候选要生成的背景图片张数
 BG_NUM = 1  # ← 改这个即可
 
+
 # ---------------- 基础工具 ----------------
 def dm_to_delay_samples(dm, f_low, f_high, dt_sample):
     delay_s = DISPERSION_CONSTANT * dm * (1.0/f_low**2 - 1.0/f_high**2)
