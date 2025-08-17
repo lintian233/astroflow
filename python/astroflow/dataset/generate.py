@@ -177,7 +177,7 @@ def _create_detector_and_plotter(task_config: TaskConfig) -> Tuple[Union[CenterN
     plotter = PlotterManager(
         task_config.dmtconfig,
         task_config.specconfig,
-        16,
+        task_config.plotworker,
     )
     
     if task_config.modelname == CENTERNET:

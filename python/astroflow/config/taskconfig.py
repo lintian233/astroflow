@@ -22,7 +22,9 @@ class TaskConfig:
         self._initialized = True
         self.config_file = config_file
         self._config_data = self._load_config()
-
+        cputhread = self._config_data.get("cputhread", 16)
+        os.environ['OMP_NUM_THREADS'] = f'{cputhread}'
+        
     def _load_config(self):
         if not self.config_file or not os.path.exists(self.config_file):
             raise FileNotFoundError(f"Config file {self.config_file} not found.")
@@ -112,7 +114,7 @@ class TaskConfig:
     def snrhold(self):
         snrhold = self._config_data.get("snrhold")
         if snrhold is None:
-            raise ValueError("snrhold not found in config file.")
+            snrhold = 0
         if not isinstance(snrhold, (int, float)):
             raise ValueError("snrhold must be a number.")
         return snrhold
@@ -141,12 +143,57 @@ class TaskConfig:
     def maskfile(self):
         maskfile = self._config_data.get("maskfile")
         if maskfile is None:
-            raise ValueError("maskfile not found in config file.")
+            return None
         if not isinstance(maskfile, str):
             raise ValueError("maskfile must be a string.")
         if not os.path.exists(maskfile):
             raise FileNotFoundError(f"Mask file {maskfile} does not exist.")
         return maskfile
+
+    @property
+    def mode(self):
+        MODE = ["single", "directory", "muti", "monitor"]
+        mode = self._config_data.get("mode")
+        if mode is None:
+            raise ValueError("mode not found in config file. mode must be one of {MODE}.")
+        if not isinstance(mode, str):
+            raise ValueError("mode must be a string.")
+        if mode not in MODE:
+            raise ValueError(f"mode must be one of {MODE}, got {mode}.")
+        return mode
+
+    @property
+    def modepath(self):
+        modepath = self._config_data.get("modepath")
+        if modepath is None:
+            raise ValueError("modepath not found in config file.")
+        if not isinstance(modepath, str):
+            raise ValueError("modepath must be a string.")
+        if not os.path.exists(modepath):
+            raise FileNotFoundError(f"Mode path {modepath} does not exist.")
+        return modepath
+
+
+    @property
+    def dedgpu(self):
+        return self._config_data.get("dedgpu", 0)
+
+    @property
+    def detgpu(self):
+        return self._config_data.get("detgpu", 0)
+    
+    @property
+    def cputhread(self):
+        return self._config_data.get("cputhread", 16)
+
+    @property
+    def plotworker(self):
+        plotworker = self._config_data.get("plotworker")
+        if plotworker is None:
+            plotworker = 8
+        if not isinstance(plotworker, int):
+            raise ValueError("plotworker must be an integer.")
+        return plotworker
     
     @property
     def maskdir(self):
@@ -209,8 +256,7 @@ class TaskConfig:
     def preprocess(self):
         preprocess = self._config_data.get("preprocess")
         if preprocess is None:
-            raise ValueError("preprocess not found in config file.")
-        self._checker_preprocess(preprocess)
+            return []
         return preprocess
 
     @property

@@ -1,5 +1,7 @@
 import sys
 from loguru import logger
+import logging
+logging.getLogger("ultralytics").setLevel(logging.ERROR)
 
 # Remove the default handler to avoid duplicate logs in some environments.
 logger.remove()
