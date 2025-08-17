@@ -68,15 +68,6 @@ class PlotterManager:
             plot_candidate, args=(dmt, candinfo, save_path, file_path, self.dmtconfig, self.speconfig),
         )
 
-    def plot_spectrogram(self, file_path, candinfo, save_path):
-        self.pool.apply_async(plot_spectrogram, args=(file_path, candinfo, save_path))
-
-    def plot_dmtime(self, dmt: DmTime, save_path):
-        self.pool.apply_async(plot_dmtime, args=(dmt, save_path))
-
-    def plot_spec(self, spec: np.ndarray, title, info, save_path):
-        self.pool.apply_async(plot_spec, args=(spec, title, info, save_path))
-
     def close(self):
         self.pool.close()
         self.pool.join()
@@ -197,118 +188,6 @@ def plot_spec(spec, title, candinfo, save_path, dpi=100):
         format="png",
     )
     plt.close()
-
-
-def plot_spectrogram(file_path, candinfo, save_path, dpi=100):
-    print(f"Plotting {file_path} with {candinfo}")
-    basename = os.path.basename(file_path).split(".")[0]
-
-    origin_data = None
-    if file_path.endswith(".fil"):
-        origin_data = Filterbank(file_path)
-    elif file_path.endswith(".fits"):
-        origin_data = PsrFits(file_path)
-    else:
-        raise ValueError("Unknown file type")
-    print(f"Loaded {file_path}")
-    header = origin_data.header()
-
-    dm = candinfo[0]
-    toa = candinfo[1]
-    freq_start = candinfo[2]
-    freq_end = candinfo[3]
-
-    time_size = 50 / 1000  # 50ms
-    tstart = toa - time_size
-    tend = toa + time_size
-    tstart = tstart if tstart > 0 else 0
-    tstart = np.round(tstart, 3)
-    tend = np.round(tend, 3)
-
-    title = f"{basename}-spectrum-{toa}s-{tstart}s-{tend}s-{dm}pc-cm3"
-
-    spectrum = dedisperse_spec_with_dm(
-        origin_data, tstart, tend, dm, freq_start, freq_end
-    )
-
-    fig, axs = plt.subplots(
-        2,
-        1,
-        figsize=(10, 10),
-        dpi=dpi,
-        gridspec_kw={"height_ratios": [1, 3]},
-        sharex=True,
-    )
-    plt.rcParams["image.origin"] = "lower"
-    data = spectrum.data
-
-    # Improved baseline correction - use median for robustness
-    # Apply gentle baseline correction per frequency channel
-    data_corrected = data.copy()
-    for i in range(data.shape[1]):
-        channel_data = data[:, i]
-        # Use edge regions for baseline estimation (20% on each side)
-        edge_size = max(5, data.shape[0] // 10)
-        edge_data = np.concatenate([channel_data[:edge_size], channel_data[-edge_size:]])
-        baseline = np.median(edge_data)
-        data_corrected[:, i] = channel_data - baseline
-
-    # Use corrected data for visualization
-    vim, vmax = np.percentile(data_corrected, [1, 99])
-    
-    time_axis = np.linspace(tstart, tend, spectrum.ntimes)
-    
-    # Fix frequency axis calculation - use proper frequency mapping
-    # Calculate the actual frequency channels used in the spectrum
-    fil_freq_min = header.fch1
-    fil_freq_max = header.fch1 + (header.nchans - 1) * header.foff
-    
-    # Map the requested frequency range to channel indices
-    if header.foff > 0:  # Ascending frequency
-        chan_start = int((freq_start - fil_freq_min) / header.foff)
-        chan_end = int((freq_end - fil_freq_min) / header.foff)
-    else:  # Descending frequency (more common)
-        chan_start = int((fil_freq_min - freq_end) / abs(header.foff))
-        chan_end = int((fil_freq_min - freq_start) / abs(header.foff))
-    
-    # Create proper frequency axis for the actual channels in the spectrum
-    freq_axis = np.linspace(freq_start, freq_end, spectrum.nchans)
-    
-    time_series = data_corrected.sum(axis=1)
-    axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
-    axs[0].set_ylabel("Integrated Power")
-    axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
-    axs[0].set_yscale("log")
-    axs[0].grid(True, alpha=0.3)
-    # add title
-    axs[0].set_title(f"{title}")
-
-    extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
-    axs[1].imshow(
-        data_corrected.T,
-        aspect="auto",
-        origin="lower",
-        cmap="viridis",
-        extent=extent,
-        vmin=vim,
-        vmax=vmax,
-    )
-    axs[1].set_ylabel(
-        f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
-    )
-    axs[1].set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
-    axs[0].set_xlim(tstart, tend)
-    axs[1].set_xlim(tstart, tend)
-
-    plt.subplots_adjust(hspace=0.05, left=0.08, right=0.92)
-    plt.savefig(
-        f"{save_path}/{title}.png",
-        dpi=dpi,
-        bbox_inches="tight",
-        format="png",
-    )
-    plt.close()
-    print(f"Saved {save_path}/{title}.png")
 
 
 def filter(img):
@@ -1097,15 +976,15 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     #                    alpha=0.8, label='TOA')
     
     # Add grid to show subband boundaries
-    for i in range(1, n_freq_subbands):
-        freq_boundary = subband_freq_axis[i]
-        ax_spec.axhline(freq_boundary, color='white', linestyle='-', 
-                       linewidth=0.5, alpha=0.3)
+    # for i in range(1, n_freq_subbands):
+    #     freq_boundary = subband_freq_axis[i]
+    #     ax_spec.axhline(freq_boundary, color='white', linestyle='-', 
+    #                    linewidth=0.5, alpha=0.3)
     
-    for i in range(1, n_time_bins):
-        time_boundary = subband_time_axis[i]
-        ax_spec.axvline(time_boundary, color='white', linestyle='-', 
-                       linewidth=0.3, alpha=0.2)
+    # for i in range(1, n_time_bins):
+    #     time_boundary = subband_time_axis[i]
+    #     ax_spec.axvline(time_boundary, color='white', linestyle='-', 
+    #                    linewidth=0.3, alpha=0.2)
     
     ax_spec.set_ylabel(f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size} channels each)\n"
                       f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")

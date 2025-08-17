@@ -11,6 +11,7 @@ import torch
 from typing_extensions import override
 from ultralytics import YOLO
 
+from .config.taskconfig import TaskConfig
 from .dmtime import DmTime
 from .model.binnet import BinaryNet
 from .model.centernet import centernet
@@ -63,7 +64,8 @@ class BinaryChecker(ABC):
 class Yolo11nFrbDetector(FrbDetector):
     def __init__(self, dm_limt=None, preprocess=None, confidence=0.5, batch_size=1024):
         super().__init__(dm_limt, preprocess, confidence)
-        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        detgpu = TaskConfig().detgpu
+        self.device = torch.device(f"cuda:{detgpu}" if torch.cuda.is_available() else "cpu")
         print(
             f"Using device: {self.device} NAME: {torch.cuda.get_device_name(self.device)}"
         )
@@ -72,7 +74,7 @@ class Yolo11nFrbDetector(FrbDetector):
         self.batch_size = batch_size  # 添加批处理大小参数
 
     def _load_model(self):
-        model = YOLO("yolo11n_0816_v1.pt")
+        model = YOLO("yolo11n_0816_v1.pt", verbose=False)
         return model
 
     def filter(self, img):
@@ -107,7 +109,7 @@ class Yolo11nFrbDetector(FrbDetector):
         if total_samples <= self.batch_size:
             
             results = model(
-                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.45, stream=True
+                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.45, stream=True, verbose=False
             )
             self._process_results(results, dmt_list, candidate, start_index=0)
             print(f"Processed {total_samples} samples in one batch.")

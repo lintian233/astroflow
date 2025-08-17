@@ -1,7 +1,7 @@
 from .dedispered import dedispered_fil
 from .utils import Config
 from .search import single_pulsar_search, single_pulsar_search_dir
-from .search import single_pulsar_search_file
+from .search import single_pulsar_search_file, monitor_directory_for_pulsar_search
 from .dedispered import dedispered_fil_with_dm
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
@@ -14,6 +14,7 @@ __all__ = [
     "single_pulsar_search",
     "single_pulsar_search_dir",
     "single_pulsar_search_file",
+    "monitor_directory_for_pulsar_search",
     "dedispered_fil_with_dm",
     "DmTime",
     "Filterbank",

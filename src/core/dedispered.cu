@@ -463,24 +463,18 @@ template <typename T>
 dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
-                                    int time_downsample, float t_sample, 
-                                    std::string mask_file, bool use_shared_memory) {
+                                    int time_downsample, float t_sample, int target_id,
+                                    std::string mask_file) {
 
   // get all cuda devices
+  bool use_shared_memory = true;
   int device_count;
   CHECK_CUDA(cudaGetDeviceCount(&device_count));
   if (device_count == 0) {
     throw std::runtime_error("No CUDA devices found");
   }
 
-  int device_id;
-  if (device_count == 1) {
-    device_id = 0;
-  } else if (device_count == 4) {
-    device_id = 2;
-  } else {
-    device_id = 0;
-  }
+  int device_id = target_id;
   // print device info
   cudaDeviceProp device_prop;
   CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
@@ -699,23 +693,18 @@ template <typename T>
 dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                                 float dm_high, float freq_start, float freq_end,
                                 float dm_step, int ref_freq,
-                                int time_downsample, float t_sample, 
-                                std::string mask_file, bool use_shared_memory) { 
+                                int time_downsample, float t_sample, int target_id,
+                                std::string mask_file) { 
   // get all cuda devices
+  bool use_shared_memory = true; // 是否使用共享内存
+
   int device_count;
   CHECK_CUDA(cudaGetDeviceCount(&device_count));
   if (device_count == 0) {
     throw std::runtime_error("No CUDA devices found");
   }
 
-  int device_id;
-  if (device_count == 1) {
-    device_id = 0;
-  } else if (device_count == 4) {
-    device_id = 2;
-  } else {
-    device_id = 0;
-  }
+  int device_id = target_id;
   // print device info
   cudaDeviceProp device_prop;
   CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
@@ -942,36 +931,36 @@ template dedisperseddata_uint8
 dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
                              float freq_start, float freq_end, float dm_step,
                              int ref_freq, int time_downsample, float t_sample, 
-                             std::string mask_file, bool use_shared_memory);
+                             int target_id, std::string mask_file);
 
 template dedisperseddata_uint8
 dedispered_fil_cuda<uint16_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
-                              float t_sample, std::string mask_file, bool use_shared_memory);
+                              float t_sample, int target_id, std::string mask_file);
 
 template dedisperseddata_uint8
 dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
-                              float t_sample, std::string mask_file, bool use_shared_memory);
+                              float t_sample, int target_id, std::string mask_file);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint8_t>(uint8_t *data, Header header, float dm_low,
                          float dm_high, float freq_start, float freq_end,
                          float dm_step, int ref_freq, int time_downsample,
-                         float t_sample, std::string mask_file, bool use_shared_memory);
+                         float t_sample, int target_id, std::string mask_file);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint16_t>(uint16_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
-                          float t_sample, std::string mask_file, bool use_shared_memory);
+                          float t_sample, int target_id, std::string mask_file);
                           
 template dedisperseddata_uint8
 dedisperse_spec<uint32_t>(uint32_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
-                          float t_sample, std::string mask_file, bool use_shared_memory);
+                          float t_sample, int target_id, std::string mask_file);
 
 } // namespace gpucal

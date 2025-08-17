@@ -12,6 +12,7 @@ from .dmtime import DmTime
 from .io.filterbank import Filterbank
 from .spectrum import Spectrum
 from .io.data import Header, SpectrumBase, SpectrumType
+from .config import TaskConfig
 
 
 @timeit
@@ -55,6 +56,7 @@ def dedisperse_spec(
         dm_step,
         time_downsample,
         t_sample,
+        TaskConfig().dedgpu,
         maskfile
     )
 
@@ -344,6 +346,7 @@ def dedispered_fil(
         time_downsample,
         t_sample,
         target=target,  # 0 for CPU, 1 for GPU
+        target_id=TaskConfig().dedgpu,
         mask_file=maskfile,
     )
     basename = os.path.basename(file_path).split(".")[0]
