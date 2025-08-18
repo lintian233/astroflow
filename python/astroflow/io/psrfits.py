@@ -2,7 +2,7 @@ from astropy.io import fits
 import numpy as np
 import os
 
-import _astroflow_core as _astro_core  # type: ignore
+from .. import _astroflow_core as _astro_core  # type: ignore
 
 from .data import SpectrumBase, Header, SpectrumType
 

@@ -3,7 +3,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from enum import Enum
 
-import _astroflow_core as _astro_core  # type: ignore
+from .. import _astroflow_core as _astro_core  # type: ignore
 
 uint8, uint16, uint32 = np.uint8, np.uint16, np.uint32
 

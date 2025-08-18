@@ -4,7 +4,7 @@ import cv2
 
 from typing import List
 
-import _astroflow_core as _astro_core  # type: ignore
+from . import _astroflow_core as _astro_core #type: ignore
 
 
 from .utils import timeit, Config

@@ -1,5 +1,8 @@
 build/
 build/*
+**/astroflow.egg-info/*
+lingh/**
+frbcand/**
 .cache
 CMakeUserPresets.json
 *.so
@@ -31,3 +34,4 @@ ql/*
 *.txt
 *.csv
 *.yaml
+**/*png

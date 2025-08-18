@@ -13,6 +13,8 @@ import matplotlib.patches as mpatches
 from scipy.ndimage import gaussian_filter
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.optimize import curve_fit
+ 
 
 from .config.taskconfig import TaskConfig
 from .dedispered import dedisperse_spec_with_dm
@@ -22,7 +24,7 @@ from .io.psrfits import PsrFits
 from .spectrum import Spectrum
 from .utils import get_freq_end_toa
 
-# Gaussian kernel
+
 
 
 def error_tracer(func):
@@ -114,103 +116,8 @@ def pack_background(dmt, candinfo, save_path, file_path):
     print(f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
 
 
-def preprocess_img(img):
-    img = (img - np.min(img)) / (np.max(img) - np.min(img))
-    img = (img - np.mean(img)) / np.std(img)
-    img = cv2.resize(img, (512, 512))
-
-    img = np.clip(img, *np.percentile(img, (0.1, 99.9)))
-    img = (img - np.min(img)) / (np.max(img) - np.min(img))
-
-    img = seaborn.color_palette("mako", as_cmap=True)(img)
-    img = img[..., :3]
-
-    img -= [0.485, 0.456, 0.406]
-    img /= [0.229, 0.224, 0.225]
-
-    return img
-
-
-
-def plot_spec(spec, title, candinfo, save_path, dpi=100):
-    tstart = candinfo[0]
-    tend = candinfo[1]
-    freq_start = candinfo[2]
-    freq_end = candinfo[3]
-    tstart = tstart if tstart > 0 else 0
-    tstart = np.round(tstart, 3)
-    tend = np.round(tend, 3)
-
-    data = spec
-    fig, axs = plt.subplots(
-        2,
-        1,
-        figsize=(10, 10),
-        dpi=dpi,
-        gridspec_kw={"height_ratios": [1, 3]},
-        sharex=True,
-    )
-    plt.rcParams["image.origin"] = "lower"
-    data = (data - np.min(data)) / (np.max(data) - np.min(data))
-    vim, vmax = np.percentile(data, [5, 95])
-    time_axis = np.linspace(tstart, tend, data.shape[0])
-    freq_axis = np.linspace(freq_start, freq_end, data.shape[1])
-    time_series = data.sum(axis=1)
-    axs[0].plot(time_axis, time_series, "k-", linewidth=0.5)
-    axs[0].set_ylabel("Integrated Power")
-    axs[0].tick_params(axis="x", which="both", bottom=False, labelbottom=False)
-    axs[0].set_yscale("log")
-    axs[0].grid(True, alpha=0.3)
-    # add title
-    axs[0].set_title(f"{title}")
-
-    extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
-    axs[1].imshow(
-        data.T,
-        aspect="auto",
-        origin="lower",
-        cmap="viridis",
-        extent=extent,
-        vmin=vim,
-        vmax=vmax,
-    )
-    axs[1].set_ylabel(f"Frequency (MHz)")
-    axs[1].set_xlabel(f"Time (s)")
-
-    axs[0].set_xlim(tstart, tend)
-    axs[1].set_xlim(tstart, tend)
-
-    plt.subplots_adjust(hspace=0.05, left=0.08, right=0.92)
-    plt.savefig(
-        f"{save_path}/{title}.png",
-        dpi=dpi,
-        bbox_inches="tight",
-        format="png",
-    )
-    plt.close()
-
-
-def filter(img):
-    kernel_size = 2
-    kernel = cv2.getGaussianKernel(kernel_size, 0)
-    kernel_2d = np.outer(kernel, kernel)
-
-    for _ in range(1):
-        img = cv2.filter2D(img.astype(np.float32), -1, kernel_2d)
-
-    for _ in range(2):
-        img = cv2.medianBlur(img.astype(np.float32), ksize=3)
-    return img
-
-
-import numpy as np
-from scipy.ndimage import label
-from scipy.optimize import curve_fit
-
-
 def gaussian(x, amp, mu, sigma, baseline):
     return amp * np.exp(-0.5 * ((x - mu) / sigma) ** 2) + baseline
-
 
 def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_idx=None, fitting_window_samples=None):
     """
@@ -420,18 +327,6 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_id
         }
         
         return snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality)
-
-
-def plot_dmtime(dmt: DmTime, save_path, imgsize=512):
-    img = dmt.data
-    img = np.ascontiguousarray(img, dtype=np.float32)
-    img = np.clip(img, *np.percentile(img, (1, 99.9)))
-    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
-    img = filter(img)
-    img = cv2.resize(img, (imgsize, imgsize), interpolation=cv2.INTER_LINEAR)
-    img = np.uint8(img)
-    img_colored = cv2.applyColorMap(img, cv2.COLORMAP_VIRIDIS)
-    cv2.imwrite(f"{save_path}/{dmt.__str__()}.png", img_colored)
 
 
 def _parse_candidate_info(candinfo):
