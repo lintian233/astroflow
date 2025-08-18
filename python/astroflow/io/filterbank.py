@@ -1,5 +1,5 @@
 # type: ignore
-import _astroflow_core as _astro_core
+from .. import _astroflow_core as _astro_core  # type: ignore
 import os
 
 from .data import Header, SpectrumBase

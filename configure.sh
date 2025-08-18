@@ -21,9 +21,16 @@ if conda env list | grep -q "^$ENV_NAME\s"; then
     echo "The '$ENV_NAME' environment exists. Activating it..."
     conda activate "$ENV_NAME"
 else
-    # Prompt the user to create the environment
+    # Create the environment automatically if AUTO_CREATE is set or in non-interactive mode
     echo "The '$ENV_NAME' environment does not exist."
-    read -p "Do you want to create a new environment named '$ENV_NAME'? (yes/no): " response
+    
+    # Check if we're in non-interactive mode or AUTO_CREATE is set
+    if [[ "${AUTO_CREATE:-}" == "yes" ]] || [[ ! -t 0 ]]; then
+        echo "Creating the '$ENV_NAME' environment automatically..."
+        response="yes"
+    else
+        read -p "Do you want to create a new environment named '$ENV_NAME'? (yes/no): " response
+    fi
 
     # Convert the response to lowercase for case-insensitive comparison
     response=$(echo "$response" | tr '[:upper:]' '[:lower:]')

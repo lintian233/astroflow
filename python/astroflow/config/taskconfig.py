@@ -143,7 +143,7 @@ class TaskConfig:
     def maskfile(self):
         maskfile = self._config_data.get("maskfile")
         if maskfile is None:
-            return None
+            return ""
         if not isinstance(maskfile, str):
             raise ValueError("maskfile must be a string.")
         if not os.path.exists(maskfile):

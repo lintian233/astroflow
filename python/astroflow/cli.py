@@ -48,7 +48,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def astroflow_main():
     args = parse_args()
     config_file = args.configfile
     task_config = TaskConfig(config_file)
@@ -123,9 +123,9 @@ def main():
     else:
         raise ValueError(f"Unsupported mode: {mode}. Supported modes are: single, directory, muti, monitor, dataset")
 
-if __name__ == "__main__":
+def main():
     try:
-        main()
+        astroflow_main()
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user.")
     except Exception as e:
