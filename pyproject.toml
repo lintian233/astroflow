@@ -59,4 +59,26 @@ astroflow = ["lib/*/*.{so,dll,dylib}"]
 
 [tool.scikit-build]
 wheel.packages = ["python/astroflow"]
-cmake.args = ["-DCMAKE_BUILD_TYPE=Release"]
+
+[tool.scikit-build.cmake]
+minimum-version = "3.22"
+
+[tool.scikit-build.cmake.define]
+CMAKE_BUILD_TYPE = "Release"
+
+[tool.scikit-build.sdist]
+include = [
+  "CMakeLists.txt",
+  "conanfile.txt",
+  "include/**",
+  "src/**",
+  "python/**",
+]
+exclude = [
+  "build/**",
+  "_skbuild/**",
+  "dist/**",
+  ".git/**",
+  ".github/**",
+]
+

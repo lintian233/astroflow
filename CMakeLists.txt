@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-# ===================== Conan: 自动安装并注入 toolchain（在 project() 之前） =====================
+# ===================== Conan:  toolchain =====================
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   find_program(CONAN_CMD conan)
   if(CONAN_CMD)
@@ -73,7 +73,6 @@ if(BUILD_TESTING)
 endif()
 
 # ===================== 优化/编译器标志 =====================
-# CUDA 优化组合（保留你原有的）
 set(CUDA_OPTIMIZATION_FLAGS
   "-O3"
   "--use_fast_math"
