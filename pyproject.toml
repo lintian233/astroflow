@@ -82,3 +82,12 @@ exclude = [
   ".github/**",
 ]
 
+[tool.cibuildwheel]
+build = ["cp310-*", "cp311-*", "cp312-*"]
+archs = ["x86_64"]
+skip = ["*-musllinux_*", "pp*"]
+
+[tool.cibuildwheel.linux]
+manylinux-version = "manylinux_2_28"
+repair_command = ["auditwheel repair -w {dest_dir} {wheel}"]
+
