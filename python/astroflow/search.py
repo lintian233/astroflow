@@ -4,7 +4,8 @@ from typing import Union, Optional, List, Tuple, Set
 
 import numpy as np
 import pandas as pd
-import tqdm
+from tqdm import tqdm
+
 
 from .dedispered import dedispered_fil, dedisperse_spec, dedisperse_spec_with_dm
 from .frbdetector import (
@@ -52,7 +53,7 @@ def _validate_file_path(file_path: str) -> None:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = os.path.splitext(file_path)[1]
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported file format: {ext}. Supported formats: {list(SUPPORTED_EXTENSIONS.keys())}")
 
@@ -86,7 +87,7 @@ def _load_spectrum_data(file_path: str) -> SpectrumBase:
     """
     _validate_file_path(file_path)
     
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = os.path.splitext(file_path)[1]
     data_class = SUPPORTED_EXTENSIONS[ext]
     return data_class(file_path)
 
@@ -220,7 +221,7 @@ def _get_cached_dir_path(output_dir: str, files_dir: str, config: Config) -> str
     base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz" 
     base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
     
-    cached_dir = os.path.join(output_dir, "cached").lower()
+    cached_dir = os.path.join(output_dir, "cached")
     return os.path.join(cached_dir, base_dir)
 
 
@@ -266,6 +267,8 @@ def single_pulsar_search_with_dm(
     >>> plotter = PlotterManager(...)
     >>> single_pulsar_search_with_dm('obs.fil', '/output', config, checker, plotter)
     """
+    raise NotImplementedError("This Method Not imp yet")
+
     origin_data = _load_spectrum_data(file)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -297,12 +300,7 @@ def single_pulsar_search_with_dm(
         tend = np.round(tend, 3)
         basename = os.path.basename(file).split(".")[0]
         title = f"{basename}-dm-{config.dm}-tstart-{tstart}-tend-{tend}"
-        plotter.plot_spec(
-            spec_data,
-            title,
-            [tstart, tend, freq_start, freq_end],
-            detect_dir,
-        )
+        return
 
 
 def single_pulsar_search(
@@ -369,7 +367,7 @@ def single_pulsar_search(
         config.t_sample,
     )
 
-    detect_dir = os.path.join(output_dir, "detect").lower()
+    detect_dir = os.path.join(output_dir, "detect")
     file_basename = os.path.basename(file).split(".")[0]
 
     os.makedirs(detect_dir, exist_ok=True)
@@ -457,7 +455,7 @@ def muti_pulsar_search(
         config.t_sample,
     )
 
-    detect_dir = os.path.join(output_dir, "detect").lower()
+    detect_dir = os.path.join(output_dir, "detect")
     file_basename = os.path.basename(file).split(".")[0]
 
     os.makedirs(detect_dir, exist_ok=True)
@@ -541,7 +539,7 @@ def _process_single_file_search(
                 # Check if already processed
                 file_basename = os.path.basename(file_path).split(".")[0]
                 cached_dir_path = _get_cached_dir_path(output_dir, task_config.input, config)
-                file_dir = os.path.join(cached_dir_path, file_basename).lower()
+                file_dir = os.path.join(cached_dir_path, file_basename)
                 
                 print(f"checking {file_dir}")
                 if os.path.exists(file_dir):
@@ -631,7 +629,7 @@ def single_pulsar_search_dir(task_config: TaskConfig) -> None:
     detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
 
     try:
-        for file in tqdm.tqdm(all_files):
+        for file in tqdm(all_files):
             file_path = os.path.join(files_dir, file)
             logger.info(f"Processing {file_path}")
 
@@ -770,7 +768,7 @@ def _get_supported_files(directory: str) -> Set[str]:
     supported_files = set()
     try:
         for filename in os.listdir(directory):
-            if any(filename.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+            if any(filename.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                 full_path = os.path.join(directory, filename)
                 if os.path.isfile(full_path):
                     supported_files.add(full_path)

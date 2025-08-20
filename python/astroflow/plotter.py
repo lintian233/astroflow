@@ -74,8 +74,8 @@ class PlotterManager:
         self.pool.join()
 
 def pack_candidate(dmt, candinfo, save_path, file_path):
-    IMAGE_PATH = os.path.join(save_path,"frb","images").lower()
-    LABEL_PATH = os.path.join(save_path,"frb","labels").lower()
+    IMAGE_PATH = os.path.join(save_path,"frb","images")
+    LABEL_PATH = os.path.join(save_path,"frb","labels")
 
     os.makedirs(IMAGE_PATH, exist_ok=True)
     os.makedirs(LABEL_PATH, exist_ok=True)
@@ -96,8 +96,8 @@ def pack_candidate(dmt, candinfo, save_path, file_path):
 
 
 def pack_background(dmt, candinfo, save_path, file_path):
-    IMAGE_PATH = os.path.join(save_path,"bg","images").lower()
-    LABEL_PATH = os.path.join(save_path,"bg","labels").lower()
+    IMAGE_PATH = os.path.join(save_path,"bg","images")
+    LABEL_PATH = os.path.join(save_path,"bg","labels")
 
     os.makedirs(IMAGE_PATH, exist_ok=True)
     os.makedirs(LABEL_PATH, exist_ok=True)
@@ -989,17 +989,12 @@ def plot_candidate(
             spec_data = spectrum.data
 
             snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
-                spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=int((toa - spec_tstart) / header.tsamp)
+                spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=int((peak_time - spec_tstart) / header.tsamp)
             )
 
             peak_time = spec_tstart + (peak_idx + 0.5) * header.tsamp
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1  # Convert to milliseconds
 
-            # Prepare spectrum plot parameters
-            spec_vim, spec_vmax = np.percentile(
-                spec_data, 
-                [specconfig.get("minpercentile", 5), specconfig.get("maxpercentile", 99.9)]
-            )
             
             # Create time and frequency axes
             spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)

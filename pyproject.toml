@@ -11,13 +11,13 @@ requires = [
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "astroflow"
+name = "pulseflow"
 version = "0.1.0"
-description = "High-performance astronomical data processing library"
+description = "High-performance radio astronomy single pulse Detect lib"
 requires-python = ">=3.10"
 readme = "README.md"
-license = { text = "MIT" }
-authors = [{ name = "Your Name" }]
+license = { text = "BSD" }
+authors = [{ name = "lintian233" }]
 
 dependencies = [
   "astropy==7.0.1",

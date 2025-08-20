@@ -32,7 +32,7 @@ def _validate_file_path(file_path: str) -> None:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = os.path.splitext(file_path)[1]
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError(f"Unsupported file format: {ext}. Supported formats: {list(SUPPORTED_EXTENSIONS.keys())}")
 
@@ -41,7 +41,7 @@ def _load_spectrum_data(file_path: str) -> SpectrumBase:
     """Load spectrum data based on file extension."""
     _validate_file_path(file_path)
     
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = os.path.splitext(file_path)[1]
     data_class = SUPPORTED_EXTENSIONS[ext]
     return data_class(file_path)
 
@@ -130,9 +130,9 @@ def muti_pulsar_search_detect(
 
     # Setup output directories
     file_basename = os.path.basename(file).split(".")[0]
-    detect_dir = os.path.join(output_dir, "detect", file_basename).lower()
-    candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename).lower()
-    background_dir = os.path.join(output_dir, "background").lower()
+    detect_dir = os.path.join(output_dir, "detect", file_basename)
+    candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename)
+    background_dir = os.path.join(output_dir, "background")
     os.makedirs(candidate_detect_dir, exist_ok=True)
     os.makedirs(detect_dir, exist_ok=True)
     os.makedirs(background_dir, exist_ok=True)

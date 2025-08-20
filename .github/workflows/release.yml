@@ -2,8 +2,8 @@ name: release
 
 on:
   push:
-    # tags: ['v*'] 
-    branches: ['enhded']         
+    tags: ['v*'] 
+    # branches: ['enhded']         
   workflow_dispatch:      
 
 jobs:
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-22.04
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/astroflow
+      url: https://test.pypi.org/p/pulseflow
     permissions:
       id-token: write
       contents: read
@@ -94,20 +94,20 @@ jobs:
       #     skip-existing: true
 
 
-  # publish-pypi:
-  #   needs: [build-linux, publish-testpypi]  # 不想先发 TestPyPI 就写 needs: build-linux
-  #   runs-on: ubuntu-22.04
-  #   environment:
-  #     name: pypi
-  #     url: https://pypi.org/p/<你的包名>
-  #   permissions:
-  #     id-token: write
-  #     contents: read
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with: { name: dists, path: dist }
-  #     - name: Upload to PyPI (OIDC)
-  #       uses: pypa/gh-action-pypi-publish@release/v1
-  #       with:
-  #         packages-dir: dist
-  #         skip-existing: false
+  publish-pypi:
+    needs: [build-linux, publish-testpypi]
+    runs-on: ubuntu-22.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pulseflow
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dist }
+      - name: Upload to PyPI (OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: false

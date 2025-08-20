@@ -155,7 +155,7 @@ class TaskConfig:
         MODE = ["single", "directory", "muti", "monitor", "dataset"]
         mode = self._config_data.get("mode")
         if mode is None:
-            raise ValueError("mode not found in config file. mode must be one of {MODE}.")
+            raise ValueError(f"mode not found in config file. mode must be one of {MODE}.")
         if not isinstance(mode, str):
             raise ValueError("mode must be a string.")
         if mode not in MODE:
@@ -176,15 +176,17 @@ class TaskConfig:
         raise ValueError(f"mode is {self.mode} not `dataset`.")
 
     @property
-    def modepath(self):
-        modepath = self._config_data.get("modepath")
-        if modepath is None:
-            raise ValueError("modepath not found in config file.")
-        if not isinstance(modepath, str):
-            raise ValueError("modepath must be a string.")
-        if not os.path.exists(modepath):
-            raise FileNotFoundError(f"Mode path {modepath} does not exist.")
-        return modepath
+    def modelpath(self):
+        model_url_path = "" # yolo11n_pulsedetect.pt github release path
+        # https get
+        modelpath = self._config_data.get("modelpath")
+        if modelpath is None:
+            raise ValueError("modelpath not found in config file.")
+        if not isinstance(modelpath, str):
+            raise ValueError("modelpath must be a string.")
+        if not os.path.exists(modelpath):
+            raise FileNotFoundError(f"Model path {modelpath} does not exist.")
+        return modelpath
 
 
     @property
