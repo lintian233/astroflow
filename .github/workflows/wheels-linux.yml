@@ -1,0 +1,73 @@
+name: linux-wheels
+
+on:
+  push:
+    tags: ["v*"]     # 打 tag 触发
+  workflow_dispatch: # 也可手动触发
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 如果你的 Docker Hub 镜像是【私有】，解注释并配置仓库 Secrets:
+      #   DOCKERHUB_USERNAME / DOCKERHUB_TOKEN
+      # - uses: docker/login-action@v3
+      #   with:
+      #     registry: docker.io
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 缓存宿主的 conan2 目录，后面会通过 CIBW_MOUNT 挂进容器，显著加速
+      - name: Cache Conan2
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: conan2-linux-${{ hashFiles('conanfile.txt') }}
+          restore-keys: |
+            conan2-linux-
+
+      - name: Install cibuildwheel
+        run: |
+          python -m pip install -U pip
+          pip install "cibuildwheel==2.*"
+
+      - name: Build wheels in your manylinux+CUDA image
+        env:
+          # ✅ 需要支持的 Python 版本（全覆盖 cp38..cp312）
+          CIBW_BUILD: "cp38-* cp39-* cp310-* cp311-* cp312-*"
+          # 我们的基础镜像是 manylinux，不构建 musllinux
+          CIBW_SKIP: "cp*-musllinux*"
+          CIBW_ARCHS: "x86_64"
+
+          # ⭐ 使用你已经推到 Docker Hub 的镜像（就是你这份 Dockerfile 构建出来的）
+          CIBW_MANYLINUX_X86_64_IMAGE: "docker.io/lintian233/astroflow-build:cuda12.9-manylinux_2_28-x86_64"
+
+          # 传给容器内构建的环境变量（CMake/nvcc 会用到）
+          CIBW_ENVIRONMENT: >
+            CMAKE_BUILD_TYPE=Release
+            CMAKE_CUDA_ARCHITECTURES=75;80;86;89
+            CUDAHOME=/usr/local/cuda
+            CUDACXX=/usr/local/cuda/bin/nvcc
+            NVCC_PREPEND_FLAGS=--allow-unsupported-compiler
+
+          # 在每个 Python 目标环境启动前执行一次（容器内）
+          # 你的镜像里已用 cp312 预装 conan，这里幂等初始化 profile，保证存在即可
+          CIBW_BEFORE_ALL: >
+            /opt/python/cp312-cp312/bin/conan --version &&
+            /opt/python/cp312-cp312/bin/conan profile detect --force
+
+          # 把宿主的 ~/.conan2 挂载到容器的 /root/.conan2，命中上面的缓存
+          CIBW_MOUNT: "$HOME/.conan2:/root/.conan2"
+
+          # 日志等级：0..3
+          CIBW_BUILD_VERBOSITY: "1"
+
+        run: cibuildwheel --output-dir wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux
+          path: wheelhouse/*.whl
