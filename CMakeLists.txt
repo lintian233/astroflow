@@ -62,7 +62,7 @@ find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 message(STATUS "Using Python: ${Python3_EXECUTABLE}")
 message(STATUS "Python includes: ${Python3_INCLUDE_DIRS}")
 message(STATUS "Python library: ${Python3_LIBRARIES}")
-
+find_package(CUDAToolkit)
 find_package(pybind11 REQUIRED CONFIG)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 # 测试可选
@@ -148,6 +148,7 @@ set_target_properties(${TARGET_NAME} PROPERTIES
   CUDA_RESOLVE_DEVICE_SYMBOLS ON
   CUDA_SEPARABLE_COMPILATION OFF
   POSITION_INDEPENDENT_CODE ON
+  CUDA_RUNTIME_LIBRARY Static
 )
 
 # 编译选项（区分语言和构建类型）
@@ -157,6 +158,7 @@ target_compile_options(${TARGET_NAME} PRIVATE
     $<$<CONFIG:Debug>:-O0;-g;-G;-lineinfo>
     --expt-relaxed-constexpr
     --expt-extended-lambda
+    --cudart=static
     -Xcudafe --diag_suppress=esa_on_defaulted_function_ignored
   >
   $<$<COMPILE_LANGUAGE:CXX>:
@@ -176,11 +178,13 @@ target_include_directories(${TARGET_NAME} PRIVATE
 )
 
 target_link_libraries(${TARGET_NAME} PRIVATE
+  CUDA::cudart_static
   pybind11::module
   Python3::Module
   opencv_core
   opencv_imgproc
   opencv_imgcodecs
+  dl pthread rt
 )
 
 # **关键**：安装到 Python 包内（wheel 中最终位于 astroflow/_astroflow_core.*）
