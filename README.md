@@ -1,87 +1,89 @@
-# AstroFlow 🌌
+# /home/lingh/work/astroflow/README.md
+# Astroflow
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/lintian233/astroflow/build.yml?logo=github)](https://github.com/lintian233/astroflow/actions)
-[![C++ Standard](https://img.shields.io/badge/C++-17-blue?logo=c%2B%2B)](https://isocpp.org/)
-[![Python Version](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
-[![Conda Supported](https://img.shields.io/conda/v/conda-forge/python?logo=anaconda)](https://conda.io/)
+A modern Python framework for pulsar and fast radio burst (FRB) data analysis, featuring advanced single pulse search capabilities and real-time processing pipelines.
 
-A high-performance radio astronomy data processing framework combining C++ computational efficiency with Python usability, featuring GPU acceleration and automated build configuration.
+## Features
 
-## ✨ Key Features
-- 🚀 CUDA-accelerated numerical core
-- 📊 Interactive visualization with Matplotlib
-- 🔧 Automated environment configuration
-- 📦 Cross-platform dependency management (Conan + Conda)
-- 🧪 Comprehensive testing framework
+- **Single Pulse Search**: Advanced algorithms for detecting transient radio signals
+- **Real-time Processing**: Efficient data pipelines for live observations
+- **Candidate Analysis**: Comprehensive tools for signal classification and validation
+- **Visualization**: Interactive plotting and candidate inspection tools
+- **Flexible Architecture**: Modular design supporting various backends and data formats
 
-## 🚀 Quick Start
+## Installation
+
+### Method 1: Install from PyPI (Recommended)
 ```bash
-# Clone repository and create feature branch
+# for ubuntu18+ python>=3.10
+pip install pulseflow
+```
+
+### Method 2: Development Installation
+```bash
 git clone https://github.com/lintian233/astroflow.git
 cd astroflow
-
-# Run automated configuration
 source configure.sh
-pip install -r python/requirements.txt
-
-# Test if sucessful installed
-cd build && ctest 
-cd python && python -m unittest
-```
-⚠️ **Note** The configuration script will:
-1. Create a Conda virtual environment
-2. Install CUDA toolkit and build dependencies
-3. Configure Conan package management
-4. Build C++ extensions
-5. Set up Python environment paths
-
-## 🔧 Manual Configuration
-
-### Python Environment Setup
-```bash
-# Create Conda environment with Tsinghua mirror
-conda create -n astroflow \
-    --override-channels \
-    --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
-    --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-    python=3.12 conan gcc gxx cuda-toolkit
-
-conda activate astroflow
-pip install -r python/requirements.txt
-
-```
-### Build C++ Extensions
-```bash
-# Configure build environment
-mkdir build && cd build
-conan install .. --output-folder=. --build=missing
-source conanbuild.sh
-
-# Build project (Release mode)
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-# Return to project root
-cd ..
-
-## 🧪 Verification Tests
-```bash
-# Validate CUDA extensions
-cd build && ctest
+pip install -e .
 ```
 
-## 📦 Core Dependencies
-- **Compute**: CUDA 11.0+, GCC 9.0+
-- **Python**: 3.12+ with NumPy, Matplotlib
-- **Build**: CMake 3.20+, Conan 2.0+
+### Method 3: Source Configuration
+```bash
+git clone https://github.com/lintian233/astroflow.git
+cd astroflow
+source configure.sh
+```
 
-## 🤝 Contributing
-We welcome contributions through:
-1. Issue reporting
-2. Pull Requests ([Contribution Guide](CONTRIBUTING.md))
-3. Documentation improvements
-4. Test case additions
+## Quick Start
 
----
+### Single Pulse Search Example
 
-🏗️ Maintained by [lintian233](https://github.com/lintian233) | 💬 Discuss via GitHub Issues
+```bash
+pulseflow fast.yaml
+```
+
+### Example Output
+
+![Candidate Detection](candidate.png)
+
+*Example of a detected single pulse candidate showing dedispersed time series and diagnostic plots.*
+
+## Core Components
+
+- **Data I/O**: Support for SIGPROC filterbank, PSRFITS, and custom formats
+- **Signal Processing**: Dedispersion, RFI mitigation, and matched filtering
+- **Machine Learning**: AI-powered candidate classification
+- **Visualization**: Interactive dashboards and publication-ready plots
+
+## Documentation
+
+- **API Reference**: [https://pulseflow.readthedocs.io/](https://pulseflow.readthedocs.io/)
+- **User Guide**: [https://pulseflow.readthedocs.io/en/latest/userguide/](https://pulseflow.readthedocs.io/en/latest/userguide/)
+- **Tutorials**: [https://pulseflow.readthedocs.io/en/latest/tutorials/](https://pulseflow.readthedocs.io/en/latest/tutorials/)
+- **Examples**: [https://github.com/lintian233/astroflow/tree/main/examples](https://github.com/lintian233/astroflow/tree/main/examples)
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Citation
+
+If you use PulseFlow in your research, please cite:
+
+```bibtex
+@software{pulseflow,
+  title={PulseFlow: High-performance radio astronomy single pulse search pipline},
+  author={lintian233},
+  year={2024},
+  url={https://github.com/lintian233/astroflow}
+}
+```
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/lintian233/astroflow/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/lintian233/astroflow/discussions)
