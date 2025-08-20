@@ -88,6 +88,12 @@ archs = ["x86_64"]
 skip = ["*-musllinux_*", "pp*"]
 
 [tool.cibuildwheel.linux]
-manylinux-version = "manylinux_2_28"
-repair_command = ["auditwheel repair -w {dest_dir} {wheel}"]
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
 
+
+[tool.cibuildwheel.environment]
+CMAKE_BUILD_TYPE = "Release"
+CMAKE_CUDA_ARCHITECTURES = "75;80;86;89"
+CUDAHOME = "/usr/local/cuda"
+CUDACXX = "/usr/local/cuda/bin/nvcc"
+NVCC_PREPEND_FLAGS = "--allow-unsupported-compiler"

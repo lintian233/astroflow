@@ -57,7 +57,8 @@ endif()
 set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89)
 
 # ===================== 依赖 =====================
-find_package(Python3 COMPONENTS Interpreter Development.Module Development.Embed REQUIRED)
+#find_package(Python3 COMPONENTS Interpreter Development.Module Development.Embed REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 message(STATUS "Using Python: ${Python3_EXECUTABLE}")
 message(STATUS "Python includes: ${Python3_INCLUDE_DIRS}")
 message(STATUS "Python library: ${Python3_LIBRARIES}")
