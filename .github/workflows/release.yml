@@ -1,10 +1,10 @@
-name: linux-wheels
+name: release
 
 on:
   push:
-    branches:
-      - enhded # 仅在特定分支推送时触发
-  workflow_dispatch: # 也可手动触发
+    # tags: ['v*'] 
+    branches: ['enhded']         
+  workflow_dispatch:      
 
 jobs:
   build-linux:
@@ -58,8 +58,56 @@ jobs:
           CIBW_BUILD_VERBOSITY: "1"
 
         run: cibuildwheel --output-dir wheelhouse
-
-      - uses: actions/upload-artifact@v4
+    
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels-linux
-          path: wheelhouse/*.whl
+          name: dists
+          path: wheelhouse/*
+
+
+  publish-testpypi:
+    needs: build-linux
+    runs-on: ubuntu-22.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/astroflow
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dist }
+      - name: Upload to TestPyPI (OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
+          skip-existing: true
+      # 如果用 API Token，改成：
+      # - uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     repository-url: https://test.pypi.org/legacy/
+      #     user: __token__
+      #     password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      #     packages-dir: dist
+      #     skip-existing: true
+
+
+  # publish-pypi:
+  #   needs: [build-linux, publish-testpypi]  # 不想先发 TestPyPI 就写 needs: build-linux
+  #   runs-on: ubuntu-22.04
+  #   environment:
+  #     name: pypi
+  #     url: https://pypi.org/p/<你的包名>
+  #   permissions:
+  #     id-token: write
+  #     contents: read
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with: { name: dists, path: dist }
+  #     - name: Upload to PyPI (OIDC)
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         packages-dir: dist
+  #         skip-existing: false
