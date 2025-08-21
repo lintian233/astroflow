@@ -10,8 +10,8 @@ English | [简体中文](./docs/README_zh-CN.md)
   <!-- Package & registry badges -->
   <a href="https://pypi.org/project/pulseflow/">
     <img src="https://img.shields.io/pypi/v/pulseflow" alt="PyPI"></a>
-  <a href="https://pepy.tech/project/astroflow">
-    <img src="https://static.pepy.tech/badge/astroflow" alt="Downloads"></a>
+  <a href="https://pepy.tech/project/pulseflow">
+    <img src="https://static.pepy.tech/badge/pulseflow" alt="Downloads"></a>
   <a href="https://hub.docker.com/r/lintian233/astroflow-build">
     <img src="https://img.shields.io/docker/pulls/lintian233/astroflow-build" alt="Docker pulls"></a>
   <a href="https://github.com/lintian233/astroflow/issues">
