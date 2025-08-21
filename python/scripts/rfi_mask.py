@@ -150,7 +150,7 @@ def process_files_concurrent(files, output_dir, sg_sigma, sg_frequency, sk_sigma
     return successful, failed
 
 
-def main():
+def astrorfimask():
     parser = argparse.ArgumentParser(
         description="Batch process FITS/FIL files with RFI masking",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -171,7 +171,7 @@ def main():
     parser.add_argument(
         '-sg_sigma', '--savgol_sigma',
         type=float,
-        default=1,
+        default=2,
         help='Sigma for Savgol filter RFI mitigation'
     )
     
@@ -185,7 +185,7 @@ def main():
     parser.add_argument(
         '-sk_sigma', '--spectral_kurtosis_sigma',
         type=float,
-        default=0,
+        default=2,
         help='Sigma for spectral kurtosis based RFI mitigation'
     )
     
@@ -318,9 +318,12 @@ def main():
     print(f"Success rate: {(successful/len(files)*100):.1f}%")
     print("="*80)
     
+
+    print(f"BATCH PROCESSING COMPLETE!")
+    print(f"Successfully processed: {successful} files")
+    print(f"Failed: {failed} files")
+    print(f"Total files: {len(files)}")
+    print(f"Success rate: {(successful/len(files)*100):.1f}%")
+    
     if failed > 0:
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

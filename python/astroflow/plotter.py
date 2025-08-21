@@ -992,9 +992,25 @@ def plot_candidate(
                 spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=int((peak_time - spec_tstart) / header.tsamp)
             )
 
+            # Check SNR against threshold
+            snrhold = taskconfig.snrhold
+            if snr < snrhold:
+                print(f"Warning: SNR {snr:.2f} is below threshold {snrhold}. Skipping spectrum plot.")
+                plt.close('all')
+                if origin_data is not None:
+                    if hasattr(origin_data, "close"):
+                        try:
+                            origin_data.close()
+                        except Exception:
+                            pass
+                    del origin_data
+                
+                del spectrum, spec_data, initial_spectrum, initial_spec_data
+                gc.collect()
+                return  
+
             peak_time = spec_tstart + (peak_idx + 0.5) * header.tsamp
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1  # Convert to milliseconds
-
             
             # Create time and frequency axes
             spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)

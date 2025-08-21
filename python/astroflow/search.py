@@ -137,17 +137,17 @@ def _create_detector_and_plotter(task_config: TaskConfig) -> Tuple[Union[CenterN
     mutidetect = False
     if task_config.modelname == CENTERNET:
         detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, task_config.confidence
+            task_config.dm_limt, None, task_config.confidence
         )
     elif task_config.modelname == YOLOV11N:
         detector = Yolo11nFrbDetector(
-            task_config.dm_limt, task_config.preprocess, task_config.confidence
+            task_config.dm_limt, None, task_config.confidence
         )
         mutidetect = True
     else:
         logger.warning(f"Unknown model name {task_config.modelname}, using CenterNet")
         detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, task_config.confidence
+            task_config.dm_limt, None, task_config.confidence
         )
     
     return detector, plotter, mutidetect

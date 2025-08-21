@@ -12,7 +12,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "pulseflow"
-version = "0.1.0"
+version = "0.1.1"
 description = "High-performance radio astronomy single pulse Detect lib"
 requires-python = ">=3.10"
 readme = "README.md"
@@ -44,6 +44,7 @@ dev = ["pytest>=6.0", "pytest-cov", "black", "flake8"]
 
 [project.scripts]
 astroflow = "astroflow.cli:main"
+astrorfimask = "astroflow.rfimask:astrorfimask"
 
 [tool.setuptools]
 include-package-data = true

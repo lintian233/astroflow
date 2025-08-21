@@ -149,7 +149,7 @@ Below are the commonly used YAML configuration options:
 | `confidence` | Detection confidence threshold | `0.4` | `0.372` |
 | `snrhold` | SNR threshold | `5` | `5` |
 | `modelname` | Detector model type | current only `yolov11n`
-| `modelpath` | Path to model weights | `/path/to/yolo11n_0816_v1.pt` | - |
+| `modelpath` | Path to customodel weights | `model.pt` | - |
 | `timedownfactor` | Time downsampling factor | `8` | `1` |
 
 </details>
@@ -238,7 +238,7 @@ maskdir: /path/to/maskdir
 
 </details>
 
-<details>
+<!-- <details>
   <summary>Data Processing</summary>
 
 | Option | Description | Example |
@@ -252,7 +252,7 @@ preprocess:
   - guassion: 1 5            # Gaussian filter parameters
 ```
 
-</details>
+</details> -->
 
 <details>
   <summary>Plotting Configuration</summary>
@@ -300,7 +300,8 @@ cputhread: 32
 
 snrhold: 5
 modelname: yolov11n
-modelpath: yolo11n_0816_v1.pt
+# use default
+# modelpath: yolo11n_0816_v1.pt 
 
 rfi: ai
 maskfile: file.bad_chans
@@ -349,7 +350,8 @@ detgpu: 1
 cputhread: 64
 
 modelname: yolov11n
-modepath: yolo11n_0816_v1.pt
+# use default
+# modelpath: yolo11n_0816_v1.pt 
 plotworker: 16
 
 rfi: ai

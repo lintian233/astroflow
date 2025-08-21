@@ -1,11 +1,15 @@
 import os
 from sympy import preorder_traversal
 import yaml
+import urllib.request
+
+
 
 CENTERNET = 0
 YOLOV11N = 1
 DETECTNET = 2
 COMBINENET = 3
+
 
 class TaskConfig:
     _instance = None
@@ -81,15 +85,34 @@ class TaskConfig:
         else:
             raise ValueError("Invalid format for freqrange in config file.")
 
-    def _checker_preprocess(self, preprocess):
-        if isinstance(preprocess, list):
-            for item in preprocess:
-                if not isinstance(item, dict) or len(item) != 1:
-                    raise ValueError(
-                        "Invalid format for preprocess in config file. Each item should be a single key-value pair."
-                    )
-        else:
-            raise ValueError("Invalid format for preprocess in config file.")
+    # def _checker_preprocess(self, preprocess):
+    #     if isinstance(preprocess, list):
+    #         for item in preprocess:
+    #             if not isinstance(item, dict) or len(item) != 1:
+    #                 raise ValueError(
+    #                     "Invalid format for preprocess in config file. Each item should be a single key-value pair."
+    #                 )
+    #     else:
+    #         raise ValueError("Invalid format for preprocess in config file.")
+
+
+
+    def get_model(self):
+        model_url_path = "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt" 
+        config_dir = "~/.config/astroflow"
+        config_dir = os.path.expanduser(config_dir)
+        os.makedirs(config_dir, exist_ok=True)
+        
+        model_filename = "yolov1n_0816_v1.pt"
+        local_model_path = os.path.join(config_dir, model_filename)
+        
+        if not os.path.exists(local_model_path):
+            print(f"Downloading model from {model_url_path}...")
+            urllib.request.urlretrieve(model_url_path, local_model_path)
+            print(f"Model downloaded to {local_model_path}")
+        
+        return local_model_path
+
 
     def _checker_dm_limt(self, dm_limt):
         if isinstance(dm_limt, list):
@@ -177,17 +200,15 @@ class TaskConfig:
 
     @property
     def modelpath(self):
-        model_url_path = "" # yolo11n_pulsedetect.pt github release path
         # https get
         modelpath = self._config_data.get("modelpath")
         if modelpath is None:
-            raise ValueError("modelpath not found in config file.")
+            modelpath = self.get_model()
         if not isinstance(modelpath, str):
             raise ValueError("modelpath must be a string.")
         if not os.path.exists(modelpath):
             raise FileNotFoundError(f"Model path {modelpath} does not exist.")
         return modelpath
-
 
     @property
     def dedgpu(self):

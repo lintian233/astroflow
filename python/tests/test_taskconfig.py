@@ -75,9 +75,6 @@ class TestTaskConfig(unittest.TestCase):
     def test_dm_limt(self):
         self.assertEqual(self.task_config.dm_limt, self.config_data["dm_limt"])
 
-    def test_preprocess(self):
-        self.assertEqual(self.task_config.preprocess, self.config_data["preprocess"])
-
     def test_dmrange(self):
         self.assertEqual(self.task_config.dmrange, self.config_data["dmrange"])
 

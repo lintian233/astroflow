@@ -141,7 +141,7 @@
 | `confidence` | 检测置信度阈值 | `0.4` | `0.372` |
 | `snrhold` | 信噪比阈值 | `5` | `5` |
 | `modelname` | 检测器模型类型 | 目前仅支持 `yolov11n` |
-| `modelpath` | 模型权重路径 | `/path/to/yolo11n_0816_v1.pt` | - |
+| `modelpath` | 自定义模型权重路径 | `/path/to/yolo11n_0816_v1.pt` | - |
 | `timedownfactor` | 时间降采样因子 | `8` | `1` |
 
 </details>
@@ -230,7 +230,7 @@ maskdir: /path/to/maskdir
 
 </details>
 
-<details>
+<!-- <details>
   <summary>数据处理</summary>
 
 | 选项 | 描述 | 示例 |
@@ -244,7 +244,7 @@ preprocess:
   - guassion: 1 5            # 高斯滤波参数
 ```
 
-</details>
+</details> -->
 
 <details>
   <summary>绘图配置</summary>
@@ -291,7 +291,8 @@ cputhread: 32
 
 snrhold: 5
 modelname: yolov11n
-modelpath: yolo11n_0816_v1.pt
+# use default
+# modelpath: yolo11n_0816_v1.pt 
 
 rfi: ai
 maskfile: file.bad_chans
@@ -340,7 +341,8 @@ detgpu: 1
 cputhread: 64
 
 modelname: yolov11n
-modepath: yolo11n_0816_v1.pt
+# use default
+# modelpath: yolo11n_0816_v1.pt 
 plotworker: 16
 
 rfi: ai

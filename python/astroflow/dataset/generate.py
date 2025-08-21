@@ -182,16 +182,16 @@ def _create_detector_and_plotter(task_config: TaskConfig) -> Tuple[Union[CenterN
     
     if task_config.modelname == CENTERNET:
         detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, task_config.confidence
+            task_config.dm_limt, None, task_config.confidence
         )
     elif task_config.modelname == YOLOV11N:
         detector = Yolo11nFrbDetector(
-            task_config.dm_limt, task_config.preprocess, task_config.confidence
+            task_config.dm_limt, None, task_config.confidence
         )
     else:
         logger.warning(f"Unknown model name {task_config.modelname}, using CenterNet")
         detector = CenterNetFrbDetector(
-            task_config.dm_limt, task_config.preprocess, task_config.confidence
+            task_config.dm_limt, None, task_config.confidence
         )
     
     return detector, plotter
@@ -229,14 +229,14 @@ def _process_single_file(
                 base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
                 base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
                 
-                cached_dir = os.path.join(output_dir, "cached").lower()
-                file_dir = os.path.join(cached_dir, base_dir, file_basename).lower()
+                cached_dir = os.path.join(output_dir, "cached")
+                file_dir = os.path.join(cached_dir, base_dir, file_basename)
                 
                 
                 if os.path.exists(file_dir):
                     logger.info(f"Skipping already processed file: {file_basename}")
                     # 检查 candidate_detect_dir 目录下是否有文件，如果没有则 detection_flag = 0
-                    candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename).lower()
+                    candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename)
                     if any(os.scandir(candidate_detect_dir)):
                         file_detected = True
                     continue
