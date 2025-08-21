@@ -403,10 +403,10 @@ specconfig:
 
 <h2 id="star_hist">Star History</h2>
 
-<a href="https://star-history.com/#lintian233/astroflow&Date">
+<a href="https://www.star-history.com/#lintian233/astroflow&Date">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lintian233/astroflow&type=Date&theme=dark" />
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lintian233/astroflow&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=lintian233/astroflow&type=Date"/>
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=lintian233/astroflow&type=Date" />
  </picture>
 </a>
