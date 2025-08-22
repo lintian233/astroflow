@@ -1,88 +1,49 @@
-
 #ifndef _RFIMARKER_H
 #define _RFIMARKER_H
 
 #include <vector>
 #include <string>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <omp.h>
+#include <cuda_runtime.h>
+#include <cstdint>
 
-
+/**
+ * GPU RFI marker:
+ * - load_mask(): 在 CPU 读入坏道列表，并上传到 GPU
+ * - mark_rfi(): 传入 device 指针 (d_data)，在 kernel 中把坏道通道清零
+ *
+ * 数据布局假设为: data[sample * num_channels + chan]  (row-major: time-major)
+ */
 template <typename T>
 class RfiMarker {
 public:
     RfiMarker();
-    RfiMarker(const char* mask_file); // Constructor that takes a mask file
-    RfiMarker(std::string mask_file) : RfiMarker(mask_file.c_str()) {} // Constructor that takes a string
-    ~RfiMarker() = default;
+    explicit RfiMarker(const char* mask_file);
+    explicit RfiMarker(const std::string& mask_file) : RfiMarker(mask_file.c_str()) {}
+    ~RfiMarker();
 
-    std::vector<int> bad_channels; // Vector to store bad channels
+    // 将坏道置零（在 GPU 上执行）。d_data 必须是 device 指针
+    void mark_rfi(T* d_data,
+                  unsigned int num_channels,
+                  unsigned int num_samples,
+                  cudaStream_t stream = 0);
 
-    // Method to load the RFI mask
+    // 重新加载掩码文件（会同步上传到 GPU）；文件不存在或为空则视为无坏道
     void load_mask(const char* mask_file);
 
-    void mark_rfi(T* data, uint num_channels, uint num_samples);
-    
+    // Host 侧只读坏道列表
+    const std::vector<int>& get_bad_channels() const { return bad_channels_; }
 
-    const std::vector<int>& get_bad_channels() const {
-        return bad_channels;
-    }
+private:
+    void upload_bad_channels_to_device();
+
+    std::vector<int> bad_channels_;  // host: 坏道索引
+    int* d_bad_channels_ = nullptr;  // device: 坏道索引
+    size_t n_bad_ = 0;
 };
 
+// ------------ 显式实例化声明（由 .cu 文件提供定义） ------------
+extern template class RfiMarker<uint8_t>;
+extern template class RfiMarker<uint16_t>;
+extern template class RfiMarker<uint32_t>;
 
-
-template <typename T>
-RfiMarker<T>::RfiMarker() {
-    load_mask("mask.txt"); // Default mask file
-}
-
-template <typename T>
-RfiMarker<T>::RfiMarker(const char* mask_file) {
-    load_mask(mask_file); // Load the mask from the provided file
-}
-
-template <typename T>
-void RfiMarker<T>::mark_rfi(T* data, uint num_channels, uint num_samples) {
-    // Iterate through the bad channels and mark them in the data
-    #pragma omp parallel for
-    for (int chan : bad_channels) {
-        if (chan >= 0 && chan < num_channels) {
-            #pragma omp simd
-            for (uint sample = 0; sample < num_samples; ++sample) {
-                // Set the data for the bad channel to zero
-                data[sample * num_channels + chan] = 0;
-            }
-        } else {
-            std::cerr << "Warning: Bad channel index " << chan << " out of range." << std::endl;
-        }
-    }
-    std::cout << "RFI marking completed. Bad channels: " << bad_channels.size() << std::endl;
-}
-
-template <typename T>
-void RfiMarker<T>::load_mask(const char* mask_file) {
-    // open the mask file
-    std::ifstream file(mask_file);
-    if (!file.is_open()) {
-        std::cerr << "Error opening mask file: " << mask_file << std::endl
-                    << "Please check the file path and try again." << std::endl;
-        return;
-    }
-    // if tempty continue
-    if (file.peek() == std::ifstream::traits_type::eof()) {
-        return;
-    }
-
-    std::string line;
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        int chan;
-        while (ss >> chan) {
-            bad_channels.push_back(chan);
-        }
-    }
-    file.close();
-}
-#endif //_RFIMARKER_H
+#endif // _RFIMARKER_H

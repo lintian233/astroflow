@@ -640,8 +640,8 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     if (src_rows == 0 || src_cols == 0)
         throw std::runtime_error("DedispersedDataTyped.shape 非法");
 
-    printf("Input typed data shape: [%zu, %zu], original tsample: %.6f, time_downsample: %d\n", 
-           src_rows, src_cols, header.tsamp, time_downsample);
+    printf("Input typed data shape: [%zu, %zu], original tsample: %.6f \n", 
+           src_rows, src_cols, header.tsamp);
 
     // 计算切片参数
     const float downsampled_tsamp = header.tsamp * time_downsample;
