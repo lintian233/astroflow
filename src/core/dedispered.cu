@@ -543,8 +543,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   T *d_input;
   T *d_binned_input; // 存储分bin后的数据
   T *data = static_cast<T *>(fil.data);
-  RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(data, fil.nchans, fil.ndata);
 
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
@@ -589,6 +587,9 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   dedispersion_output_t<T> *d_output;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
   CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
+
+  RfiMarker<T> rfi_marker(mask_file);
+  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
 
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
@@ -780,8 +781,6 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 
-  RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(data, header.nchans, header.ndata);
 
   T *d_input;
   T *d_binned_input; // 存储分bin后的数据
@@ -825,6 +824,9 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   }
 
   printf("Processing full data: DM steps = %zu, Time samples = %zu\n", dm_steps, down_ndata);
+
+  RfiMarker<T> rfi_marker(mask_file);
+  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
 
   dedispersion_output_t<T> *d_output;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));

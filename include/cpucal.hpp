@@ -6,7 +6,7 @@
 #include "data.h"
 #include "filterbank.h"
 #include "marcoutils.h"
-#include "rfimarker.h"
+#include "rfimarker_cpu.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -228,7 +228,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(fil->nchans - 1), chan_end);
 
-  RfiMarker<T> rfi_marker(maskfile);
+  RfiMarkerCPU<T> rfi_marker(maskfile);
   Spectrum<T> result;
   result.nbits = fil->nbits;
   result.ntimes = t_len;
@@ -325,10 +325,10 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
 
-  RfiMarker <T> rfi_marker(maskfile);
+  RfiMarkerCPU <T> rfi_marker(maskfile);
   rfi_marker.mark_rfi(spec, header.nchans, header.ndata);
-  printf("RFI marked, chan_start: %zu, chan_end: %zu\n", chan_start,
-         chan_end);
+  // printf("RFI marked, chan_start: %zu, chan_end: %zu\n", chan_start,
+  //        chan_end);CPU
   
   Spectrum<T> result;
   result.nbits = header.nbits;

@@ -38,9 +38,10 @@ Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discu
 
 <h2 id="updates">Updates</h2>
 
+
+- **Aug 22, 2025** - feat: Add GPU-accelerated RFI marking and decouple CPU/GPU implementations
 - **Aug 21, 2025** — Public preview of `astroflow` CLI ; CUDA dedispersion and YOLO-based detector integrated.  
 - **Aug 20, 2025** — Docker image (CUDA 12.x, PyTorch) and end-to-end benchmark scripts.  
-- **Aug 20, 2025** — Initial repo import and CI skeleton.
 
 <!-- > [!NOTE]
 > Roadmap and milestones are tracked in [Projects](https://github.com/lintian233/astroflow/projects). -->

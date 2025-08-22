@@ -126,6 +126,7 @@ def muti_pulsar_search_detect(
         config.dm_step,
         config.time_downsample,
         config.t_sample,
+        maskfile=maskfile,
     )
 
     # Setup output directories
