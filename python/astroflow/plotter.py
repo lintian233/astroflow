@@ -963,8 +963,6 @@ def plot_candidate(
     
             if not os.path.exists(maskfile):
                 maskfile = taskconfig.maskfile
-
-            print(f"maskfile:{maskfile}")
             # Generate initial dedispersed spectrum for SNR calculation
             initial_spectrum = dedisperse_spec_with_dm(
                 origin_data, initial_spec_tstart, initial_spec_tend, dm, freq_start, freq_end, maskfile

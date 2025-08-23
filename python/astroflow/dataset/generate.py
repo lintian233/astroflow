@@ -114,7 +114,6 @@ def muti_pulsar_search_detect(
     maskfile = f"{mask_file_dir}/{basename}_your_rfi_mask.bad_chans"
     
     if not os.path.exists(maskfile):
-        print("using maskfile:", taskconfig.maskfile)
         maskfile = taskconfig.maskfile
 
     dmtimes = dedisperse_spec(

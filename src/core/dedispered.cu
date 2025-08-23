@@ -44,8 +44,6 @@
 
 namespace gpucal {
 
-
-// Vectorized memory access helper functions
 template<typename T>
 __device__ __forceinline__ uint4 load_vector4(const T* ptr) {
     if constexpr (sizeof(T) == 1)      return *reinterpret_cast<const uint4*>(ptr);
@@ -81,7 +79,7 @@ __host__ bool should_use_optimized_kernel(const cudaDeviceProp& p,
     return (p.major >= 7) && (nchans*dm_steps*down_ndata > 1000000ULL);
 }
 
-// --------- 你原来的直接法 kernels（未改动） ---------
+
 template <typename T>
 __global__ void
 dedispersion_shared_memory_kernel_optimized(dedispersion_output_t<T> *output, T *input, int *delay_table,
@@ -191,9 +189,9 @@ dedispersion_shared_memory_kernel(dedispersion_output_t<T> *output, T *input, in
     for (size_t off=0; off<niter; ++off) {
       size_t chan = chan_start + c + off;
       if (chan < chan_end && threadIdx.x < blockDim.x) {
-        int original_delay = delay_table[dmidx * Dch + chan - chan_start];
-        size_t delay_in_bins = original_delay / time_downsample;
-        size_t t = Tini + threadIdx.x + delay_in_bins;
+        int odelay = delay_table[dmidx * Dch + chan - chan_start];
+        size_t d = odelay / time_downsample;
+        size_t t = Tini + threadIdx.x + d;
         Bloc[off*blockDim.x + threadIdx.x] = (t < down_ndata) ? input[chan + t*nchans] : 0;
       }
     }
@@ -336,26 +334,62 @@ time_binning_kernel(T *output, T *input, size_t nchans, size_t ndata,
   output[chan + down_idx*nchans] = result;
 }
 
-// ========================= 子带法：新增 kernels =========================
 
-// 阶段 1：对 (subband × nominal DM) 直接法求和，输出中间“小滤波器组”
-// inter 维度：(NDM_nom × NSB × tile1_len)，存放在 [ (j*NSB + sb)*tile1_len + t ]
+__global__ void divide_delay_inplace_kernel(int* delay, size_t n, int div) {
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < n) delay[i] /= div;
+}
+
+// 在 GPU 上并行计算 residual2[dm_steps, NSB]
+__global__ void compute_residual2_kernel(
+    int* __restrict__ residual2,
+    const double* __restrict__ sbfreq,   // [NSB]
+    size_t dm_steps, size_t NSB, size_t NDM0,
+    float dm_low, float dm_step,
+    float ref_freq_value,
+    double tsamp, int time_downsample)
+{
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t total = dm_steps * NSB;
+  if (idx >= total) return;
+
+  size_t m  = idx / NSB;
+  size_t sb = idx % NSB;
+
+  size_t j = m / NDM0;
+  float dmj = dm_low + static_cast<float>(j * NDM0) * dm_step; // nominal DM
+  float dmm = dm_low + static_cast<float>(m) * dm_step;        // final DM
+  float dmdelta = dmm - dmj;
+
+  double f = sbfreq[sb];
+  float ref2 = ref_freq_value * ref_freq_value;
+  float f2   = static_cast<float>(f * f);
+  float delay = 4148.808f * dmdelta * (1.0f/f2 - 1.0f/ref2);
+
+  float bins_f = delay / static_cast<float>(tsamp * time_downsample);
+  int   bins   = static_cast<int>(floorf(bins_f + 0.5f)); 
+  residual2[idx] = bins;
+}
+
+
 template <typename Tin, typename AccT>
 __global__ void subband_stage1_kernel(
     AccT* __restrict__ inter,
     const Tin* __restrict__ input,
-    const int* __restrict__ delay1,        // [NDM_nom, Dch]
+    const int* __restrict__ delay1,       
     size_t NDM_nom, size_t NSB, size_t subband_size,
     size_t nchans, size_t chan_start, size_t chan_end,
-    size_t time_downsample,
+    size_t time_downsample,                // 已不再使用，仅为接口兼容
     size_t down_ndata,
-    size_t t_offset,        // 当前时间块起始
-    size_t tile1_len,       // 阶段 1 tile 长度（含剩余延迟裕量）
-    size_t Dch)             // = chan_end - chan_start + 1
+    size_t t_offset,
+    size_t tile1_len,
+    size_t Dch)
 {
+  (void)time_downsample;
+
   const size_t t  = blockIdx.x*blockDim.x + threadIdx.x;
-  const size_t j  = blockIdx.y;      // nominal DM index
-  const size_t sb = blockIdx.z;      // subband index
+  const size_t j  = blockIdx.y;      
+  const size_t sb = blockIdx.z;    
   if (t >= tile1_len || j >= NDM_nom || sb >= NSB) return;
 
   size_t ch0 = chan_start + sb*subband_size;
@@ -364,7 +398,7 @@ __global__ void subband_stage1_kernel(
   AccT sum = 0;
   const int* dptr = &delay1[j * Dch];
   for (size_t ch = ch0; ch < ch1; ++ch) {
-    int d = dptr[ch - chan_start] / time_downsample;
+    int d = dptr[ch - chan_start];      
     size_t tt = t_offset + t + static_cast<size_t>(d);
     if (tt < down_ndata) sum += input[ch + tt*nchans];
   }
@@ -375,18 +409,18 @@ template <typename AccT>
 __global__ void subband_stage2_kernel(
     AccT* __restrict__ output,
     const AccT* __restrict__ inter,
-    const int*  __restrict__ residual2,     // [NDM, NSB]
+    const int*  __restrict__ residual2,     
     size_t NDM, size_t NDM0, size_t NSB,
     size_t down_ndata,
-    size_t t_offset,        // 当前时间块起始
-    size_t tile_len,        // 本块最终写出的长度
-    size_t tile1_len)       // 阶段 1 中间序列长度（>= tile_len）
+    size_t t_offset,
+    size_t tile_len,
+    size_t tile1_len)
 {
   const size_t t   = blockIdx.x*blockDim.x + threadIdx.x;
-  const size_t dm  = blockIdx.y;  // final DM index
+  const size_t dm  = blockIdx.y;
   if (t >= tile_len || dm >= NDM) return;
 
-  const size_t j = dm / NDM0;     // 对应的 nominal DM
+  const size_t j = dm / NDM0;    
   AccT sum = 0;
 
   const int* rptr = &residual2[dm * NSB];
@@ -400,9 +434,8 @@ __global__ void subband_stage2_kernel(
   output[dm*down_ndata + (t_offset + t)] = sum;
 }
 
-// ========================= 两条主流程 =========================
 
-// [FIRST FUNCTION] Filterbank dedispersion
+
 template <typename T>
 dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
@@ -410,7 +443,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     int time_downsample, float t_sample, int target_id,
                                     std::string mask_file) {
 
-  // -------- 设备/范围检查（保留原逻辑） --------
   int device_count; CHECK_CUDA(cudaGetDeviceCount(&device_count));
   if (device_count == 0) throw std::runtime_error("No CUDA devices found");
 
@@ -450,14 +482,12 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                         : fil.frequency_table[chan_start];
   const size_t down_ndata = (fil.ndata + time_downsample - 1) / time_downsample;
 
-  // -------- 预计算延迟表（全通带 × 全 DM；或子带阶段 1 的名义 DM 表） --------
   double *d_freq_table;
   CHECK_CUDA(cudaMallocManaged(&d_freq_table, nchans * sizeof(double)));
   CHECK_CUDA(cudaMemcpy(d_freq_table, fil.frequency_table,
                         nchans*sizeof(double), cudaMemcpyHostToDevice));
 
 #if AF_USE_SUBBAND
-
   T *h_input = static_cast<T*>(fil.data);
   T *d_input = nullptr;
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
@@ -486,7 +516,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   const size_t NDM0 = AF_SUBBAND_NDM0;
   const size_t NDM_nom = (dm_steps + NDM0 - 1) / NDM0;
 
-  // 阶段 1：名义 DM 的延迟表（对每个信道）
   int *d_delay1 = nullptr;
   CHECK_CUDA(cudaMallocManaged(&d_delay1, NDM_nom * Dch * sizeof(int)));
   {
@@ -503,7 +532,16 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     CHECK_CUDA(cudaDeviceSynchronize());
   }
 
-  // 子带中心频率（Host 计算）
+  {
+    size_t tot = static_cast<size_t>(NDM_nom) * Dch;
+    const int TPB_DIV = 256;
+    size_t nblk_div = (tot + TPB_DIV - 1) / TPB_DIV;
+    divide_delay_inplace_kernel<<<nblk_div, TPB_DIV>>>(d_delay1, tot, time_downsample);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+  }
+
+
   std::vector<double> h_sbfreq(NSB, 0.0);
   for (size_t sb=0; sb<NSB; ++sb) {
     size_t ch0 = chan_start + sb*AF_SUBBAND_SIZE_CH;
@@ -512,28 +550,41 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     h_sbfreq[sb] = fil.frequency_table[mid];
   }
 
-  // 阶段 2：剩余延迟表 residual2[NDM, NSB]（Host 计算，Device 使用）
-  std::vector<int> h_residual2(dm_steps * NSB, 0);
-  int max_residual = 0;
-  for (size_t m=0; m<dm_steps; ++m) {
-    size_t j = m / NDM0;
-    float dmj = dm_low + static_cast<float>(j * NDM0) * dm_step;   // nominal DM
-    float dmm = dm_low + static_cast<float>(m) * dm_step;          // final DM
-    float dmdelta = dmm - dmj;                                     // >= 0
-    for (size_t sb=0; sb<NSB; ++sb) {
-      double f  = h_sbfreq[sb];
-      float ref2 = ref_freq_value*ref_freq_value;
-      float f2   = static_cast<float>(f*f);
-      float delay = 4148.808f * dmdelta * (1.0f/f2 - 1.0f/ref2);
-      int bins = static_cast<int>(llround(delay / (fil.tsamp * time_downsample)));
-      h_residual2[m*NSB + sb] = bins;
-      if (bins > max_residual) max_residual = bins;
-    }
-  }
+
+  double* d_sbfreq = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_sbfreq, NSB * sizeof(double)));
+  CHECK_CUDA(cudaMemcpy(d_sbfreq, h_sbfreq.data(),
+                        NSB * sizeof(double), cudaMemcpyHostToDevice));
+
   int *d_residual2 = nullptr;
-  CHECK_CUDA(cudaMalloc(&d_residual2, h_residual2.size()*sizeof(int)));
-  CHECK_CUDA(cudaMemcpy(d_residual2, h_residual2.data(),
-                        h_residual2.size()*sizeof(int), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMalloc(&d_residual2, dm_steps * NSB * sizeof(int)));
+  {
+    const size_t total = dm_steps * NSB;
+    const int TPB = 256;
+    const size_t nblk = (total + TPB - 1) / TPB;
+    compute_residual2_kernel<<<nblk, TPB>>>(
+        d_residual2, d_sbfreq,
+        dm_steps, NSB, NDM0,
+        dm_low, dm_step, ref_freq_value,
+        fil.tsamp, time_downsample);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+  }
+
+  int max_residual = 0;
+  {
+    void* d_tmp = nullptr; size_t tmp_bytes = 0;
+    int* d_max = nullptr;
+    const size_t N = dm_steps * NSB;
+    cub::DeviceReduce::Max(d_tmp, tmp_bytes, d_residual2, d_max, N);
+    CHECK_CUDA(cudaMalloc(&d_tmp, tmp_bytes));
+    CHECK_CUDA(cudaMalloc(&d_max, sizeof(int)));
+    cub::DeviceReduce::Max(d_tmp, tmp_bytes, d_residual2, d_max, N);
+    CHECK_CUDA(cudaMemcpy(&max_residual, d_max, sizeof(int), cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaFree(d_tmp));
+    CHECK_CUDA(cudaFree(d_max));
+  }
+  CHECK_CUDA(cudaFree(d_sbfreq));
 
   dedispersion_output_t<T> *d_output = nullptr;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
@@ -558,7 +609,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         t0, tile1_len, Dch);
       CHECK_CUDA(cudaGetLastError());
     }
-
     {
       dim3 grid2((tile_len + TPB - 1)/TPB, dm_steps);
       subband_stage2_kernel<dedispersion_output_t<T>><<<grid2, TPB>>>(
@@ -580,7 +630,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                         dm_steps*down_ndata*sizeof(dedispersion_output_t<T>),
                         cudaMemcpyDeviceToHost));
 
-  // 资源回收
+
   if (time_downsample > 1) CHECK_CUDA(cudaFree(d_binned_input));
   else                     CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
@@ -588,7 +638,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaFree(d_residual2));
   CHECK_CUDA(cudaFree(d_freq_table));
 
-  // 打包输出（保持你原有逻辑）
   DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
   typed_result.dm_times.emplace_back(std::move(dm_array_typed));
   typed_result.dm_low = dm_low;
@@ -606,7 +655,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
 
 #else
-  // =========================== 原直接法路径（保持你原逻辑） ===========================
+
   int *d_delay_table;
   CHECK_CUDA(cudaMallocManaged(
       &d_delay_table, dm_steps * (chan_end - chan_start + 1) * sizeof(int)));
@@ -624,7 +673,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   T *d_input;
   T *d_binned_input;
   T *data = static_cast<T *>(fil.data);
-
 
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
@@ -718,7 +766,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 #endif
 }
 
-// [SECOND FUNCTION] spectrum path（与上同理，子带路径复用相同逻辑）
 template <typename T>
 dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                                 float dm_high, float freq_start, float freq_end,
@@ -809,6 +856,15 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaDeviceSynchronize());
   }
 
+  {
+    size_t tot = static_cast<size_t>(NDM_nom) * Dch;
+    const int TPB_DIV = 256;
+    size_t nblk_div = (tot + TPB_DIV - 1) / TPB_DIV;
+    divide_delay_inplace_kernel<<<nblk_div, TPB_DIV>>>(d_delay1, tot, time_downsample);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+  }
+
   std::vector<double> h_sbfreq(NSB, 0.0);
   for (size_t sb=0; sb<NSB; ++sb) {
     size_t ch0 = chan_start + sb*AF_SUBBAND_SIZE_CH;
@@ -817,27 +873,41 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     h_sbfreq[sb] = h_freq[mid];
   }
 
-  std::vector<int> h_residual2(dm_steps*NSB, 0);
-  int max_residual = 0;
-  for (size_t m=0; m<dm_steps; ++m) {
-    size_t j = m / NDM0;
-    float dmj = dm_low + static_cast<float>(j * NDM0) * dm_step;
-    float dmm = dm_low + static_cast<float>(m) * dm_step;
-    float dmdelta = dmm - dmj;
-    for (size_t sb=0; sb<NSB; ++sb) {
-      double f = h_sbfreq[sb];
-      float ref2 = ref_freq_value*ref_freq_value;
-      float f2   = static_cast<float>(f*f);
-      float delay = 4148.808f * dmdelta * (1.0f/f2 - 1.0f/ref2);
-      int bins = static_cast<int>(llround(delay / (header.tsamp * time_downsample)));
-      h_residual2[m*NSB + sb] = bins;
-      if (bins > max_residual) max_residual = bins;
-    }
-  }
+
+  double* d_sbfreq = nullptr;
+  CHECK_CUDA(cudaMalloc(&d_sbfreq, NSB * sizeof(double)));
+  CHECK_CUDA(cudaMemcpy(d_sbfreq, h_sbfreq.data(),
+                        NSB * sizeof(double), cudaMemcpyHostToDevice));
+
   int *d_residual2=nullptr;
-  CHECK_CUDA(cudaMalloc(&d_residual2, h_residual2.size()*sizeof(int)));
-  CHECK_CUDA(cudaMemcpy(d_residual2, h_residual2.data(),
-                        h_residual2.size()*sizeof(int), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMalloc(&d_residual2, dm_steps * NSB * sizeof(int)));
+  {
+    const size_t total = dm_steps * NSB;
+    const int TPB = 256;
+    const size_t nblk = (total + TPB - 1) / TPB;
+    compute_residual2_kernel<<<nblk, TPB>>>(
+        d_residual2, d_sbfreq,
+        dm_steps, NSB, NDM0,
+        dm_low, dm_step, ref_freq_value,
+        header.tsamp, time_downsample);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+  }
+
+  int max_residual = 0;
+  {
+    void* d_tmp=nullptr; size_t tmp_bytes=0;
+    int* d_max=nullptr;
+    const size_t N = dm_steps * NSB;
+    cub::DeviceReduce::Max(d_tmp, tmp_bytes, d_residual2, d_max, N);
+    CHECK_CUDA(cudaMalloc(&d_tmp, tmp_bytes));
+    CHECK_CUDA(cudaMalloc(&d_max, sizeof(int)));
+    cub::DeviceReduce::Max(d_tmp, tmp_bytes, d_residual2, d_max, N);
+    CHECK_CUDA(cudaMemcpy(&max_residual, d_max, sizeof(int), cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaFree(d_tmp));
+    CHECK_CUDA(cudaFree(d_max));
+  }
+  CHECK_CUDA(cudaFree(d_sbfreq));
 
   dedispersion_output_t<T> *d_output=nullptr;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps*down_ndata*sizeof(dedispersion_output_t<T>)));
@@ -901,7 +971,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, updated, 1, t_sample);
 
 #else
-  // =========================== 原直接法路径（保持你原逻辑） ===========================
+
   int *d_delay_table;
   CHECK_CUDA(cudaMallocManaged(
       &d_delay_table, dm_steps * (chan_end - chan_start + 1) * sizeof(int)));
@@ -931,7 +1001,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaFree(d_input));
   } else d_binned_input = d_input;
-  
+
   RfiMarker<T> rfi_marker(mask_file);
   rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
 
@@ -1006,7 +1076,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
 #endif
 }
 
-// ----------------- 显式实例化 -----------------
+
 template dedisperseddata_uint8
 dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
                              float freq_start, float freq_end, float dm_step,

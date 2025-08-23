@@ -58,6 +58,11 @@ class Filterbank(SpectrumBase):
         if self._data is None:
             self._load_data()
         return self._data
+    
+    def get_original_data(self) -> np.ndarray:
+        if self._data is None:
+            self._load_data()
+        return self._data.reshape(-1)
 
     def header(self) -> Header:
         """
@@ -137,6 +142,11 @@ class FilterbankPy(SpectrumBase):
         if self._data is None:
             self._load_data()
         return self._data
+    
+    def get_original_data(self) -> np.ndarray:
+        if self._data is None:
+            self._load_data()
+        return self._data.reshape(-1)
 
     def header(self) -> Header:
         """
