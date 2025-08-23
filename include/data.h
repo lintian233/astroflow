@@ -344,7 +344,7 @@ preprocess_dedisperseddata(const dedisperseddata& in,
         cv::Mat resized;
         int interp = (src_rows > target_size && src_cols > target_size)
                    ? cv::INTER_AREA
-                   : cv::INTER_LINEAR;
+                   : cv::INTER_LANCZOS4;
         cv::resize(src32, resized, {target_size, target_size}, 0, 0, interp);
 
         /* 3) 归一化 0-255、灰度→RGB、Viridis */
@@ -419,7 +419,7 @@ preprocess_typed_dedisperseddata(const DedispersedDataTyped<dedispersion_output_
         cv::Mat resized;
         int interp = (src_rows > target_size && src_cols > target_size)
                    ? cv::INTER_AREA
-                   : cv::INTER_LINEAR;
+                   : cv::INTER_LANCZOS4;
         cv::resize(src32, resized, {target_size, target_size}, 0, 0, interp);
 
         /* 3) 归一化 0-255、灰度→RGB、Viridis */
@@ -594,7 +594,7 @@ preprocess_dedisperseddata_with_slicing(const dedisperseddata& in, Header header
         cv::Mat resized;
         int interp = (src_rows > target_size && actual_slice_cols > target_size)
                    ? cv::INTER_AREA
-                   : cv::INTER_LINEAR;
+                   : cv::INTER_LANCZOS4;
         cv::resize(slice32, resized, {target_size, target_size}, 0, 0, interp);
 
         /* 3) 归一化 0-255、灰度→RGB、Viridis */
@@ -696,7 +696,7 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
         cv::Mat resized;
         int interp = (static_cast<int>(src_rows) > target_size && static_cast<int>(actual_slice_cols) > target_size)
                    ? cv::INTER_AREA
-                   : cv::INTER_LINEAR;
+                   : cv::INTER_LANCZOS4;
         cv::resize(slice32, resized, {target_size, target_size}, 0, 0, interp);
 
         /* 3) 归一化 0-255、灰度→RGB、Viridis */

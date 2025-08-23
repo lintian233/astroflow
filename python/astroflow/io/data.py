@@ -74,6 +74,13 @@ class SpectrumBase(ABC):
         pass
 
     @abstractmethod
+    def get_original_data(self) -> np.ndarray:
+        """
+        Abstract method to get the original data array.
+        """
+        pass
+
+    @abstractmethod
     def header(self) -> Header:
         """
         Abstract method to get the header of the spectrum data.
@@ -98,9 +105,7 @@ class SpectrumBase(ABC):
             return self._core_data, self._core_header
 
         header = self.header()
-        spectrum = self.get_spectrum()
-
-        self._core_data = spectrum.flatten()
+        self._core_data = self.get_original_data()
         self._core_header = header.core_header
 
         return self._core_data, self._core_header

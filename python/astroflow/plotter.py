@@ -13,6 +13,7 @@ from scipy.ndimage import gaussian_filter
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
+from scipy.ndimage import gaussian_filter
  
 
 from .config.taskconfig import TaskConfig
@@ -135,13 +136,15 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_id
     
     # Step 1: Frequency-integrated time series with outlier-resistant summation
     time_series = np.sum(spec, axis=1)  # Sum over frequency axis
+    # Apply Gaussian filter for smoothing
+    time_series = gaussian_filter(time_series, sigma=1)
     n_time = len(time_series)
     x = np.arange(n_time)
     
     # Step 2: Determine fitting region centered on TOA
     if fitting_window_samples is None:
-        # Auto-determine fitting window: 40% of total length or minimum 50 samples
-        fitting_window_samples = max(50, int(0.4 * n_time))
+        # Auto-determine fitting window: 30% of total length or minimum 50 samples
+        fitting_window_samples = max(50, int(0.3 * n_time))
     
     if toa_sample_idx is not None:
         # Center fitting window around provided TOA
@@ -960,8 +963,6 @@ def plot_candidate(
     
             if not os.path.exists(maskfile):
                 maskfile = taskconfig.maskfile
-
-            print(f"maskfile:{maskfile}")
             # Generate initial dedispersed spectrum for SNR calculation
             initial_spectrum = dedisperse_spec_with_dm(
                 origin_data, initial_spec_tstart, initial_spec_tend, dm, freq_start, freq_end, maskfile
