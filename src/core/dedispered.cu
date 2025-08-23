@@ -675,8 +675,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   T *data = static_cast<T *>(fil.data);
 
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T),
-                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T), cudaMemcpyHostToDevice));
 
   if (time_downsample > 1) {
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata * nchans * sizeof(T)));
@@ -1004,9 +1003,6 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaFree(d_input));
   } else d_binned_input = d_input;
-
-  RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
 
   RfiMarker<T> rfi_marker(mask_file);
   rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
