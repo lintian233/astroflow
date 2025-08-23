@@ -699,6 +699,9 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
   CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
 
+  RfiMarker<T> rfi_marker(mask_file);
+  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
   dim3 grids((down_ndata + threads.x - 1) / threads.x, dm_steps);
@@ -986,10 +989,10 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 
+
   T *d_input; T *d_binned_input;
   CHECK_CUDA(cudaMalloc(&d_input, header.ndata*nchans*sizeof(T)));
-  CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata*nchans*sizeof(T),
-                        cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata*nchans*sizeof(T), cudaMemcpyHostToDevice));
 
   if (time_downsample > 1) {
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata*nchans*sizeof(T)));
@@ -1001,6 +1004,9 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaFree(d_input));
   } else d_binned_input = d_input;
+
+  RfiMarker<T> rfi_marker(mask_file);
+  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
 
   RfiMarker<T> rfi_marker(mask_file);
   rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
