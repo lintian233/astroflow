@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <variant>
 #include <omp.h>
+#include <chrono>
 using namespace std;
 
 #define _CHAR_SWAP_SIZE 256
@@ -451,17 +452,25 @@ bool Filterbank::read_header() {
 }
 
 template <typename T> bool Filterbank::read_data_impl() {
-  long int nchr = nsamples * nifs * nchans;
+  auto start = std::chrono::high_resolution_clock::now();
+  const size_t nchr = static_cast<size_t>(nsamples) * (size_t)nifs * (size_t)nchans;
   data = new T[nchr];
-  long int icnt = fread(data, sizeof(T), nchr, fptr);
-  if (icnt != nchr) {
-    cerr << "Data ends unexpected read to EOF" << endl;
+  const size_t readcnt = fread(data, sizeof(T), nchr, fptr);
+  if (readcnt != nchr) {
+    std::cerr << "Data ends unexpected read to EOF\n";
     return false;
   }
-  nsamples = icnt / nifs / nchans;
+  nsamples = (long int)(readcnt / (size_t)nifs / (size_t)nchans);
   ndata = nsamples;
+
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff = end - start;
+  size_t total_bytes = nchr * sizeof(T);
+  printf("[TIMER] IO : %.3f seconds, %.3f MB/s\n", diff.count(),
+         (double)total_bytes / 1024.0 / 1024.0 / diff.count());
   return true;
 }
+
 
 bool Filterbank::read_data() {
   switch (nbits) {
