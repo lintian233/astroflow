@@ -442,6 +442,12 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample, int target_id,
                                     std::string mask_file) {
+  // Timing variables
+  cudaEvent_t start_event, stop_event, stage1_start, stage1_stop, stage2_start, stage2_stop;
+  float ms = 0.0f;
+  float stage1_ms = 0.0f, stage2_ms = 0.0f, total_ms = 0.0f;
+  std::chrono::high_resolution_clock::time_point cpu_start, cpu_end, total_start, total_end;
+  float cpu_ms = 0.0f;
 
   int device_count; CHECK_CUDA(cudaGetDeviceCount(&device_count));
   if (device_count == 0) throw std::runtime_error("No CUDA devices found");
@@ -451,6 +457,14 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
   printf("Using device %d: %s\n", device_id, device_prop.name);
   CHECK_CUDA(cudaSetDevice(device_id));
+
+  // Create CUDA events for timing
+  CHECK_CUDA(cudaEventCreate(&start_event));
+  CHECK_CUDA(cudaEventCreate(&stop_event));
+  CHECK_CUDA(cudaEventCreate(&stage1_start));
+  CHECK_CUDA(cudaEventCreate(&stage1_stop));
+  CHECK_CUDA(cudaEventCreate(&stage2_start));
+  CHECK_CUDA(cudaEventCreate(&stage2_stop));
 
   float fil_freq_min = fil.frequency_table[0];
   float fil_freq_max = fil.frequency_table[fil.nchans - 1];
@@ -490,9 +504,17 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 #if AF_USE_SUBBAND
   T *h_input = static_cast<T*>(fil.data);
   T *d_input = nullptr;
+  // Total timing start
+  total_start = std::chrono::high_resolution_clock::now();
+  // Host to Device copy timing
+  CHECK_CUDA(cudaEventRecord(start_event));
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMemcpy(d_input, h_input,
                         fil.ndata*nchans*sizeof(T), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaEventRecord(stop_event));
+  CHECK_CUDA(cudaEventSynchronize(stop_event));
+  CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
+  printf("[TIMER] Host to Device copy: %.3f ms\n", ms);
 
   // 时间降采样
   T *d_binned_input = d_input;
@@ -501,10 +523,15 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     const size_t total = nchans * down_ndata;
     const int TPB = 256;
     const size_t nblk = (total + TPB - 1)/TPB;
+    CHECK_CUDA(cudaEventRecord(start_event));
     time_binning_kernel<T><<<nblk, TPB>>>(d_binned_input, d_input,
         nchans, fil.ndata, time_downsample, down_ndata);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
+    CHECK_CUDA(cudaEventRecord(stop_event));
+    CHECK_CUDA(cudaEventSynchronize(stop_event));
+    CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
+    printf("[TIMER] Time binning kernel: %.3f ms\n", ms);
     CHECK_CUDA(cudaFree(d_input));
   }
 
@@ -599,7 +626,9 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     dedispersion_output_t<T> *d_inter = nullptr;
     CHECK_CUDA(cudaMalloc(&d_inter, NDM_nom*NSB*tile1_len*sizeof(dedispersion_output_t<T>)));
 
-    // 阶段 1
+    // Dedispersion stage 1 timing
+
+    CHECK_CUDA(cudaEventRecord(stage1_start));
     {
       dim3 grid1((tile1_len + TPB - 1)/TPB, NDM_nom, NSB);
       subband_stage1_kernel<T, dedispersion_output_t<T>><<<grid1, TPB>>>(
@@ -609,6 +638,13 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         t0, tile1_len, Dch);
       CHECK_CUDA(cudaGetLastError());
     }
+    CHECK_CUDA(cudaEventRecord(stage1_stop));
+    CHECK_CUDA(cudaEventSynchronize(stage1_stop));
+    CHECK_CUDA(cudaEventElapsedTime(&ms, stage1_start, stage1_stop));
+    stage1_ms += ms;
+
+    // Dedispersion stage 2 timing
+    CHECK_CUDA(cudaEventRecord(stage2_start));
     {
       dim3 grid2((tile_len + TPB - 1)/TPB, dm_steps);
       subband_stage2_kernel<dedispersion_output_t<T>><<<grid2, TPB>>>(
@@ -617,26 +653,60 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         down_ndata, t0, tile_len, tile1_len);
       CHECK_CUDA(cudaGetLastError());
     }
+    CHECK_CUDA(cudaEventRecord(stage2_stop));
+    CHECK_CUDA(cudaEventSynchronize(stage2_stop));
+    CHECK_CUDA(cudaEventElapsedTime(&ms, stage2_start, stage2_stop));
+    stage2_ms += ms;
 
     CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaFree(d_inter));
   }
 
+  auto t_total1 = std::chrono::high_resolution_clock::now();
   auto dm_array_typed = std::shared_ptr<dedispersion_output_t<T>[]>( new (std::align_val_t{4096})
       dedispersion_output_t<T>[dm_steps * down_ndata](),
       [](dedispersion_output_t<T>* p){ operator delete[](p, std::align_val_t{4096}); });
+  auto t_total2 = std::chrono::high_resolution_clock::now();
+  cpu_ms = std::chrono::duration<float, std::milli>(t_total2 - t_total1).count();
+  printf("[TIMER] allocate pinned host memory time: %.3f ms\n", cpu_ms);
 
+
+  // Device to Host copy timing
+  CHECK_CUDA(cudaEventRecord(start_event));
   CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
                         dm_steps*down_ndata*sizeof(dedispersion_output_t<T>),
                         cudaMemcpyDeviceToHost));
+  CHECK_CUDA(cudaEventRecord(stop_event));
+  CHECK_CUDA(cudaEventSynchronize(stop_event));
+  CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
+  printf("[TIMER] Device to Host copy: %.3f ms\n", ms);
 
+  // Total timing end
+  total_end = std::chrono::high_resolution_clock::now();
+  total_ms = std::chrono::duration<float, std::milli>(total_end - total_start).count();
 
+  printf("[TIMER] Dedispersion Stage 1 total: %.3f ms\n", stage1_ms);
+  printf("[TIMER] Dedispersion Stage 2 total: %.3f ms\n", stage2_ms);
+  printf("[TIMER] Total elapsed (including all stages and copies): %.3f ms\n", total_ms);
+
+  // Destroy CUDA events
+  CHECK_CUDA(cudaEventDestroy(start_event));
+  CHECK_CUDA(cudaEventDestroy(stop_event));
+  CHECK_CUDA(cudaEventDestroy(stage1_start));
+  CHECK_CUDA(cudaEventDestroy(stage1_stop));
+  CHECK_CUDA(cudaEventDestroy(stage2_start));
+  CHECK_CUDA(cudaEventDestroy(stage2_stop));
+
+  auto t0 = std::chrono::high_resolution_clock::now();
   if (time_downsample > 1) CHECK_CUDA(cudaFree(d_binned_input));
   else                     CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay1));
   CHECK_CUDA(cudaFree(d_residual2));
   CHECK_CUDA(cudaFree(d_freq_table));
+  auto t1 = std::chrono::high_resolution_clock::now();
+  cpu_ms = std::chrono::duration<float, std::milli>(t1 - t0).count();
+  printf("[TIMER] free memory time: %.3f ms\n", cpu_ms);
 
   DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
   typed_result.dm_times.emplace_back(std::move(dm_array_typed));
@@ -652,8 +722,8 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   Header temp_header;
   temp_header.tsamp = typed_result.tsample;
   temp_header.filename = fil.filename;
-  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
 
+  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
 #else
 
   int *d_delay_table;

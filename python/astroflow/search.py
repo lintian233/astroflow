@@ -356,6 +356,8 @@ def single_pulsar_search(
     """
     origin_data = _load_spectrum_data(file)
 
+    maskfile = TaskConfig().maskfile
+
     dmtimes = dedisperse_spec(
         origin_data,
         config.dm_low,
@@ -365,6 +367,7 @@ def single_pulsar_search(
         config.dm_step,
         config.time_downsample,
         config.t_sample,
+        maskfile=maskfile
     )
 
     detect_dir = os.path.join(output_dir, "detect")
@@ -453,6 +456,7 @@ def muti_pulsar_search(
         config.dm_step,
         config.time_downsample,
         config.t_sample,
+        maskfile=mask_file
     )
 
     detect_dir = os.path.join(output_dir, "detect")

@@ -143,8 +143,8 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_id
     
     # Step 2: Determine fitting region centered on TOA
     if fitting_window_samples is None:
-        # Auto-determine fitting window: 30% of total length or minimum 50 samples
-        fitting_window_samples = max(50, int(0.3 * n_time))
+        # Auto-determine fitting window: 20% of total length or minimum 50 samples
+        fitting_window_samples = max(50, int(0.2 * n_time))
     
     if toa_sample_idx is not None:
         # Center fitting window around provided TOA
@@ -989,7 +989,7 @@ def plot_candidate(
 
             spec_data = spectrum.data
 
-            snr, pulse_width, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
+            snr, _, peak_idx, (noise_mean, noise_std, fit_quality) = calculate_frb_snr(
                 spec_data, noise_range=None, threshold_sigma=5, toa_sample_idx=int((peak_time - spec_tstart) / header.tsamp)
             )
 
