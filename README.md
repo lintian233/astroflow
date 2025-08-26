@@ -66,9 +66,8 @@ Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discu
    ```
 
 3. Quick start:
-   ```bash
-   astroflow demo.yaml
-   ```
+   see [quick start](./docs/quick_start.md)
+   
 
   
 </details>

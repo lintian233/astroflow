@@ -59,9 +59,7 @@
    ```
 
 3. 快速开始：
-   ```bash
-   astroflow demo.yaml
-   ```
+   请查看[快速开始](./quick_start_zh-CN.md)
 
 </details>
 
