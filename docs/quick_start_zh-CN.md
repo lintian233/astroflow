@@ -126,7 +126,7 @@ ls frb180417/detect/*.png
 display frb180417/detect/*.png
 ```
 
-你将看到类似的 PNG 图片：
+你将看到类似的候选体图片：
 
 <div align="center">
   <img src="./frb180417.png" width="100%" />
