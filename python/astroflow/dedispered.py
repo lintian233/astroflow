@@ -7,7 +7,7 @@ from typing import List
 from . import _astroflow_core as _astro_core #type: ignore
 
 
-from .utils import timeit, Config
+from .utils import dedtimeit, Config
 from .dmtime import DmTime
 from .io.filterbank import Filterbank
 from .spectrum import Spectrum
@@ -15,7 +15,7 @@ from .io.data import Header, SpectrumBase, SpectrumType
 from .config import TaskConfig
 
 
-@timeit
+@dedtimeit
 def dedisperse_spec(
     spectrum: SpectrumBase,
     dm_low: float,

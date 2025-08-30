@@ -19,6 +19,7 @@
 
 namespace py = pybind11;
 
+#define AF_DEBUG
 
 struct Header {
   float mjd;
@@ -537,9 +538,6 @@ preprocess_dedisperseddata_with_slicing(const dedisperseddata& in, Header header
     printf("Input data shape: [%d, %d], original tsample: %.6f, time_downsample: %d\n", 
            src_rows, src_cols, header.tsamp, time_downsample);
 
-    // 计算切片参数
-    // 原始tsamp是单个时间样本的时间间隔
-    // 下采样后，每个样本对应 time_downsample * header.tsamp 的时间
     const float downsampled_tsamp = header.tsamp * time_downsample;
     const float total_time = src_cols * downsampled_tsamp;  // 总的观测时间
     const int samples_per_slice = static_cast<int>(slice_duration / downsampled_tsamp);
@@ -640,8 +638,6 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     if (src_rows == 0 || src_cols == 0)
         throw std::runtime_error("DedispersedDataTyped.shape 非法");
 
-    printf("Input typed data shape: [%zu, %zu], original tsample: %.6f \n", 
-           src_rows, src_cols, header.tsamp);
 
     // 计算切片参数
     const float downsampled_tsamp = header.tsamp * time_downsample;
@@ -649,8 +645,12 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     const size_t samples_per_slice = static_cast<size_t>(slice_duration / downsampled_tsamp);
     const size_t num_slices = (src_cols + samples_per_slice - 1) / samples_per_slice;
     
-    printf("Typed data - Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %zu, Number of slices: %zu\n", 
-           downsampled_tsamp, total_time, samples_per_slice, num_slices);
+    // printf("Typed data - Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %zu, Number of slices: %zu\n", 
+    //        downsampled_tsamp, total_time, samples_per_slice, num_slices);
+    #ifdef AF_DEBUG
+    printf("[INFO]: INPUT SHAPE = [%zu, %zu], T: %.3f s, SDM1: %zu, ST2: %zu, N: %zu\n",
+           src_rows, src_cols, total_time, src_rows, samples_per_slice, num_slices);
+    #endif
 
     /* ---------- 元数据填充 ---------- */
     dedisperseddata_uint8 out;
@@ -716,7 +716,6 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
         out.dm_times[slice_idx] = std::move(buf);
     }
 
-    printf("Typed slicing preprocessing completed: %zu slices generated\n", num_slices);
     return out;
 }
 

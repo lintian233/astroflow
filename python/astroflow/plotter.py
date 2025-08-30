@@ -93,7 +93,7 @@ def pack_candidate(dmt, candinfo, save_path, file_path):
     with open(os.path.join(LABEL_PATH, label_name), "w") as f:
         if len(candinfo) == 7:
             f.write(f"0 {x:.2f} {y:.2f} {w:.2f} {h:.2f} \n")
-    print(f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
+    # print(f"dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
 
 
 def pack_background(dmt, candinfo, save_path, file_path):
@@ -113,7 +113,7 @@ def pack_background(dmt, candinfo, save_path, file_path):
 
     open(os.path.join(LABEL_PATH, label_name), "w").close()  # Create an empty label file
 
-    print(f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
+    # print(f"bg_dm_{dm}_toa_{ref_toa:.3f}_{dmt.__str__()}.png saved to {IMAGE_PATH}")
 
 
 def gaussian(x, amp, mu, sigma, baseline):
@@ -652,30 +652,30 @@ def _setup_detrend_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     # For detrending, we need data in (frequency, time) format to detrend each frequency channel along time
     if data_is_freq_time:
-        print(f"Data is in (frequency, time) format - perfect for detrending")
+        # print(f"Data is in (frequency, time) format - perfect for detrending")
         detrend_data = spec_data  # Keep original format for detrending
         display_data = spec_data.T  # Transpose for display (time, frequency)
-        print(f"Detrend data shape: {detrend_data.shape} (freq, time)")
-        print(f"Display data shape: {display_data.shape} (time, freq)")
+        # print(f"Detrend data shape: {detrend_data.shape} (freq, time)")
+        # print(f"Display data shape: {display_data.shape} (time, freq)")
     else:
-        print(f"Data is in (time, frequency) format - transposing for detrending")
+        # print(f"Data is in (time, frequency) format - transposing for detrending")
         detrend_data = spec_data.T  # Transpose to (frequency, time) for detrending
         display_data = spec_data  # Keep original for display
-        print(f"Detrend data shape: {detrend_data.shape} (freq, time)")
-        print(f"Display data shape: {display_data.shape} (time, freq)")
+        # print(f"Detrend data shape: {detrend_data.shape} (freq, time)")
+        # print(f"Display data shape: {display_data.shape} (time, freq)")
 
     # Apply detrending to the spectrum data in (frequency, time) format
     # This detrends each frequency channel along the time axis (axis=1)
-    print(f"Applying {detrend_type} detrending along time axis (axis=1) for each frequency channel")
+    # print(f"Applying {detrend_type} detrending along time axis (axis=1) for each frequency channel")
     
     try:
         detrended_freq_time = _detrend(detrend_data, axis=1, type=detrend_type)  # Always detrend along time axis
-        print(f"Detrending successful. Original range: [{np.min(detrend_data):.3f}, {np.max(detrend_data):.3f}], "
-              f"Detrended range: [{np.min(detrended_freq_time):.3f}, {np.max(detrended_freq_time):.3f}]")
+        # print(f"Detrending successful. Original range: [{np.min(detrend_data):.3f}, {np.max(detrend_data):.3f}], "
+        #       f"Detrended range: [{np.min(detrended_freq_time):.3f}, {np.max(detrended_freq_time):.3f}]")
         
         # Convert detrended data back to (time, frequency) format for plotting
         detrended_data = detrended_freq_time.T
-        print(f"Detrended data for plotting shape: {detrended_data.shape} (time, freq)")
+        # print(f"Detrended data for plotting shape: {detrended_data.shape} (time, freq)")
     except Exception as e:
         print(f"Detrending failed: {e}, using original data")
         detrended_data = display_data
@@ -690,7 +690,7 @@ def _setup_detrend_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
 
     # Time series (sum over frequency axis) - use detrended data
     time_series = np.sum(detrended_data, axis=1)
-    print(f"Time series length: {len(time_series)}, spec_time_axis length: {len(spec_time_axis)}")
+    # print(f"Time series length: {len(time_series)}, spec_time_axis length: {len(spec_time_axis)}")
     ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
     
     # Add TOA line if provided
@@ -718,7 +718,7 @@ def _setup_detrend_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     # Frequency marginal (sum over time axis) - use detrended data
     freq_series = np.sum(detrended_data, axis=0)
-    print(f"Freq series length: {len(freq_series)}, spec_freq_axis length: {len(spec_freq_axis)}")
+    # print(f"Freq series length: {len(freq_series)}, spec_freq_axis length: {len(spec_freq_axis)}")
     ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
@@ -770,8 +770,8 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     n_time_bins = max(1, n_time_samples // time_bin_size)
     
-    print(f"Subband analysis: {n_freq_subbands} freq subbands × {n_time_bins} time bins")
-    print(f"Freq subband size: {freq_subband_size} channels, Time bin size: {time_bin_size} samples ({time_bin_duration*1000:.3f} ms)")
+    # print(f"Subband analysis: {n_freq_subbands} freq subbands × {n_time_bins} time bins")
+    # print(f"Freq subband size: {freq_subband_size} channels, Time bin size: {time_bin_size} samples ({time_bin_duration*1000:.3f} ms)")
     
     # Step 3: Create subband matrix
     subband_matrix = np.zeros((n_time_bins, n_freq_subbands))
@@ -801,7 +801,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
             freq_column_norm = (freq_column - col_min) / denom
         subband_matrix[:, f_bin] = freq_column_norm
     
-    print(f"Applied frequency-direction normalization to subband matrix")
+
 
     # Step 4: Create axes for subband visualization
     subband_time_axis = np.linspace(spec_tstart, spec_tend, n_time_bins + 1)
@@ -996,7 +996,6 @@ def plot_candidate(
             # Check SNR against threshold
             snrhold = taskconfig.snrhold
             if snr < snrhold:
-                print(f"Warning: SNR {snr:.2f} is below threshold {snrhold}. Skipping spectrum plot.")
                 plt.close('all')
                 if origin_data is not None:
                     if hasattr(origin_data, "close"):
@@ -1055,7 +1054,7 @@ def plot_candidate(
         output_filename = (
             f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
         )
-        print(f"Saving {os.path.basename(output_filename)}")
+        print(f"Saving {output_filename}")
         
         plt.savefig(
             output_filename,

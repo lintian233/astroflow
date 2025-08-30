@@ -6,11 +6,12 @@ import multiprocessing
 
 from .io.data import Header, SpectrumBase
 
-def timeit(func):
+def dedtimeit(func):
     def wrapper(*args, **kwargs):
         start = time.time()
         result = func(*args, **kwargs)
-        print(f"{func.__name__} took {time.time() - start} seconds")
+        # print(f"{func.__name__} took {time.time() - start} seconds")
+        print(f"[INFO] C++ backend took {(time.time() - start):2f} seconds")
         return result
 
     return wrapper

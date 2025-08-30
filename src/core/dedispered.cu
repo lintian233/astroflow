@@ -8,7 +8,6 @@
 #include <stdexcept>
 #include <vector_types.h>
 #include "rfimarker.h"
-#include <chrono>
 #include <cstring>
 #include <cstdio>
 #include <cmath>
@@ -17,6 +16,11 @@
 #include <algorithm>
 #include <iostream>
 #include <vector>
+
+// #define AF_DEBUG
+#ifdef AF_DEBUG
+  #include <chrono>
+#endif
 
 #ifndef AF_USE_SUBBAND
 #define AF_USE_SUBBAND 1
@@ -33,6 +37,41 @@
 #ifndef AF_SUBBAND_TBLOCK
 #define AF_SUBBAND_TBLOCK 81920
 #endif
+
+// ------------------------ Logging & Timing helpers ------------------------
+#ifdef AF_DEBUG
+  #define AF_LOGI(...) do { std::printf("[INFO] "); std::printf(__VA_ARGS__); std::printf("\n"); } while(0)
+  #define AF_LOGT(label, msval) do { std::printf("[TIMER] %s : %.3f ms\n", (label), (msval)); } while(0)
+  struct AFDebugTimes {
+    float total = 0.0f;
+    float h2d = 0.0f;
+    float time_binning = 0.0f;
+    float iqrm_gen = 0.0f;
+    float iqrm_mask = 0.0f;
+    float zero_dm = 0.0f;
+    float mark_file_mask = 0.0f;
+    float stage1 = 0.0f;
+    float stage2 = 0.0f;
+    float host_alloc = 0.0f;
+    float d2h = 0.0f;
+    float free_ms = 0.0f;
+  };
+  #define AF_EVENT_PAIR(name) cudaEvent_t name##_start=nullptr, name##_stop=nullptr
+  #define AF_EVENT_CREATE(name) do{ cudaEventCreate(&name##_start); cudaEventCreate(&name##_stop);}while(0)
+  #define AF_EVENT_DESTROY(name) do{ cudaEventDestroy(name##_start); cudaEventDestroy(name##_stop);}while(0)
+  #define AF_EVENT_START(name) do{ cudaEventRecord(name##_start); }while(0)
+  #define AF_EVENT_STOP_ACCUM(name, accum) do{ cudaEventRecord(name##_stop); cudaEventSynchronize(name##_stop); float _ms=0.0f; cudaEventElapsedTime(&_ms, name##_start, name##_stop); (accum) += _ms; }while(0)
+#else
+  #define AF_LOGI(...) do{}while(0)
+  #define AF_LOGT(label, msval) do{}while(0)
+  struct AFDebugTimes {};
+  #define AF_EVENT_PAIR(name)
+  #define AF_EVENT_CREATE(name) do{}while(0)
+  #define AF_EVENT_DESTROY(name) do{}while(0)
+  #define AF_EVENT_START(name) do{}while(0)
+  #define AF_EVENT_STOP_ACCUM(name, accum) do{}while(0)
+#endif
+// -------------------------------------------------------------------------
 
 #define CHECK_CUDA(call)                                                       \
   do {                                                                         \
@@ -438,42 +477,40 @@ __global__ void subband_stage2_kernel(
 
 
 
+// ======================================================================
+//                          Main GPU pipelines
+// ======================================================================
 template <typename T>
 dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample, int target_id,
                                     std::string mask_file, rficonfig rficfg) {
-  // Timing variables
-  cudaEvent_t start_event, stop_event, stage1_start, stage1_stop, stage2_start, stage2_stop;
-  float ms = 0.0f;
-  float stage1_ms = 0.0f, stage2_ms = 0.0f, total_ms = 0.0f;
-  std::chrono::high_resolution_clock::time_point cpu_start, cpu_end, total_start, total_end;
-  float cpu_ms = 0.0f;
-
   int device_count; CHECK_CUDA(cudaGetDeviceCount(&device_count));
   if (device_count == 0) throw std::runtime_error("No CUDA devices found");
 
   int device_id = target_id;
   cudaDeviceProp device_prop;
   CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
-  printf("Using device %d: %s\n", device_id, device_prop.name);
   CHECK_CUDA(cudaSetDevice(device_id));
 
-  // Create CUDA events for timing
-  CHECK_CUDA(cudaEventCreate(&start_event));
-  CHECK_CUDA(cudaEventCreate(&stop_event));
-  CHECK_CUDA(cudaEventCreate(&stage1_start));
-  CHECK_CUDA(cudaEventCreate(&stage1_stop));
-  CHECK_CUDA(cudaEventCreate(&stage2_start));
-  CHECK_CUDA(cudaEventCreate(&stage2_stop));
+#ifdef AF_DEBUG
+  AFDebugTimes tms;
+  auto total_start = std::chrono::high_resolution_clock::now();
+  AF_EVENT_PAIR(ev_generic);
+  AF_EVENT_CREATE(ev_generic);
+  AF_EVENT_PAIR(ev_stage1);
+  AF_EVENT_CREATE(ev_stage1);
+  AF_EVENT_PAIR(ev_stage2);
+  AF_EVENT_CREATE(ev_stage2);
+#endif
 
-  float fil_freq_min = fil.frequency_table[0];
-  float fil_freq_max = fil.frequency_table[fil.nchans - 1];
+  const float fil_freq_min = fil.frequency_table[0];
+  const float fil_freq_max = fil.frequency_table[fil.nchans - 1];
 
   if (freq_start < fil_freq_min || freq_end > fil_freq_max) {
     char msg[256];
-    snprintf(msg, sizeof(msg),
+    std::snprintf(msg, sizeof(msg),
              "Frequency range [%.3f-%.3f MHz] out of filterbank range [%.3f-%.3f MHz]",
              freq_start, freq_end, fil_freq_min, fil_freq_max);
     throw std::invalid_argument(msg);
@@ -486,7 +523,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   chan_start = std::max<size_t>(0, chan_start);
   chan_end   = std::min<size_t>(fil.nchans - 1, chan_end);
   if (chan_start >= fil.nchans || chan_end >= fil.nchans) {
-    char msg[256]; snprintf(msg, sizeof(msg),
+    char msg[256]; std::snprintf(msg, sizeof(msg),
              "Invalid channel range [%zu-%zu] for %d channels",
              chan_start, chan_end, fil.nchans);
     throw std::invalid_argument(msg);
@@ -506,71 +543,84 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 #if AF_USE_SUBBAND
   T *h_input = static_cast<T*>(fil.data);
   T *d_input = nullptr;
-  // Total timing start
-  total_start = std::chrono::high_resolution_clock::now();
-  // Host to Device copy timing
-  CHECK_CUDA(cudaEventRecord(start_event));
+
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
   CHECK_CUDA(cudaMemcpy(d_input, h_input,
                         fil.ndata*nchans*sizeof(T), cudaMemcpyHostToDevice));
-  CHECK_CUDA(cudaEventRecord(stop_event));
-  CHECK_CUDA(cudaEventSynchronize(stop_event));
-  CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
-  printf("[TIMER] Host to Device copy: %.3f ms\n", ms);
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.h2d);
+#endif
 
-  
   RfiMarker<T> rfi_marker(mask_file);
 
   T *d_binned_input = d_input;
   if (time_downsample > 1) {
+#ifdef AF_DEBUG
+    AF_EVENT_START(ev_generic);
+#endif
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata * nchans * sizeof(T)));
     const size_t total = nchans * down_ndata;
     const int TPB = 256;
     const size_t nblk = (total + TPB - 1)/TPB;
-    CHECK_CUDA(cudaEventRecord(start_event));
     time_binning_kernel<T><<<nblk, TPB>>>(d_binned_input, d_input,
         nchans, fil.ndata, time_downsample, down_ndata);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
-    CHECK_CUDA(cudaEventRecord(stop_event));
-    CHECK_CUDA(cudaEventSynchronize(stop_event));
-    CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
-    printf("[TIMER] Time binning kernel: %.3f ms\n", ms);
+#ifdef AF_DEBUG
+    AF_EVENT_STOP_ACCUM(ev_generic, tms.time_binning);
+#endif
     CHECK_CUDA(cudaFree(d_input));
   }
 
+#ifdef AF_DEBUG
+  // 记录 INFO（运行末尾统一输出）
+  const bool info_use_iqrm   = rficfg.use_iqrm;
+  const bool info_use_zdm    = rficfg.use_zero_dm;
+  const bool info_use_mask   = rficfg.use_mask;
+#endif
 
-  float rfi_ms = 0.0f;
   if (rficfg.use_iqrm) {
+#ifdef AF_DEBUG
     auto iqrm_start = std::chrono::high_resolution_clock::now();
-    // auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_input, chan_start, chan_end, fil.ndata, nchans, fil.tsamp, rficfg);
-    auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_binned_input, chan_start, chan_end, down_ndata, nchans, fil.tsamp * time_downsample, rficfg);
+#endif
+    auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_binned_input, chan_start, chan_end,
+                                                down_ndata, nchans,
+                                                fil.tsamp * time_downsample, rficfg);
+#ifdef AF_DEBUG
     auto iqrm_end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> iqrm_duration = iqrm_end - iqrm_start;
-    rfi_ms += static_cast<float>(iqrm_duration.count());
-    printf("[INFO] RFI mask generated using IQRM in %.3f ms\n", rfi_ms);
-
+    tms.iqrm_gen += std::chrono::duration<float, std::milli>(iqrm_end - iqrm_start).count();
     auto rfi_start = std::chrono::high_resolution_clock::now();
-    // rfi_marker.mask(d_input, nchans, fil.ndata, win_masks);
+#endif
     rfi_marker.mask(d_binned_input, nchans, down_ndata, win_masks);
+#ifdef AF_DEBUG
     auto rfi_end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> rfi_duration = rfi_end - rfi_start;
-    rfi_ms += static_cast<float>(rfi_duration.count());
-    printf("[TIMER] IQRM RFI masking on GPU: %.3f ms\n", rfi_duration.count());
+    tms.iqrm_mask += std::chrono::duration<float, std::milli>(rfi_end - rfi_start).count();
+#endif
   }
 
-  auto rfi2_start = std::chrono::high_resolution_clock::now();
   if (rficfg.use_zero_dm) {
+#ifdef AF_DEBUG
+    auto z_start = std::chrono::high_resolution_clock::now();
+#endif
     rfi_marker.zero_dm_filter(d_binned_input, chan_start, chan_end, down_ndata);
+#ifdef AF_DEBUG
+    auto z_end = std::chrono::high_resolution_clock::now();
+    tms.zero_dm += std::chrono::duration<float, std::milli>(z_end - z_start).count();
+#endif
   }
   if (rficfg.use_mask) {
+#ifdef AF_DEBUG
+    auto m_start = std::chrono::high_resolution_clock::now();
+#endif
     rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+#ifdef AF_DEBUG
+    auto m_end = std::chrono::high_resolution_clock::now();
+    tms.mark_file_mask += std::chrono::duration<float, std::milli>(m_end - m_start).count();
+#endif
   }
-  auto rfi2_end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::milli> rfi2_duration = rfi2_end - rfi2_start;
-  rfi_ms += static_cast<float>(rfi2_duration.count());
-  printf("[TIMER] Zero-DM filtering and RFI masking on GPU: %.3f ms\n", rfi2_duration.count());
-  printf("[INFO] Total RFI processing time: %.3f ms\n", rfi_ms);
 
   const size_t Dch = (chan_end - chan_start + 1);
   const size_t NSB = (Dch + AF_SUBBAND_SIZE_CH - 1) / AF_SUBBAND_SIZE_CH;
@@ -602,7 +652,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     CHECK_CUDA(cudaDeviceSynchronize());
   }
 
-
   std::vector<double> h_sbfreq(NSB, 0.0);
   for (size_t sb=0; sb<NSB; ++sb) {
     size_t ch0 = chan_start + sb*AF_SUBBAND_SIZE_CH;
@@ -610,7 +659,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     size_t mid = (ch0 + ch1 - 1) / 2;
     h_sbfreq[sb] = fil.frequency_table[mid];
   }
-
 
   double* d_sbfreq = nullptr;
   CHECK_CUDA(cudaMalloc(&d_sbfreq, NSB * sizeof(double)));
@@ -660,9 +708,9 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     dedispersion_output_t<T> *d_inter = nullptr;
     CHECK_CUDA(cudaMalloc(&d_inter, NDM_nom*NSB*tile1_len*sizeof(dedispersion_output_t<T>)));
 
-    // Dedispersion stage 1 timing
-
-    CHECK_CUDA(cudaEventRecord(stage1_start));
+#ifdef AF_DEBUG
+    AF_EVENT_START(ev_stage1);
+#endif
     {
       dim3 grid1((tile1_len + TPB - 1)/TPB, NDM_nom, NSB);
       subband_stage1_kernel<T, dedispersion_output_t<T>><<<grid1, TPB>>>(
@@ -672,13 +720,11 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         t0, tile1_len, Dch);
       CHECK_CUDA(cudaGetLastError());
     }
-    CHECK_CUDA(cudaEventRecord(stage1_stop));
-    CHECK_CUDA(cudaEventSynchronize(stage1_stop));
-    CHECK_CUDA(cudaEventElapsedTime(&ms, stage1_start, stage1_stop));
-    stage1_ms += ms;
-
-    // Dedispersion stage 2 timing
-    CHECK_CUDA(cudaEventRecord(stage2_start));
+#ifdef AF_DEBUG
+    CHECK_CUDA(cudaDeviceSynchronize());
+    AF_EVENT_STOP_ACCUM(ev_stage1, tms.stage1);
+    AF_EVENT_START(ev_stage2);
+#endif
     {
       dim3 grid2((tile_len + TPB - 1)/TPB, dm_steps);
       subband_stage2_kernel<dedispersion_output_t<T>><<<grid2, TPB>>>(
@@ -687,60 +733,46 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         down_ndata, t0, tile_len, tile1_len);
       CHECK_CUDA(cudaGetLastError());
     }
-    CHECK_CUDA(cudaEventRecord(stage2_stop));
-    CHECK_CUDA(cudaEventSynchronize(stage2_stop));
-    CHECK_CUDA(cudaEventElapsedTime(&ms, stage2_start, stage2_stop));
-    stage2_ms += ms;
-
+#ifdef AF_DEBUG
     CHECK_CUDA(cudaDeviceSynchronize());
+    AF_EVENT_STOP_ACCUM(ev_stage2, tms.stage2);
+#endif
+
     CHECK_CUDA(cudaFree(d_inter));
   }
-
-  auto t_total1 = std::chrono::high_resolution_clock::now();
+#ifdef AF_DEBUG
+  auto t1 = std::chrono::high_resolution_clock::now();
+#endif
   auto dm_array_typed = std::shared_ptr<dedispersion_output_t<T>[]>( new (std::align_val_t{4096})
       dedispersion_output_t<T>[dm_steps * down_ndata](),
       [](dedispersion_output_t<T>* p){ operator delete[](p, std::align_val_t{4096}); });
-  auto t_total2 = std::chrono::high_resolution_clock::now();
-  cpu_ms = std::chrono::duration<float, std::milli>(t_total2 - t_total1).count();
-  printf("[TIMER] allocate pinned host memory time: %.3f ms\n", cpu_ms);
 
-
-  // Device to Host copy timing
-  CHECK_CUDA(cudaEventRecord(start_event));
+#ifdef AF_DEBUG
+  {
+    auto t2 = std::chrono::high_resolution_clock::now();
+    tms.host_alloc += std::chrono::duration<float, std::milli>(t2 - t1).count();
+  }
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
                         dm_steps*down_ndata*sizeof(dedispersion_output_t<T>),
                         cudaMemcpyDeviceToHost));
-  CHECK_CUDA(cudaEventRecord(stop_event));
-  CHECK_CUDA(cudaEventSynchronize(stop_event));
-  CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
-  printf("[TIMER] Device to Host copy: %.3f ms\n", ms);
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.d2h);
+#endif
 
-  // Total timing end
-  total_end = std::chrono::high_resolution_clock::now();
-  total_ms = std::chrono::duration<float, std::milli>(total_end - total_start).count();
-
-  printf("[TIMER] Dedispersion Stage 1 total: %.3f ms\n", stage1_ms);
-  printf("[TIMER] Dedispersion Stage 2 total: %.3f ms\n", stage2_ms);
-  printf("[TIMER] Total elapsed (including all stages and copies): %.3f ms\n", total_ms);
-
-  // Destroy CUDA events
-  CHECK_CUDA(cudaEventDestroy(start_event));
-  CHECK_CUDA(cudaEventDestroy(stop_event));
-  CHECK_CUDA(cudaEventDestroy(stage1_start));
-  CHECK_CUDA(cudaEventDestroy(stage1_stop));
-  CHECK_CUDA(cudaEventDestroy(stage2_start));
-  CHECK_CUDA(cudaEventDestroy(stage2_stop));
-
-  auto t0 = std::chrono::high_resolution_clock::now();
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   if (time_downsample > 1) CHECK_CUDA(cudaFree(d_binned_input));
   else                     CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay1));
   CHECK_CUDA(cudaFree(d_residual2));
   CHECK_CUDA(cudaFree(d_freq_table));
-  auto t1 = std::chrono::high_resolution_clock::now();
-  cpu_ms = std::chrono::duration<float, std::milli>(t1 - t0).count();
-  printf("[TIMER] free memory time: %.3f ms\n", cpu_ms);
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.free_ms);
+#endif
 
   DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
   typed_result.dm_times.emplace_back(std::move(dm_array_typed));
@@ -757,8 +789,44 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   temp_header.tsamp = typed_result.tsample;
   temp_header.filename = fil.filename;
 
+#ifdef AF_DEBUG
+  auto total_end = std::chrono::high_resolution_clock::now();
+  tms.total = std::chrono::duration<float, std::milli>(total_end - total_start).count();
+
+  AF_LOGI("Using device %d: %s", device_id, device_prop.name);
+  AF_LOGI("RFICONFIG use_iqrm=%d, use_zero_dm=%d, use_mask=%d",
+          info_use_iqrm, info_use_zdm, info_use_mask);
+  AF_LOGT("H2D copy", tms.h2d);
+  if (time_downsample > 1) AF_LOGT("Time binning", tms.time_binning);
+  if (info_use_iqrm) {
+    AF_LOGT("IQRM generate", tms.iqrm_gen);
+    AF_LOGT("IQRM mask", tms.iqrm_mask);
+  }
+  if (info_use_zdm) AF_LOGT("Zero-DM filtering", tms.zero_dm);
+  if (info_use_mask) AF_LOGT("Maskfile marking", tms.mark_file_mask);
+  AF_LOGT("Stage1 (subband)", tms.stage1);
+  AF_LOGT("Stage2 (subband)", tms.stage2);
+  AF_LOGT("Host buffer alloc", tms.host_alloc);
+  AF_LOGT("D2H copy", tms.d2h);
+  AF_LOGT("Free GPU memory", tms.free_ms);
+  AF_LOGT("Total", tms.total);
+
+  AF_EVENT_DESTROY(ev_generic);
+  AF_EVENT_DESTROY(ev_stage1);
+  AF_EVENT_DESTROY(ev_stage2);
+#endif
+
   return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
-#else
+#else  // ===================== NO SUBBAND BRANCH =========================
+
+#ifdef AF_DEBUG
+  AFDebugTimes tms;
+  auto total_start = std::chrono::high_resolution_clock::now();
+  AF_EVENT_PAIR(ev_generic);
+  AF_EVENT_CREATE(ev_generic);
+  AF_EVENT_PAIR(ev_stage1); // not used but keep for symmetry
+  AF_EVENT_CREATE(ev_stage1);
+#endif
 
   int *d_delay_table;
   CHECK_CUDA(cudaMallocManaged(
@@ -776,12 +844,21 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
 
   T *d_input;
   T *d_binned_input;
-  T *data = static_cast<T *>(fil.data);
+  T *data_ptr = static_cast<T *>(fil.data);
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMalloc(&d_input, fil.ndata * nchans * sizeof(T)));
-  CHECK_CUDA(cudaMemcpy(d_input, data, fil.ndata * nchans * sizeof(T), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(d_input, data_ptr, fil.ndata * nchans * sizeof(T), cudaMemcpyHostToDevice));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.h2d);
+#endif
 
   if (time_downsample > 1) {
+#ifdef AF_DEBUG
+    AF_EVENT_START(ev_generic);
+#endif
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata * nchans * sizeof(T)));
     const size_t total_elements = nchans * down_ndata;
     const int threads_per_block = 256;
@@ -790,17 +867,27 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
         d_binned_input, d_input, nchans, fil.ndata, time_downsample, down_ndata);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
+#ifdef AF_DEBUG
+    AF_EVENT_STOP_ACCUM(ev_generic, tms.time_binning);
+#endif
     CHECK_CUDA(cudaFree(d_input));
   } else {
     d_binned_input = d_input;
   }
 
+  RfiMarker<T> rfi_marker(mask_file);
+#ifdef AF_DEBUG
+  auto m_start = std::chrono::high_resolution_clock::now();
+#endif
+  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+#ifdef AF_DEBUG
+  auto m_end = std::chrono::high_resolution_clock::now();
+  tms.mark_file_mask += std::chrono::duration<float, std::milli>(m_end - m_start).count();
+#endif
+
   dedispersion_output_t<T> *d_output;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
   CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
-
-  RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
 
   int THREADS_PER_BLOCK = 256;
   dim3 threads(THREADS_PER_BLOCK);
@@ -841,15 +928,27 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
       dedispersion_output_t<T>[dm_steps * down_ndata](),
       [](dedispersion_output_t<T>* p){ operator delete[](p, std::align_val_t{4096}); });
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
                         dm_steps*down_ndata*sizeof(dedispersion_output_t<T>),
                         cudaMemcpyDeviceToHost));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.d2h);
+#endif
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   if (time_downsample > 1) CHECK_CUDA(cudaFree(d_binned_input));
   else                     CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.free_ms);
+#endif
 
   DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
   typed_result.dm_times.emplace_back(std::move(dm_array_typed));
@@ -865,8 +964,25 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   Header temp_header;
   temp_header.tsamp = typed_result.tsample;
   temp_header.filename = fil.filename;
-  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
+
+#ifdef AF_DEBUG
+  auto total_end = std::chrono::high_resolution_clock::now();
+  tms.total = std::chrono::duration<float, std::milli>(total_end - total_start).count();
+
+  AF_LOGI("Using device %d: %s", device_id, device_prop.name);
+  AF_LOGT("H2D copy", tms.h2d);
+  if (time_downsample > 1) AF_LOGT("Time binning", tms.time_binning);
+  AF_LOGT("Maskfile marking", tms.mark_file_mask);
+  AF_LOGT("D2H copy", tms.d2h);
+  AF_LOGT("Free GPU memory", tms.free_ms);
+  AF_LOGT("Total", tms.total);
+
+  AF_EVENT_DESTROY(ev_generic);
+  AF_EVENT_DESTROY(ev_stage1);
 #endif
+
+  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, temp_header, 1, t_sample);
+#endif // AF_USE_SUBBAND
 }
 
 template <typename T>
@@ -882,7 +998,6 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   int device_id = target_id;
   cudaDeviceProp device_prop;
   CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
-  printf("Using device %d: %s\n", device_id, device_prop.name);
   CHECK_CUDA(cudaSetDevice(device_id));
 
   const size_t nchans = header.nchans;
@@ -893,7 +1008,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   float freq_max = h_freq.back();
   if (freq_start < freq_min || freq_end > freq_max) {
     char msg[256];
-    snprintf(msg, sizeof(msg),
+    std::snprintf(msg, sizeof(msg),
              "Frequency range [%.3f-%.3f MHz] out of spectrum range [%.3f-%.3f MHz]",
              freq_start, freq_end, freq_min, freq_max);
     throw std::invalid_argument(msg);
@@ -906,7 +1021,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   chan_start = std::max<size_t>(0, chan_start);
   chan_end   = std::min<size_t>(nchans - 1, chan_end);
   if (chan_start >= nchans || chan_end >= nchans) {
-    char msg[256]; snprintf(msg, sizeof(msg),
+    char msg[256]; std::snprintf(msg, sizeof(msg),
              "Invalid channel range [%zu-%zu] for %zu channels", chan_start, chan_end, nchans);
     throw std::invalid_argument(msg);
   }
@@ -921,14 +1036,32 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                         nchans*sizeof(double), cudaMemcpyHostToDevice));
 
 #if AF_USE_SUBBAND
+#ifdef AF_DEBUG
+  AFDebugTimes tms;
+  auto total_start = std::chrono::high_resolution_clock::now();
+  AF_EVENT_PAIR(ev_generic);
+  AF_EVENT_CREATE(ev_generic);
+  AF_EVENT_PAIR(ev_stage1);
+  AF_EVENT_CREATE(ev_stage1);
+  AF_EVENT_PAIR(ev_stage2);
+  AF_EVENT_CREATE(ev_stage2);
+#endif
+
   T *d_input=nullptr;
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMalloc(&d_input, header.ndata*nchans*sizeof(T)));
   CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata*nchans*sizeof(T), cudaMemcpyHostToDevice));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.h2d);
+#endif
 
   T *d_binned_input = d_input;
-  
-
   if (time_downsample > 1) {
+#ifdef AF_DEBUG
+    AF_EVENT_START(ev_generic);
+#endif
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata*nchans*sizeof(T)));
     const size_t total = nchans*down_ndata;
     const int TPB = 256; const size_t nblk = (total + TPB - 1)/TPB;
@@ -936,43 +1069,57 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
         d_binned_input, d_input, nchans, header.ndata, time_downsample, down_ndata);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
+#ifdef AF_DEBUG
+    AF_EVENT_STOP_ACCUM(ev_generic, tms.time_binning);
+#endif
     CHECK_CUDA(cudaFree(d_input));
   }
 
-  printf("RFICONFIG: use_iqrm=%d, use_zero_dm=%d, use_mask=%d\n",
-         rficfg.use_iqrm, rficfg.use_zero_dm, rficfg.use_mask);
-  float rfi_ms = 0.0f;
+#ifdef AF_DEBUG
+  const bool info_use_iqrm   = rficfg.use_iqrm;
+  const bool info_use_zdm    = rficfg.use_zero_dm;
+  const bool info_use_mask   = rficfg.use_mask;
+#endif
+
   RfiMarker<T> rfi_marker(mask_file);
   if (rficfg.use_iqrm) {
+#ifdef AF_DEBUG
     auto iqrm_start = std::chrono::high_resolution_clock::now();
-    // auto win_masks = rfi_iqrm<T>(data, chan_start, chan_end, header.ndata, nchans, header.tsamp, rficfg);
-    auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_binned_input, chan_start, chan_end, down_ndata, nchans, header.tsamp * time_downsample, rficfg);
+#endif
+    auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_binned_input, chan_start, chan_end,
+                                                down_ndata, nchans, header.tsamp * time_downsample, rficfg);
+#ifdef AF_DEBUG
     auto iqrm_end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> iqrm_duration = iqrm_end - iqrm_start;
-    rfi_ms += static_cast<float>(iqrm_duration.count());
-    printf("[INFO] RFI mask generated using IQRM in %.3f ms\n", rfi_ms);
-
+    tms.iqrm_gen += std::chrono::duration<float, std::milli>(iqrm_end - iqrm_start).count();
     auto rfi_start = std::chrono::high_resolution_clock::now();
+#endif
     rfi_marker.mask(d_binned_input, nchans, down_ndata, win_masks);
+#ifdef AF_DEBUG
     auto rfi_end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> rfi_duration = rfi_end - rfi_start;
-    rfi_ms += static_cast<float>(rfi_duration.count());
-    printf("[TIMER] IQRM RFI masking on GPU: %.3f ms\n", rfi_duration.count());
+    tms.iqrm_mask += std::chrono::duration<float, std::milli>(rfi_end - rfi_start).count();
+#endif
   }
   
-  auto rfi2_start = std::chrono::high_resolution_clock::now();
   if (rficfg.use_zero_dm) {
+#ifdef AF_DEBUG
+    auto z_start = std::chrono::high_resolution_clock::now();
+#endif
     rfi_marker.zero_dm_filter(d_binned_input, chan_start, chan_end, down_ndata);
+#ifdef AF_DEBUG
+    auto z_end = std::chrono::high_resolution_clock::now();
+    tms.zero_dm += std::chrono::duration<float, std::milli>(z_end - z_start).count();
+#endif
   }
   if (rficfg.use_mask) {
+#ifdef AF_DEBUG
+    auto m_start = std::chrono::high_resolution_clock::now();
+#endif
     rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+#ifdef AF_DEBUG
+    auto m_end = std::chrono::high_resolution_clock::now();
+    tms.mark_file_mask += std::chrono::duration<float, std::milli>(m_end - m_start).count();
+#endif
   }
-  auto rfi2_end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::milli> rfi2_duration = rfi2_end - rfi2_start;
-  rfi_ms += static_cast<float>(rfi2_duration.count());
-  printf("[TIMER] Zero-DM filtering and RFI masking on GPU: %.3f ms\n", rfi2_duration.count());
-  printf("[INFO] Total RFI processing time: %.3f ms\n", rfi_ms);
-
 
   const size_t Dch  = (chan_end - chan_start + 1);
   const size_t NSB  = (Dch + AF_SUBBAND_SIZE_CH - 1) / AF_SUBBAND_SIZE_CH;
@@ -1009,7 +1156,6 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     size_t mid = (ch0 + ch1 - 1)/2;
     h_sbfreq[sb] = h_freq[mid];
   }
-
 
   double* d_sbfreq = nullptr;
   CHECK_CUDA(cudaMalloc(&d_sbfreq, NSB * sizeof(double)));
@@ -1055,6 +1201,9 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     const size_t tile_len  = std::min(static_cast<size_t>(AF_SUBBAND_TBLOCK), down_ndata - t0);
     const size_t tile1_len = std::min(tile_len + static_cast<size_t>(max_residual), down_ndata - t0);
 
+#ifdef AF_DEBUG
+    AF_EVENT_START(ev_stage1);
+#endif
     dedispersion_output_t<T>* d_inter=nullptr;
     CHECK_CUDA(cudaMalloc(&d_inter, NDM_nom*NSB*tile1_len*sizeof(dedispersion_output_t<T>)));
 
@@ -1065,6 +1214,11 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
       nchans, chan_start, chan_end, time_downsample, down_ndata,
       t0, tile1_len, Dch);
     CHECK_CUDA(cudaGetLastError());
+#ifdef AF_DEBUG
+    CHECK_CUDA(cudaDeviceSynchronize());
+    AF_EVENT_STOP_ACCUM(ev_stage1, tms.stage1);
+    AF_EVENT_START(ev_stage2);
+#endif
 
     dim3 grid2((tile_len + TPB - 1)/TPB, dm_steps);
     subband_stage2_kernel<dedispersion_output_t<T>><<<grid2, TPB>>>(
@@ -1074,6 +1228,9 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
 
+#ifdef AF_DEBUG
+    AF_EVENT_STOP_ACCUM(ev_stage2, tms.stage2);
+#endif
     CHECK_CUDA(cudaFree(d_inter));
   }
 
@@ -1081,16 +1238,28 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
       dedispersion_output_t<T>[dm_steps * down_ndata](),
       [](dedispersion_output_t<T>* p){ operator delete[](p, std::align_val_t{4096}); });
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
                         dm_steps*down_ndata*sizeof(dedispersion_output_t<T>),
                         cudaMemcpyDeviceToHost));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.d2h);
+#endif
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   if (time_downsample > 1) CHECK_CUDA(cudaFree(d_binned_input));
   else                     CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay1));
   CHECK_CUDA(cudaFree(d_residual2));
   CHECK_CUDA(cudaFree(d_freq_table));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.free_ms);
+#endif
 
   DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
   typed_result.dm_times.emplace_back(std::move(dm_array_typed));
@@ -1105,9 +1274,43 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
 
   Header updated = header;
   updated.tsamp = typed_result.tsample;
+
+#ifdef AF_DEBUG
+  auto total_end = std::chrono::high_resolution_clock::now();
+  tms.total = std::chrono::duration<float, std::milli>(total_end - total_start).count();
+
+  AF_LOGI("Using device %d: %s", device_id, device_prop.name);
+  AF_LOGI("RFICONFIG use_iqrm=%d, use_zero_dm=%d, use_mask=%d",
+          info_use_iqrm, info_use_zdm, info_use_mask);
+  AF_LOGT("H2D copy", tms.h2d);
+  if (time_downsample > 1) AF_LOGT("Time binning", tms.time_binning);
+  if (info_use_iqrm) {
+    AF_LOGT("IQRM generate", tms.iqrm_gen);
+    AF_LOGT("IQRM mask", tms.iqrm_mask);
+  }
+  if (info_use_zdm) AF_LOGT("Zero-DM filtering", tms.zero_dm);
+  if (info_use_mask) AF_LOGT("Maskfile marking", tms.mark_file_mask);
+  AF_LOGT("Stage1 (subband)", tms.stage1);
+  AF_LOGT("Stage2 (subband)", tms.stage2);
+  AF_LOGT("D2H copy", tms.d2h);
+  AF_LOGT("Free GPU memory", tms.free_ms);
+  AF_LOGT("Total", tms.total);
+
+  AF_EVENT_DESTROY(ev_generic);
+  AF_EVENT_DESTROY(ev_stage1);
+  AF_EVENT_DESTROY(ev_stage2);
+#endif
+
   return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, updated, 1, t_sample);
 
-#else
+#else // ===================== NO SUBBAND BRANCH =========================
+
+#ifdef AF_DEBUG
+  AFDebugTimes tms;
+  auto total_start = std::chrono::high_resolution_clock::now();
+  AF_EVENT_PAIR(ev_generic);
+  AF_EVENT_CREATE(ev_generic);
+#endif
 
   int *d_delay_table;
   CHECK_CUDA(cudaMallocManaged(
@@ -1123,12 +1326,20 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 
-
   T *d_input; T *d_binned_input;
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMalloc(&d_input, header.ndata*nchans*sizeof(T)));
   CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata*nchans*sizeof(T), cudaMemcpyHostToDevice));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.h2d);
+#endif
 
   if (time_downsample > 1) {
+#ifdef AF_DEBUG
+    AF_EVENT_START(ev_generic);
+#endif
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata*nchans*sizeof(T)));
     const size_t total = nchans*down_ndata;
     const int TPB = 256; const size_t nblk = (total + TPB - 1)/TPB;
@@ -1136,11 +1347,21 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
         d_binned_input, d_input, nchans, header.ndata, time_downsample, down_ndata);
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaDeviceSynchronize());
+#ifdef AF_DEBUG
+    AF_EVENT_STOP_ACCUM(ev_generic, tms.time_binning);
+#endif
     CHECK_CUDA(cudaFree(d_input));
   } else d_binned_input = d_input;
 
   RfiMarker<T> rfi_marker(mask_file);
+#ifdef AF_DEBUG
+  auto m_start = std::chrono::high_resolution_clock::now();
+#endif
   rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+#ifdef AF_DEBUG
+  auto m_end = std::chrono::high_resolution_clock::now();
+  tms.mark_file_mask += std::chrono::duration<float, std::milli>(m_end - m_start).count();
+#endif
 
   dedispersion_output_t<T> *d_output;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps*down_ndata*sizeof(dedispersion_output_t<T>)));
@@ -1186,15 +1407,27 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
       dedispersion_output_t<T>[dm_steps * down_ndata](),
       [](dedispersion_output_t<T>* p){ operator delete[](p, std::align_val_t{4096}); });
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   CHECK_CUDA(cudaMemcpy(dm_array_typed.get(), d_output,
                         dm_steps*down_ndata*sizeof(dedispersion_output_t<T>),
                         cudaMemcpyDeviceToHost));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.d2h);
+#endif
 
+#ifdef AF_DEBUG
+  AF_EVENT_START(ev_generic);
+#endif
   if (time_downsample > 1) CHECK_CUDA(cudaFree(d_binned_input));
   else                     CHECK_CUDA(cudaFree(d_input));
   CHECK_CUDA(cudaFree(d_output));
   CHECK_CUDA(cudaFree(d_delay_table));
   CHECK_CUDA(cudaFree(d_freq_table));
+#ifdef AF_DEBUG
+  AF_EVENT_STOP_ACCUM(ev_generic, tms.free_ms);
+#endif
 
   DedispersedDataTyped<dedispersion_output_t<T>> typed_result;
   typed_result.dm_times.emplace_back(std::move(dm_array_typed));
@@ -1209,11 +1442,28 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
 
   Header updated = header;
   updated.tsamp = typed_result.tsample;
-  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, updated, 1, t_sample);
+
+#ifdef AF_DEBUG
+  auto total_end = std::chrono::high_resolution_clock::now();
+  tms.total = std::chrono::duration<float, std::milli>(total_end - total_start).count();
+
+  AF_LOGI("Using device %d: %s", device_id, device_prop.name);
+  AF_LOGT("H2D copy", tms.h2d);
+  if (time_downsample > 1) AF_LOGT("Time binning", tms.time_binning);
+  AF_LOGT("Maskfile marking", tms.mark_file_mask);
+  AF_LOGT("D2H copy", tms.d2h);
+  AF_LOGT("Free GPU memory", tms.free_ms);
+  AF_LOGT("Total", tms.total);
+
+  AF_EVENT_DESTROY(ev_generic);
 #endif
+
+  return preprocess_typed_dedisperseddata_with_slicing<T>(typed_result, updated, 1, t_sample);
+#endif // AF_USE_SUBBAND
 }
 
 
+// ---------------------- explicit instantiation ----------------------
 template dedisperseddata_uint8
 dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
                              float freq_start, float freq_end, float dm_step,

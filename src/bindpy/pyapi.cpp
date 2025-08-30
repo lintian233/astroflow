@@ -8,7 +8,7 @@ dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
                                float dm_step, int time_downsample,
                                float t_sample, int target, int target_id, std::string mask_file, rficonfig rficfg) {
   Filterbank fil(filename);
-  fil.info();
+  // fil.info();
   switch (fil.nbits) {
   case 8: {
     if (target == GPU_TARGET) {

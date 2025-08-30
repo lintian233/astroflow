@@ -93,7 +93,7 @@ class Yolo11nFrbDetector(FrbDetector):
         min_percentile, max_percentile = np.percentile(img, (1, 99.9))
         np.clip(img, min_percentile, max_percentile, out=img) 
         return img
-
+    
     @override
     def mutidetect(self, dmt_list: List[DmTime]):
         model = self.model
