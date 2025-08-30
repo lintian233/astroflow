@@ -43,6 +43,36 @@ void RfiMarkerCPU<T>::load_mask(const char* mask_file) {
 }
 
 template <typename T>
+void RfiMarkerCPU<T>::mask(T *h_data, unsigned int num_channels, unsigned int num_samples, std::vector<iqrm_omp::WindowMask> &win_masks)
+{
+    if (!h_data || num_channels == 0 || num_samples == 0) {
+        return;
+    }
+
+    for (const auto &win_mask : win_masks) {
+        unsigned t0 = win_mask.t0;
+        unsigned t1 = win_mask.t1;
+        const auto &mask = win_mask.mask;
+        
+        // printf("Masking window: t0=%u, t1=%u\n", t0, t1);
+        // printf("count of bad channels in this window: %zu\n", std::count(mask.begin(), mask.end(), 1));
+        if (t0 >= num_samples || t1 > num_samples || mask.size() != static_cast<size_t>(num_channels)) {
+            continue; 
+        }
+        #pragma omp parallel for if(num_channels > 64) schedule(static)
+        for (unsigned int ch = 0; ch < num_channels; ++ch) {
+            if (mask[ch]) {
+                #pragma omp simd
+                for (unsigned int t = t0; t < t1; ++t) {
+                    h_data[static_cast<size_t>(t) * num_channels + ch] = 0;
+                }
+            }
+        }
+    }
+
+}
+
+template <typename T>
 void RfiMarkerCPU<T>::mark_rfi(T* h_data,
                                unsigned int num_channels,
                                unsigned int num_samples)

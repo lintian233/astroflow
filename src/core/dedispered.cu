@@ -1,5 +1,7 @@
 #include "data.h"
 #include "gpucal.h"
+#include "iqrm.hpp"
+#include "iqrmcuda.h"
 #include "marcoutils.h"
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
@@ -441,7 +443,7 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
                                     float dm_high, float freq_start,
                                     float freq_end, float dm_step, int ref_freq,
                                     int time_downsample, float t_sample, int target_id,
-                                    std::string mask_file) {
+                                    std::string mask_file, rficonfig rficfg) {
   // Timing variables
   cudaEvent_t start_event, stop_event, stage1_start, stage1_stop, stage2_start, stage2_stop;
   float ms = 0.0f;
@@ -516,7 +518,9 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
   CHECK_CUDA(cudaEventElapsedTime(&ms, start_event, stop_event));
   printf("[TIMER] Host to Device copy: %.3f ms\n", ms);
 
-  // 时间降采样
+  
+  RfiMarker<T> rfi_marker(mask_file);
+
   T *d_binned_input = d_input;
   if (time_downsample > 1) {
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata * nchans * sizeof(T)));
@@ -535,8 +539,38 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     CHECK_CUDA(cudaFree(d_input));
   }
 
-  RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+
+  float rfi_ms = 0.0f;
+  if (rficfg.use_iqrm) {
+    auto iqrm_start = std::chrono::high_resolution_clock::now();
+    // auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_input, chan_start, chan_end, fil.ndata, nchans, fil.tsamp, rficfg);
+    auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_binned_input, chan_start, chan_end, down_ndata, nchans, fil.tsamp * time_downsample, rficfg);
+    auto iqrm_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> iqrm_duration = iqrm_end - iqrm_start;
+    rfi_ms += static_cast<float>(iqrm_duration.count());
+    printf("[INFO] RFI mask generated using IQRM in %.3f ms\n", rfi_ms);
+
+    auto rfi_start = std::chrono::high_resolution_clock::now();
+    // rfi_marker.mask(d_input, nchans, fil.ndata, win_masks);
+    rfi_marker.mask(d_binned_input, nchans, down_ndata, win_masks);
+    auto rfi_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> rfi_duration = rfi_end - rfi_start;
+    rfi_ms += static_cast<float>(rfi_duration.count());
+    printf("[TIMER] IQRM RFI masking on GPU: %.3f ms\n", rfi_duration.count());
+  }
+
+  auto rfi2_start = std::chrono::high_resolution_clock::now();
+  if (rficfg.use_zero_dm) {
+    rfi_marker.zero_dm_filter(d_binned_input, chan_start, chan_end, down_ndata);
+  }
+  if (rficfg.use_mask) {
+    rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+  }
+  auto rfi2_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> rfi2_duration = rfi2_end - rfi2_start;
+  rfi_ms += static_cast<float>(rfi2_duration.count());
+  printf("[TIMER] Zero-DM filtering and RFI masking on GPU: %.3f ms\n", rfi2_duration.count());
+  printf("[INFO] Total RFI processing time: %.3f ms\n", rfi_ms);
 
   const size_t Dch = (chan_end - chan_start + 1);
   const size_t NSB = (Dch + AF_SUBBAND_SIZE_CH - 1) / AF_SUBBAND_SIZE_CH;
@@ -761,9 +795,6 @@ dedisperseddata_uint8 dedispered_fil_cuda(Filterbank &fil, float dm_low,
     d_binned_input = d_input;
   }
 
-  RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
-
   dedispersion_output_t<T> *d_output;
   CHECK_CUDA(cudaMalloc(&d_output, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
   CHECK_CUDA(cudaMemset(d_output, 0, dm_steps * down_ndata * sizeof(dedispersion_output_t<T>)));
@@ -843,7 +874,7 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
                                 float dm_high, float freq_start, float freq_end,
                                 float dm_step, int ref_freq,
                                 int time_downsample, float t_sample, int target_id,
-                                std::string mask_file) {
+                                std::string mask_file, rficonfig rficfg) {
 
   int device_count; CHECK_CUDA(cudaGetDeviceCount(&device_count));
   if (!device_count) throw std::runtime_error("No CUDA devices found");
@@ -895,6 +926,8 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
   CHECK_CUDA(cudaMemcpy(d_input, data, header.ndata*nchans*sizeof(T), cudaMemcpyHostToDevice));
 
   T *d_binned_input = d_input;
+  
+
   if (time_downsample > 1) {
     CHECK_CUDA(cudaMalloc(&d_binned_input, down_ndata*nchans*sizeof(T)));
     const size_t total = nchans*down_ndata;
@@ -906,8 +939,40 @@ dedisperseddata_uint8 dedisperse_spec(T *data, Header header, float dm_low,
     CHECK_CUDA(cudaFree(d_input));
   }
 
+  printf("RFICONFIG: use_iqrm=%d, use_zero_dm=%d, use_mask=%d\n",
+         rficfg.use_iqrm, rficfg.use_zero_dm, rficfg.use_mask);
+  float rfi_ms = 0.0f;
   RfiMarker<T> rfi_marker(mask_file);
-  rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+  if (rficfg.use_iqrm) {
+    auto iqrm_start = std::chrono::high_resolution_clock::now();
+    // auto win_masks = rfi_iqrm<T>(data, chan_start, chan_end, header.ndata, nchans, header.tsamp, rficfg);
+    auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(d_binned_input, chan_start, chan_end, down_ndata, nchans, header.tsamp * time_downsample, rficfg);
+    auto iqrm_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> iqrm_duration = iqrm_end - iqrm_start;
+    rfi_ms += static_cast<float>(iqrm_duration.count());
+    printf("[INFO] RFI mask generated using IQRM in %.3f ms\n", rfi_ms);
+
+    auto rfi_start = std::chrono::high_resolution_clock::now();
+    rfi_marker.mask(d_binned_input, nchans, down_ndata, win_masks);
+    auto rfi_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> rfi_duration = rfi_end - rfi_start;
+    rfi_ms += static_cast<float>(rfi_duration.count());
+    printf("[TIMER] IQRM RFI masking on GPU: %.3f ms\n", rfi_duration.count());
+  }
+  
+  auto rfi2_start = std::chrono::high_resolution_clock::now();
+  if (rficfg.use_zero_dm) {
+    rfi_marker.zero_dm_filter(d_binned_input, chan_start, chan_end, down_ndata);
+  }
+  if (rficfg.use_mask) {
+    rfi_marker.mark_rfi(d_binned_input, nchans, down_ndata);
+  }
+  auto rfi2_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> rfi2_duration = rfi2_end - rfi2_start;
+  rfi_ms += static_cast<float>(rfi2_duration.count());
+  printf("[TIMER] Zero-DM filtering and RFI masking on GPU: %.3f ms\n", rfi2_duration.count());
+  printf("[INFO] Total RFI processing time: %.3f ms\n", rfi_ms);
+
 
   const size_t Dch  = (chan_end - chan_start + 1);
   const size_t NSB  = (Dch + AF_SUBBAND_SIZE_CH - 1) / AF_SUBBAND_SIZE_CH;
@@ -1153,36 +1218,36 @@ template dedisperseddata_uint8
 dedispered_fil_cuda<uint8_t>(Filterbank &fil, float dm_low, float dm_high,
                              float freq_start, float freq_end, float dm_step,
                              int ref_freq, int time_downsample, float t_sample,
-                             int target_id, std::string mask_file);
+                             int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedispered_fil_cuda<uint16_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
-                              float t_sample, int target_id, std::string mask_file);
+                              float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedispered_fil_cuda<uint32_t>(Filterbank &fil, float dm_low, float dm_high,
                               float freq_start, float freq_end, float dm_step,
                               int ref_freq, int time_downsample,
-                              float t_sample, int target_id, std::string mask_file);
+                              float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint8_t>(uint8_t *data, Header header, float dm_low,
                          float dm_high, float freq_start, float freq_end,
                          float dm_step, int ref_freq, int time_downsample,
-                         float t_sample, int target_id, std::string mask_file);
+                         float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint16_t>(uint16_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
-                          float t_sample, int target_id, std::string mask_file);
+                          float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedisperse_spec<uint32_t>(uint32_t *data, Header header, float dm_low,
                           float dm_high, float freq_start, float freq_end,
                           float dm_step, int ref_freq, int time_downsample,
-                          float t_sample, int target_id, std::string mask_file);
+                          float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 } // namespace gpucal

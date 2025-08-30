@@ -57,7 +57,8 @@ def dedisperse_spec(
         time_downsample,
         t_sample,
         TaskConfig().dedgpu,
-        maskfile
+        maskfile,
+        TaskConfig().rficonfig
     )
 
     basename = os.path.basename(spectrum.filename).split(".")[0]
@@ -101,7 +102,7 @@ def dedisperse_spec_with_dm(
         freq_end = header.fch1 + (header.nchans - 1) * header.foff
 
     data = _astro_core._dedisperse_spec_with_dm(
-        spec, header, tstart, tend, dm, freq_start, freq_end, maskfile
+        spec, header, tstart, tend, dm, freq_start, freq_end, maskfile, TaskConfig().rficonfig
     )
 
     return Spectrum.from_core_spectrum(data)
@@ -210,18 +211,19 @@ def dedispered_fil_with_dm(
         freq_start = header.fch1
         freq_end = header.fch1 + (header.nchans - 1) * header.foff
 
+    rficonfig = TaskConfig().rficonfig
     nbits = header.nbits
     if nbits == 8:
         data = _astro_core._dedispered_fil_with_dm_uint8(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile
+            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile, rficonfig
         )
     elif nbits == 16:
         data = _astro_core._dedispered_fil_with_dm_uint16(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile
+            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile, rficonfig
         )
     elif nbits == 32:
         data = _astro_core._dedispered_fil_with_dm_uint32(
-            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile
+            fil.core_instance, tstart, tend, dm, freq_start, freq_end, maskfile, rficonfig
         )
     else:
         raise ValueError(f"Unsupported number of bits: {nbits}")
@@ -345,9 +347,10 @@ def dedispered_fil(
         dm_step,
         time_downsample,
         t_sample,
-        target=target,  # 0 for CPU, 1 for GPU
-        target_id=TaskConfig().dedgpu,
-        mask_file=maskfile,
+        target,  # 0 for CPU, 1 for GPU
+        TaskConfig().dedgpu,
+        maskfile,
+        TaskConfig().rficonfig
     )
     basename = os.path.basename(file_path).split(".")[0]
     result = []

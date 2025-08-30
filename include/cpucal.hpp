@@ -7,6 +7,9 @@
 #include "filterbank.h"
 #include "marcoutils.h"
 #include "rfimarker_cpu.h"
+#include "iqrm.hpp"
+#include "iqrmcuda.h"
+#include "rfi.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -199,7 +202,7 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 
 template <typename T>
 Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
-                                   float dm, float freq_start, float freq_end, std::string maskfile) {
+                                   float dm, float freq_start, float freq_end, std::string maskfile, rficonfig rficfg) {
 
   omp_set_num_threads(32);
 
@@ -236,7 +239,17 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
   result.tend = tend;
   result.dm = dm;
   T *origin_data = static_cast<T *>(fil->data);
-  rfi_marker.mark_rfi(origin_data, fil->nchans, fil->ndata);
+  
+  if (rficfg.use_iqrm) {
+    // auto win_masks = rfi_iqrm<T>(origin_data, chan_start, chan_end, fil->ndata, fil->nchans, fil->tsamp, rficfg);
+    auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(origin_data, chan_start, chan_end, fil->ndata, fil->nchans, fil->tsamp, rficfg);
+    rfi_marker.mask(origin_data, fil->nchans, fil->ndata, win_masks);
+  }
+
+  if (rficfg.use_mask) {
+    rfi_marker.mark_rfi(origin_data, fil->nchans, fil->ndata);
+  }
+
   result.nchans = chan_end - chan_start;
   result.freq_start = fil->frequency_table[chan_start];
   result.freq_end = fil->frequency_table[chan_end];
@@ -278,7 +291,7 @@ Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
                                     float tstart, float tend, float freq_start,
-                                    float freq_end, std::string maskfile) {
+                                    float freq_end, std::string maskfile, rficonfig rficfg) {
   omp_set_num_threads(32);
   PRINT_VAR(header.tsamp);
   
@@ -324,12 +337,18 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
 
   chan_start = std::max(static_cast<size_t>(0), chan_start);
   chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
+  RfiMarkerCPU<T> rfi_marker(maskfile);
 
-  RfiMarkerCPU <T> rfi_marker(maskfile);
-  rfi_marker.mark_rfi(spec, header.nchans, header.ndata);
-  // printf("RFI marked, chan_start: %zu, chan_end: %zu\n", chan_start,
-  //        chan_end);CPU
-  
+  if (rficfg.use_iqrm) {
+    // auto win_masks = rfi_iqrm<T>(spec, chan_start, chan_end, header.ndata, header.nchans, header.tsamp, rficfg);
+    auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(spec, chan_start, chan_end, header.ndata, header.nchans, header.tsamp, rficfg);
+    rfi_marker.mask(spec, header.nchans, header.ndata, win_masks);
+  }
+
+  if (rficfg.use_mask) {
+    rfi_marker.mark_rfi(spec, header.nchans, header.ndata);
+  }
+
   Spectrum<T> result;
   result.nbits = header.nbits;
   result.ntimes = t_len;

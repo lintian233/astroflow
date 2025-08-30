@@ -6,7 +6,7 @@ namespace py = pybind11;
 dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
                                float dm_high, float freq_start, float freq_end,
                                float dm_step, int time_downsample,
-                               float t_sample, int target, int target_id, std::string mask_file) {
+                               float t_sample, int target, int target_id, std::string mask_file, rficonfig rficfg) {
   Filterbank fil(filename);
   fil.info();
   switch (fil.nbits) {
@@ -14,7 +14,7 @@ dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
     if (target == GPU_TARGET) {
       return gpucal::dedispered_fil_cuda<uint8_t>(
           fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample, target_id, mask_file);
+          time_downsample, t_sample, target_id, mask_file, rficfg);
     } else if (target == CPU_TARGET) {
       return cpucal::dedispered_fil_omp<uint8_t>(
           fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
@@ -25,7 +25,7 @@ dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
     if (target == GPU_TARGET) {
       return gpucal::dedispered_fil_cuda<uint16_t>(
           fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample, target_id, mask_file);
+          time_downsample, t_sample, target_id, mask_file, rficfg);
     } else if (target == CPU_TARGET) {
       return cpucal::dedispered_fil_omp<uint16_t>(
           fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
@@ -36,7 +36,7 @@ dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
     if (target == GPU_TARGET) {
       return gpucal::dedispered_fil_cuda<uint32_t>(
           fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
-          time_downsample, t_sample, target_id, mask_file);
+          time_downsample, t_sample, target_id, mask_file, rficfg);
     } else if (target == CPU_TARGET) {
       return cpucal::dedispered_fil_omp<uint32_t>(
           fil, dm_low, dm_high, freq_start, freq_end, dm_step, REF_FREQ_END,
@@ -239,6 +239,32 @@ void bind_filterbank(py::module &m) {
       });
 }
 
+void bind_iqrmcfg(py::module &m) {
+  py::class_<iqrmconfig>(m, "IQRMconfig")
+      .def(py::init<>())
+      .def(py::init<int, float, float, float, float, float, bool>())
+      .def(py::init<py::object>())
+      .def_readonly("mode", &iqrmconfig::mode)
+      .def_readonly("radius_frac", &iqrmconfig::radius_frac)
+      .def_readonly("nsigma", &iqrmconfig::nsigma)
+      .def_readonly("geofactor", &iqrmconfig::geofactor)
+      .def_readonly("win_sec", &iqrmconfig::win_sec)
+      .def_readonly("hop_sec", &iqrmconfig::hop_sec)
+      .def_readonly("include_tail", &iqrmconfig::include_tail);
+}
+
+
+void bind_rficonfig(py::module &m) {
+  py::class_<rficonfig>(m, "RFIconfig")
+      .def(py::init<>())
+      .def(py::init<bool, bool, bool, iqrmconfig>())
+      .def(py::init<py::object>())
+      .def_readonly("use_zero_dm", &rficonfig::use_zero_dm)
+      .def_readonly("use_mask", &rficonfig::use_mask)
+      .def_readonly("use_iqrm", &rficonfig::use_iqrm)
+      .def_readonly("iqrm_cfg", &rficonfig::iqrm_cfg);
+}
+
 void bind_header(py::module &m) {
   py::class_<Header>(m, "Header")
       .def(py::init<>())
@@ -259,7 +285,7 @@ template <typename T>
 dedisperseddata_uint8
 dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
-                   float dm_step, int time_downsample, float t_sample, int target_id, std::string mask_file) {
+                   float dm_step, int time_downsample, float t_sample, int target_id, std::string mask_file, rficonfig rficfg) {
 
   auto data_ptr = data.request();
   auto data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
@@ -270,31 +296,31 @@ dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
 
   return gpucal::dedisperse_spec<T>(data_ptr_ptr, header, dm_low, dm_high,
                                     freq_start, freq_end, dm_step, REF_FREQ_END,
-                                    time_downsample, t_sample, target_id, mask_file);
+                                    time_downsample, t_sample, target_id, mask_file, rficfg);
 }
 
 template dedisperseddata_uint8
 dedisperse_spec_py<uint8_t>(py::array_t<uint8_t> data, Header header,
                             float dm_low, float dm_high, float freq_start,
                             float freq_end, float dm_step, int time_downsample,
-                            float t_sample, int target_id, std::string mask_file);
+                            float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedisperse_spec_py<uint16_t>(py::array_t<uint16_t> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,
-                             float t_sample, int target_id, std::string mask_file);
+                             float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
 dedisperse_spec_py<uint32_t>(py::array_t<uint32_t> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,
-                             float t_sample, int target_id, std::string mask_file);
+                             float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
                                        float tstart, float tend, float dm,
-                                       float freq_start, float freq_end, std::string maskfile) {
+                                       float freq_start, float freq_end, std::string maskfile, rficonfig rficfg) {
   auto data_ptr = data.request();
   T *data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
 
@@ -303,20 +329,20 @@ Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
   }
 
   return cpucal::dedisperse_spec_with_dm<T>(data_ptr_ptr, header, dm, tstart,
-                                            tend, freq_start, freq_end, maskfile);
+                                            tend, freq_start, freq_end, maskfile, rficfg);
 }
 
 template Spectrum<uint8_t>
 dedisperse_spec_with_dm_py<uint8_t>(py::array_t<uint8_t> data, Header header,
                                     float dm, float tstart, float tend,
-                                    float freq_start, float freq_end, std::string maskfile);
+                                    float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
 
 template Spectrum<uint16_t>
 dedisperse_spec_with_dm_py<uint16_t>(py::array_t<uint16_t> data, Header header,
                                      float dm, float tstart, float tend,
-                                     float freq_start, float freq_end, std::string maskfile);
+                                     float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
 
 template Spectrum<uint32_t>
 dedisperse_spec_with_dm_py<uint32_t>(py::array_t<uint32_t> data, Header header,
                                      float dm, float tstart, float tend,
-                                     float freq_start, float freq_end, std::string maskfile);
+                                     float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);

@@ -5,6 +5,8 @@
 #include <string>
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <iqrm.hpp>
+
 
 /**
  * GPU RFI marker:
@@ -27,8 +29,30 @@ public:
                   unsigned int num_samples,
                   cudaStream_t stream = 0);
 
+    void zero_dm_filter(T* d_data,
+                        unsigned int num_channels,
+                        unsigned int num_samples,
+                        float alpha = 1.0f,
+                        bool clip_to_zero = true,
+                        cudaStream_t stream = 0);
+
+    void zero_dm_filter(T* d_data,
+                                unsigned int num_channels,
+                                unsigned int num_samples,
+                                unsigned int chan_start,
+                                unsigned int chan_end,
+                                float alpha = 1.0f,
+                                bool clip_to_zero = true,
+                                cudaStream_t stream = 0);
+
     // 重新加载掩码文件（会同步上传到 GPU）；文件不存在或为空则视为无坏道
     void load_mask(const char* mask_file);
+
+    void mask(T* d_data,
+              unsigned int num_channels,
+              unsigned int num_samples,
+              const std::vector<iqrm_omp::WindowMask>& win_masks,
+              cudaStream_t stream = 0);
 
     // Host 侧只读坏道列表
     const std::vector<int>& get_bad_channels() const { return bad_channels_; }

@@ -479,7 +479,7 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
     spec_vmin = np.percentile(spec_data, specconfig.get("minpercentile", 0.1))
     spec_vmax = np.percentile(spec_data, specconfig.get("maxpercentile", 99.9))
     if spec_vmin == 0:
-        non_zero_values = spec_data[spec_data > 0]
+        non_zero_values = spec_data[spec_data > 1]
         if non_zero_values.size > 0:
             spec_vmin = non_zero_values.min()
     

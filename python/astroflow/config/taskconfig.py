@@ -4,6 +4,7 @@ import yaml
 import urllib.request
 
 
+from .rficonfig import RFIConfig, IQRMConfig
 
 CENTERNET = 0
 YOLOV11N = 1
@@ -24,6 +25,8 @@ class TaskConfig:
         if self._initialized:
             return
         self._initialized = True
+        self._rficonfig = None
+        self._iqrmcfg = None
         self.config_file = config_file
         self._config_data = self._load_config()
         cputhread = self._config_data.get("cputhread", 16)
@@ -218,6 +221,51 @@ class TaskConfig:
     def detgpu(self):
         return self._config_data.get("detgpu", 0)
     
+    @property
+    def rficonfig(self):
+        if self._rficonfig is None:
+            rfi = self._config_data.get("rfi")
+            if rfi is None:
+                self._rficonfig = RFIConfig(use_mask=False, use_zero_dm=False, use_iqrm=False, iqrm_cfg=IQRMConfig())
+                return self._rficonfig
+        
+            #rfi: 000 # use_mask:0 use_iqrm:0 use_zero_dm:0 dont use any rfi mitigation
+            if not isinstance(rfi, dict):
+                raise ValueError("rfi must be a dictionary.")
+            use_mask = rfi.get("use_mask", False)
+            use_zero_dm = rfi.get("use_zero_dm", False)
+            use_iqrm = rfi.get("use_iqrm", False)
+
+            iqrm_cfg = self.iqrmcfg if use_iqrm else IQRMConfig()
+            self._rficonfig = RFIConfig(use_mask=use_mask, use_zero_dm=use_zero_dm, use_iqrm=use_iqrm, iqrm_cfg=iqrm_cfg)
+        return self._rficonfig
+    
+    @property
+    def iqrmcfg(self):
+        if self._iqrmcfg is None:
+            iqrmcfg = self._config_data.get("iqrm")
+            if iqrmcfg is None:
+                self._iqrmcfg = None
+            else:
+                if not isinstance(iqrmcfg, dict):
+                    raise ValueError("iqrmcfg must be a dictionary.")
+                required_keys = ["mode", "radius_frac", "nsigma", "geofactor", "win_sec", "hop_sec", "include_tail"]
+                for key in required_keys:
+                    if key not in iqrmcfg:
+                        raise ValueError(f"iqrmcfg must contain the key '{key}'.")
+                self._iqrmcfg = iqrmcfg
+                self._iqrmcfg = IQRMConfig(
+                    mode=iqrmcfg["mode"],
+                    radius_frac=iqrmcfg["radius_frac"],
+                    nsigma=iqrmcfg["nsigma"],
+                    geofactor=iqrmcfg["geofactor"],
+                    win_sec=iqrmcfg["win_sec"],
+                    hop_sec=iqrmcfg["hop_sec"],
+                    include_tail=iqrmcfg["include_tail"]
+                )
+
+        return self._iqrmcfg
+        
     @property
     def cputhread(self):
         return self._config_data.get("cputhread", 16)

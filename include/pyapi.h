@@ -4,6 +4,7 @@
 #define _PYAPI_H
 
 #include "cpucal.hpp"
+#include "rfi.h"
 #include "data.h"
 #include "gpucal.h"
 #include <cstdint>
@@ -19,20 +20,20 @@ dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
                                float dm_high, float freq_start, float freq_end,
                                float dm_step, int time_downsample,
                                float t_sample, int target, int target_id,
-                               std::string mask_file);
+                               std::string mask_file, rficonfig rficfg);
 
 template <typename T>
 dedisperseddata_uint8 
 dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
                    float dm_step, int time_downsample, float t_sample, int target_id,
-                   std::string mask_file);
+                   std::string mask_file, rficonfig rficfg);
 
 template <typename T>
 Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
                                        float dm, float tstart, float tend,
                                        float freq_start, float freq_end, 
-                                       std::string maskfile);
+                                       std::string maskfile, rficonfig rficfg);
 
 template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name);
@@ -40,6 +41,10 @@ void bind_dedispersed_data(py::module &m, const char *class_name);
 void bind_dedispersed_data_uint8(py::module &m, const char *class_name);
 
 void bind_filterbank(py::module &m);
+
+void bind_rficonfig(py::module &m);
+
+void bind_iqrmcfg(py::module &m);
 
 template <typename T> void bind_spectrum(py::module &m, const char *class_name);
 

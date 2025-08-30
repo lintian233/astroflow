@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <iqrm.hpp>
 
 /**
  * CPU RFI marker:
@@ -25,8 +26,12 @@ public:
                   unsigned int num_channels,
                   unsigned int num_samples);
 
-    // 重新加载掩码；文件不存在或为空则视为无坏道
     void load_mask(const char* mask_file);
+
+    void mask(T *h_data,
+              unsigned int num_channels,
+              unsigned int num_samples,
+              std::vector<iqrm_omp::WindowMask> &win_masks);
 
     const std::vector<int>& get_bad_channels() const { return bad_channels_; }
 
