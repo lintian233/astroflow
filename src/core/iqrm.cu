@@ -4,7 +4,7 @@
 #include <thrust/copy.h>
 #include <thrust/sort.h>
 
-// -------------------- 工具：错误检查（可选） --------------------
+
 #ifndef CUDA_CHECK
 #define CUDA_CHECK(x) do { \
     cudaError_t _e = (x); \
@@ -17,7 +17,6 @@
 
 namespace iqrm_cuda {
 
-//======================= 设备核：时间窗口内计算每通道 SUM/SUMSQ =======================
 
 template <typename T>
 __global__ void reduce_sum_sumsq_per_channel_kernel(
@@ -69,7 +68,6 @@ __global__ void reduce_sum_sumsq_per_channel_kernel(
     }
 }
 
-//======================= 设备核：由 sum/sumsq 生成通道统计量 x =======================
 
 __global__ void make_stat_from_sums(
     const double* __restrict__ sum,     // [Csub]
@@ -92,8 +90,6 @@ __global__ void make_stat_from_sums(
     }
 }
 
-//======================= 设备核：lagged diff with clipping =======================
-// 与 CPU 版保持一致的“常数差填充”边界
 
 __global__ void make_diff_with_clipping(
     const float* __restrict__ x,  // [Csub]
@@ -120,7 +116,6 @@ __global__ void make_diff_with_clipping(
     }
 }
 
-//======================= 设备核：根据阈值打标 + 计数票数 =======================
 
 __global__ void flag_and_count_kernel(
     const float* __restrict__ d,        // [Csub]
@@ -155,7 +150,6 @@ __global__ void flag_and_count_kernel(
     atomicAdd(&cast_cnt[j], 1);
 }
 
-//======================= 设备核：合并所有 lag，生成最终子带掩码 =======================
 
 __global__ void merge_lags_to_mask_kernel(
     const uint8_t* __restrict__ flags_all, // [L * Csub]，按 lag 顺序拼接
@@ -190,7 +184,7 @@ __global__ void merge_lags_to_mask_kernel(
     mask_out[i] = 0;
 }
 
-//======================= Host：生成 lag 序列（与 CPU 相同） =======================
+
 
 inline std::vector<int> gen_lags_host(int radius, double geofactor) {
     std::vector<int> lags;
@@ -205,7 +199,6 @@ inline std::vector<int> gen_lags_host(int radius, double geofactor) {
     return lags;
 }
 
-//======================= Host：单窗运行 IQRM，返回子带掩码（长度=Csub） =======================
 
 template <typename T>
 static std::vector<uint8_t> run_iqrm_one_window_gpu(
@@ -228,7 +221,7 @@ static std::vector<uint8_t> run_iqrm_one_window_gpu(
     std::vector<uint8_t> h_mask_sub(Csub, 0u);
     if (Csub == 0 || W == 0) return h_mask_sub;
 
-    // ---- 1) 计算每通道 sum/sumsq ----
+
     double *d_sum = nullptr, *d_sumsq = nullptr;
     CUDA_CHECK(cudaMalloc(&d_sum,   Csub * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&d_sumsq, Csub * sizeof(double)));
@@ -240,19 +233,19 @@ static std::vector<uint8_t> run_iqrm_one_window_gpu(
         d_data, NCHAN, t0, t1, chan_start, Csub, d_sum, d_sumsq
     );
 
-    // ---- 2) 生成统计量 x（Mean / Std） ----
+
     float* d_x = nullptr;
     CUDA_CHECK(cudaMalloc(&d_x, Csub * sizeof(float)));
     const int TPB_X = 256;
     dim3 grid_x((Csub + TPB_X - 1) / TPB_X);
     make_stat_from_sums<<<grid_x, TPB_X, 0, stream>>>(d_sum, d_sumsq, W, mode, d_x, Csub);
 
-    // ---- 3) IQRM：对一组 ±lag 迭代 ----
+
     const int radius = std::max(1, (int)std::floor(radius_frac * (float)Csub));
     std::vector<int> h_lags = gen_lags_host(radius, geofactor);
     const unsigned int L = (unsigned)h_lags.size();
 
-    // 设备端资源
+
     int    *d_lags     = nullptr;
     float  *d_d        = nullptr;           // 每个 lag 的差分向量
     float  *d_d_sorted = nullptr;           // 排序用
@@ -273,7 +266,7 @@ static std::vector<uint8_t> run_iqrm_one_window_gpu(
         CUDA_CHECK(cudaMemsetAsync(d_cast_cnt, 0, Csub * sizeof(int), stream));
         CUDA_CHECK(cudaMemsetAsync(d_flags_all, 0, (size_t)L * Csub * sizeof(uint8_t), stream));
     } else {
-        // 无 lag：直接返回全 0
+
         CUDA_CHECK(cudaFree(d_sum));
         CUDA_CHECK(cudaFree(d_sumsq));
         CUDA_CHECK(cudaFree(d_x));
@@ -288,18 +281,17 @@ static std::vector<uint8_t> run_iqrm_one_window_gpu(
         CUDA_CHECK(cudaMemcpyAsync(&lag, d_lags + li, sizeof(int), cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream)); // 获取当前 lag
 
-        // (a) 差分
+
         make_diff_with_clipping<<<grid_C, TPB, 0, stream>>>(d_x, lag, d_d, Csub);
 
-        // (b) 排序 + 取分位：Q1(0.25), Med(0.5), Q3(0.75)
+
         CUDA_CHECK(cudaMemcpyAsync(d_d_sorted, d_d, Csub*sizeof(float), cudaMemcpyDeviceToDevice, stream));
         {   // thrust::sort
             thrust::device_ptr<float> td(d_d_sorted);
             thrust::sort(thrust::cuda::par.on(stream), td, td + Csub);
         }
 
-        // 从排序结果取若干点（线性插值）
-        // 由于只取极少值，直接拷回主机做插值最简单
+
         std::vector<float> tmp(Csub);
         CUDA_CHECK(cudaMemcpyAsync(tmp.data(), d_d_sorted, Csub*sizeof(float), cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -318,29 +310,26 @@ static std::vector<uint8_t> run_iqrm_one_window_gpu(
         float s   = std::abs((q3 - q1) / 1.349f);
 
         if (!(s > 0.f) || !std::isfinite(s)) {
-            // 无法判别：本 lag 的 flag 全 0（已在 memset 中初始化），直接下一 lag
             continue;
         }
 
         float thr = nsigma * s;
 
-        // (c) 打标 + 计数
+
         uint8_t* flags_lag = d_flags_all + (size_t)li * Csub;
         flag_and_count_kernel<<<grid_C, TPB, 0, stream>>>(
             d_d, med, thr, lag, Csub, flags_lag, d_recv_cnt, d_cast_cnt
         );
     }
 
-    // (d) 合并所有 lag 生成最终子带掩码
     merge_lags_to_mask_kernel<<<grid_C, TPB, 0, stream>>>(
         d_flags_all, d_lags, d_recv_cnt, d_cast_cnt, Csub, L, d_mask_sub
     );
 
-    // ---- 4) 取回结果 ----
     CUDA_CHECK(cudaMemcpyAsync(h_mask_sub.data(), d_mask_sub, Csub*sizeof(uint8_t), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    // ---- 5) 释放 ----
+
     CUDA_CHECK(cudaFree(d_sum));
     CUDA_CHECK(cudaFree(d_sumsq));
     CUDA_CHECK(cudaFree(d_x));
@@ -355,16 +344,15 @@ static std::vector<uint8_t> run_iqrm_one_window_gpu(
     return h_mask_sub;
 }
 
-//======================= Host：主入口（与 CPU 版接口对齐，返回每窗 × NCHAN 掩码） =======================
 
 template <typename T>
 std::vector<iqrm_omp::WindowMask> iqrm(
-    const T* d_data,              // 设备端数据指针
+    const T* d_data,              
     unsigned int chan_start,
     unsigned int chan_end,
     double tsamp,
     unsigned int nsample,
-    int mode,                     // 0=Mean, 1=Std
+    int mode,                     
     cudaStream_t stream = 0
 ){
     static_assert(std::is_unsigned<T>::value && sizeof(T) <= 4,
@@ -377,7 +365,6 @@ std::vector<iqrm_omp::WindowMask> iqrm(
 
     const unsigned int Csub = chan_end - chan_start;
 
-    // 秒->样本
     const unsigned W = (Cfg.win_sec > 0.0 ? (unsigned)std::floor(Cfg.win_sec / tsamp) : 0u);
     const unsigned H = (Cfg.hop_sec > 0.0 ? (unsigned)std::floor(Cfg.hop_sec / tsamp) : W);
 
@@ -427,6 +414,13 @@ rfi_iqrm_gpu_host(const T* h_input,
                                  cfg.iqrm_cfg.hop_sec,
                                  cfg.iqrm_cfg.include_tail);    
 
+    // printf("IQRM CONFIG:" 
+    //        " mode=%d radius_frac=%.3f nsigma=%.3f geofactor=%.3f "
+    //        " win_sec=%.3f hop_sec=%.3f include_tail=%d\n",
+    //        cfg.iqrm_cfg.mode, cfg.iqrm_cfg.radius_frac, cfg.iqrm_cfg.nsigma,
+    //        cfg.iqrm_cfg.geofactor, cfg.iqrm_cfg.win_sec, cfg.iqrm_cfg.hop_sec,
+    //        (int)cfg.iqrm_cfg.include_tail);
+                                     
     T* d_input = nullptr;
     size_t nbytes = (size_t)nsample * nchan_total * sizeof(T);
     CUDA_CHECK(cudaMalloc(&d_input, nbytes));
@@ -459,14 +453,13 @@ rfi_iqrm_gpu(const T* d_input,
                                  rficfg.iqrm_cfg.hop_sec,
                                  rficfg.iqrm_cfg.include_tail);
 
-    // printf("IQRM CONFIG: mode=%d, radius_frac=%.3f, nsigma=%.3f, geofactor=%.3f, win_sec=%.3f, hop_sec=%.3f, include_tail=%d\n",
-    //        rficfg.iqrm_cfg.mode,
-    //        rficfg.iqrm_cfg.radius_frac,
-    //        rficfg.iqrm_cfg.nsigma,
-    //        rficfg.iqrm_cfg.geofactor,
-    //        rficfg.iqrm_cfg.win_sec,
-    //        rficfg.iqrm_cfg.hop_sec,
-    //        (int)rficfg.iqrm_cfg.include_tail);                                 
+    // printf("IQRM CONFIG:"
+    //         " mode=%d radius_frac=%.3f nsigma=%.3f geofactor=%.3f "
+    //           " win_sec=%.3f hop_sec=%.3f include_tail=%d\n",
+    //           rficfg.iqrm_cfg.mode, rficfg.iqrm_cfg.radius_frac, rficfg.iqrm_cfg.nsigma,
+    //           rficfg.iqrm_cfg.geofactor, rficfg.iqrm_cfg.win_sec, rficfg.iqrm_cfg.hop_sec,
+    //           (int)rficfg.iqrm_cfg.include_tail);
+
     return iqrm<T>(d_input,
                    (unsigned)chan_start, (unsigned)chan_end,
                    tsamp, (unsigned)ndata, rficfg.iqrm_cfg.mode,

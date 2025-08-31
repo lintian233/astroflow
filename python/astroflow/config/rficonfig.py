@@ -38,9 +38,9 @@ class RFIConfig(_astro_core.RFIconfig):
             iqrm_cfg = _astro_core.IQRMconfig(
                 0,      # mode
                 0.1,    # radius_frac
-                3.0,    # nsigma
+                10.0,    # nsigma
                 1.5,    # geofactor
-                5.0,    # win_sec
+                0,    # win_sec
                 2.5,    # hop_sec
                 True    # include_tail
             )

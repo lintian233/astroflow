@@ -40,7 +40,7 @@ inline void set_window_seconds(double win_sec, double hop_sec, bool include_tail
     cfg().include_tail = include_tail;
 }
 
-//================ 工具：lags / 分位数 / Tukey =================
+
 static inline std::vector<int> gen_lags(int radius, double geofactor){
     std::vector<int> lags;
     if (radius <= 0) return lags;
@@ -72,7 +72,8 @@ static inline bool tukey_on_vector(const std::vector<float>& d, float& med, floa
     std_est  = std::abs((q3 - q1) / 1.349f);
     return (std_est > 0.f) && std::isfinite(std_est);
 }
-// 参考 iqrm_apollo 的“常数差填充”边界
+
+
 static inline void lagged_diff_with_clipping(const std::vector<float>& x, int lag,
                                              std::vector<float>& d)
 {
@@ -96,7 +97,8 @@ static inline void lagged_diff_with_clipping(const std::vector<float>& x, int la
         }
     }
 }
-// 对通道统计量 x（长度=Csub）做 IQRM，返回区间内的 0/1 mask（长度=Csub）
+
+
 static inline void iqrm_on_stat(const std::vector<float>& x,
                                 float radius_frac, float nsigma, double geofactor,
                                 std::vector<uint8_t>& mask_out)
@@ -156,14 +158,15 @@ static inline void iqrm_on_stat(const std::vector<float>& x,
     }
 }
 
-//================ 每窗输出（长度=NCHAN 的坏道表） ================
+
 struct WindowMask {
     unsigned t0;                 // 本窗起始 sample（含）
     unsigned t1;                 // 本窗结束 sample（不含）
     std::vector<uint8_t> mask;   // 长度 = NCHAN；[chan_start,chan_end) 内为 IQRM 结果，其它通道=0
 };
 
-//============= 入口：返回“每窗 × NCHAN”的 0/1 坏道表 =============
+
+
 template <typename T>
 inline std::vector<WindowMask>
 iqrm(const T* data, unsigned int chan_start, unsigned int chan_end,
@@ -182,7 +185,7 @@ iqrm(const T* data, unsigned int chan_start, unsigned int chan_end,
     const unsigned W = (Cfg.win_sec > 0.0 ? (unsigned)std::floor(Cfg.win_sec / tsamp) : 0u);
     const unsigned H = (Cfg.hop_sec > 0.0 ? (unsigned)std::floor(Cfg.hop_sec / tsamp) : W);
 
-    // 计算一个窗口 [t0,t1) 的区间统计量 x（长度=Csub），mode=0 Mean，1 Std
+   
     auto compute_stat_in_win = [&](unsigned t0, unsigned t1, std::vector<float>& x){
         x.assign(Csub, 0.f);
         if (mode == 0){ // Mean
@@ -219,11 +222,11 @@ iqrm(const T* data, unsigned int chan_start, unsigned int chan_end,
         std::vector<float> stat;
         compute_stat_in_win(t0, t1, stat);
 
-        // 区间内 IQRM → 得到 Csub 长度的 0/1 mask
+
         std::vector<uint8_t> submask;
         iqrm_on_stat(stat, Cfg.radius_frac, Cfg.nsigma, Cfg.geofactor, submask);
 
-        // 扩展成 NCHAN 长度：区间外=0，区间内拷贝 submask
+
         std::vector<uint8_t> full(NCHAN, 0u);
         if (!submask.empty()){
             std::copy(submask.begin(), submask.end(), full.begin() + chan_start);
@@ -232,10 +235,10 @@ iqrm(const T* data, unsigned int chan_start, unsigned int chan_end,
     };
 
     if (W == 0 || W >= nsample){
-        // 整段一个窗
+
         push_window(0, nsample);
     } else {
-        // 计算所有窗口的起止点
+
         std::vector<std::pair<unsigned, unsigned>> win_ranges;
         unsigned t0 = 0;
         while (t0 + W <= nsample){
@@ -244,15 +247,15 @@ iqrm(const T* data, unsigned int chan_start, unsigned int chan_end,
         }
         if (Cfg.include_tail && t0 < nsample){
             unsigned t1 = nsample;
-            if (t1 > t0 + 4) win_ranges.emplace_back(t0, t1); // 极短尾巴可跳过
+            if (t1 > t0 + 4) win_ranges.emplace_back(t0, t1); 
         }
-        // OpenMP 并行处理每个窗口
+
         std::vector<WindowMask> win_out(win_ranges.size());
         #pragma omp parallel for if(win_ranges.size() > 1)
         for (int i = 0; i < (int)win_ranges.size(); ++i) {
             std::vector<WindowMask> tmp;
             auto [t0, t1] = win_ranges[i];
-            // push_window 逻辑内联
+
             std::vector<float> stat;
             compute_stat_in_win(t0, t1, stat);
             std::vector<uint8_t> submask;
@@ -263,7 +266,7 @@ iqrm(const T* data, unsigned int chan_start, unsigned int chan_end,
             }
             win_out[i] = WindowMask{t0, t1, std::move(full)};
         }
-        // 合并结果
+
         for (auto& w : win_out) out.push_back(std::move(w));
     }
     return out;

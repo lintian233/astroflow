@@ -13,13 +13,13 @@ def logging_setup():
     logger.add(
         sys.stdout,
         level="INFO",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {function}:{line} - {message}",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {function}- {message}",
     )
 
     logger.add(
         f"{TaskConfig().output}/astroflow.log",
         level="INFO",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {function}:{line} - {message}",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {function}- {message}",
         rotation="10 MB",
         retention="10 days",
         encoding="utf-8",

@@ -265,7 +265,16 @@ class TaskConfig:
                 )
 
         return self._iqrmcfg
-        
+    
+    @property    
+    def batchsize(self):
+        batchsize = self._config_data.get("batchsize")
+        if batchsize is None:
+            batchsize = 128
+        if not isinstance(batchsize, int):
+            raise ValueError("batchsize must be an integer.")
+        return batchsize
+    
     @property
     def cputhread(self):
         return self._config_data.get("cputhread", 16)

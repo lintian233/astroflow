@@ -2,10 +2,19 @@ from astropy.io import fits
 import numpy as np
 import os
 
+import time
 from .. import _astroflow_core as _astro_core  # type: ignore
 
 from .data import SpectrumBase, Header, SpectrumType
 
+def iotimeit(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        print(f"[INFO] I/O : {(time.time() - start):2f} s")
+        return result
+
+    return wrapper
 
 class PsrFits(SpectrumBase):
     """
@@ -17,7 +26,8 @@ class PsrFits(SpectrumBase):
         self._filename = filename
         self._load_data()
         self._type = SpectrumType.PSRFITS
-
+    
+    # @iotimeit
     def _load_data(self):
         with fits.open(self.filename, memmap=True) as hdul:  # memmap=True 更稳
             header0 = hdul[0].header

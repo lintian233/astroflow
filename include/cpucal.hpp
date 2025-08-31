@@ -340,8 +340,8 @@ Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
   RfiMarkerCPU<T> rfi_marker(maskfile);
 
   if (rficfg.use_iqrm) {
-    // auto win_masks = rfi_iqrm<T>(spec, chan_start, chan_end, header.ndata, header.nchans, header.tsamp, rficfg);
     auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(spec, chan_start, chan_end, header.ndata, header.nchans, header.tsamp, rficfg);
+    // printf("IQRM found %zu bad windows\n", win_masks.size());
     rfi_marker.mask(spec, header.nchans, header.ndata, win_masks);
   }
 

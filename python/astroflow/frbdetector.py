@@ -62,7 +62,7 @@ class BinaryChecker(ABC):
 
 
 class Yolo11nFrbDetector(FrbDetector):
-    def __init__(self, dm_limt=None, preprocess=None, confidence=0.5, batch_size=1024):
+    def __init__(self, dm_limt=None, preprocess=None, confidence=0.5):
         super().__init__(dm_limt, preprocess, confidence)
         detgpu = TaskConfig().detgpu
         self.device = torch.device(f"cuda:{detgpu}" if torch.cuda.is_available() else "cpu")
@@ -71,7 +71,7 @@ class Yolo11nFrbDetector(FrbDetector):
         )
         self.model = self._load_model()
         self.kernel_2d = None
-        self.batch_size = batch_size  # 添加批处理大小参数
+        self.batch_size = TaskConfig().batchsize
 
     def _load_model(self):
         model = YOLO(TaskConfig().modelpath)
@@ -112,7 +112,6 @@ class Yolo11nFrbDetector(FrbDetector):
                 npy_dmt_list, conf=self.confidence, device=self.device, iou=0.45, stream=True, verbose=False
             )
             self._process_results(results, dmt_list, candidate, start_index=0)
-            print(f"Processed {total_samples} samples in one batch.")
         else:
 
             for i in range(0, total_samples, self.batch_size):
