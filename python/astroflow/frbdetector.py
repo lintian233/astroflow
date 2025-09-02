@@ -6,7 +6,7 @@ import numba as nb
 import numpy as np
 import seaborn
 import torch
-
+import time
 # override
 from typing_extensions import override
 from ultralytics import YOLO
@@ -107,10 +107,13 @@ class Yolo11nFrbDetector(FrbDetector):
         total_samples = len(npy_dmt_list)
         
         if total_samples <= self.batch_size:
-            
+            # start_time = time.time()
             results = model(
                 npy_dmt_list, conf=self.confidence, device=self.device, iou=0.45, stream=True, verbose=False
             )
+            # end_time = time.time()
+            # detect_time = (end_time - start_time) * 1000
+            # print(f"[TIMER] Detect: {detect_time:.3f} ms")
             self._process_results(results, dmt_list, candidate, start_index=0)
         else:
 
@@ -118,10 +121,13 @@ class Yolo11nFrbDetector(FrbDetector):
                 end_idx = min(i + self.batch_size, total_samples)
                 batch_imgs = npy_dmt_list[i:end_idx]
                 batch_dmts = dmt_list[i:end_idx]
-                
+                # start_time = time.time()
                 results = model(
                     batch_imgs, conf=self.confidence, device=self.device, iou=0.1, stream=True
                 )
+                # end_time = time.time()
+                # detect_time = (end_time - start_time) * 1000
+                # print(f"[TIMER] Detect batch {i}-{end_idx}: {detect_time:.3f} ms")
                 self._process_results(results, batch_dmts, candidate, start_index=i)
                         
         return candidate

@@ -16,7 +16,7 @@
 #include <omp.h>
 #include <vector>
 #include <opencv2/opencv.hpp>
-
+#include <chrono>
 namespace py = pybind11;
 
 #define AF_DEBUG
@@ -626,7 +626,9 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
                                               int target_size = 512)
 {
     omp_set_num_threads(32);
-    
+    #ifdef AF_DEBUG
+    auto start_time = std::chrono::high_resolution_clock::now();
+    #endif
     /* ---------- 输入检查 ---------- */
     if (in.shape.size() < 2)
         throw std::runtime_error("DedispersedDataTyped.shape 长度必须 ≥ 2");
@@ -715,6 +717,11 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
         std::memcpy(buf.get(), viridis.data, bytes);
         out.dm_times[slice_idx] = std::move(buf);
     }
+    #ifdef AF_DEBUG
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    printf("[TIMER] Grid: %.3f ms\n", elapsed.count() * 1000);
+    #endif
 
     return out;
 }

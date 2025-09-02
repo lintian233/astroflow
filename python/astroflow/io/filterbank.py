@@ -34,6 +34,7 @@ class Filterbank(SpectrumBase):
         self._ndata = None
         self._data = None
         self._header = None
+        self._continue_data = None
 
     def _load_data(self):
         self._core_instance = _astro_core.Filterbank(self._filename)
@@ -51,7 +52,7 @@ class Filterbank(SpectrumBase):
     @property
     def core_instance(self):
         if self._core_instance is None:
-            self._lodad_data()
+            self._load_data()
         return self._core_instance
 
     def get_spectrum(self):
@@ -62,7 +63,9 @@ class Filterbank(SpectrumBase):
     def get_original_data(self) -> np.ndarray:
         if self._data is None:
             self._load_data()
-        return self._data.reshape(-1)
+        if self._continue_data is None:
+            self._continue_data = self._data.reshape(-1)
+        return self._continue_data
 
     def header(self) -> Header:
         """
@@ -100,6 +103,8 @@ class FilterbankPy(SpectrumBase):
         self._type = SpectrumType.CUSTOM
         self._filename = filename
         self._header = None
+        self._continue_data = None
+        self._data = None
 
     def _load_data(self):
         your_reader = your.Your(self._filename)
@@ -146,7 +151,9 @@ class FilterbankPy(SpectrumBase):
     def get_original_data(self) -> np.ndarray:
         if self._data is None:
             self._load_data()
-        return self._data.reshape(-1)
+        if self._continue_data is None:
+            self._continue_data = self._data.reshape(-1)
+        return self._continue_data
 
     def header(self) -> Header:
         """

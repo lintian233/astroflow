@@ -924,7 +924,7 @@ def plot_candidate(
         # Parse candidate information
         dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
         
-        print(f"Plotting candidate: DM={dm}, TOA={toa}, Freq={freq_start}-{freq_end} MHz, DMT Index={dmt_idx}")
+        print(f"Plot cand: DM={dm}, TOA={toa}, Freq={freq_start}-{freq_end} MHz, DMT Index={dmt_idx}")
         
         # Setup figure and grid
         fig = plt.figure(figsize=(20, 10), dpi=dpi)
@@ -1054,8 +1054,8 @@ def plot_candidate(
         output_filename = (
             f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
         )
-        print(f"Saving {output_filename}")
-        
+        print(f"Saving: {os.path.basename(output_filename)}")
+
         plt.savefig(
             output_filename,
             dpi=dpi,

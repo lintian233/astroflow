@@ -63,7 +63,7 @@ def dedisperse_spec(
 
     basename = os.path.basename(spectrum.filename).split(".")[0]
     result = []
-    for idx, dmt in enumerate(data.dm_times[:-1]):
+    for idx, dmt in enumerate(data.dm_times):
         tstart = idx * t_sample
         tend = (idx + 1) * t_sample
         result.append(
@@ -354,7 +354,7 @@ def dedispered_fil(
     )
     basename = os.path.basename(file_path).split(".")[0]
     result = []
-    for idx, dmt in enumerate(data.dm_times[:-1]):
+    for idx, dmt in enumerate(data.dm_times):
         tstart = idx * t_sample
         tend = (idx + 1) * t_sample
         result.append(
