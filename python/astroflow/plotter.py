@@ -398,7 +398,6 @@ def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, 
     )
     ax_main.set_xlabel("Time (s)", fontsize=12, labelpad=10)
     ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
-    
     # Add dashed circle around the candidate region instead of straight lines
     time_range = time_axis[-1] - time_axis[0]
     dm_range = dm_axis[-1] - dm_axis[0]
@@ -432,7 +431,7 @@ def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, 
     ax_time.plot(time_axis, time_sum, lw=1.5, color="darkred")
     ax_time.tick_params(axis="x", labelbottom=False)
     ax_time.grid(alpha=0.3)
-    ax_time.text(0.02, 0.954, f"DM: {dm:.2f} pc $cm^{{-3}}$ \n TOA: {toa:.3f}s", 
+    ax_time.text(0.02, 0.95, f"DM: {dm:.2f} pc $cm^{{-3}}$ \n TOA: {toa:.3f}s", 
                   transform=ax_time.transAxes, fontsize=10, verticalalignment='top', 
                   bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
     return ax_time, ax_main, ax_dm
@@ -448,6 +447,7 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
     
     # Time series (sum over frequency axis)
     time_series = np.sum(spec_data, axis=1)
+    # vmin = first non-zero 
     ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
     
     # Add TOA line if provided
@@ -462,7 +462,7 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
                          transform=ax_spec_time.transAxes, fontsize=10, 
                          verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", 
                          facecolor="white", alpha=0.8))
-    
+        
     ax_spec_time.set_ylabel("Integrated Power")
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
     ax_spec_time.grid(True, alpha=0.3)
@@ -471,11 +471,15 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
     
     # Frequency marginal (sum over time axis)
     freq_series = np.sum(spec_data, axis=0)
+     # vmin = first non-zero 
+    vmin = freq_series[freq_series > 0].min()
+    vmax = freq_series.max()
     ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
     ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
-    
+    ax_spec_freq.set_xlim(vmin, vmax * 1.01)
+
     spec_vmin = np.percentile(spec_data, specconfig.get("minpercentile", 0.1))
     spec_vmax = np.percentile(spec_data, specconfig.get("maxpercentile", 99.9))
     if spec_vmin == 0:
@@ -503,7 +507,7 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
     ax_spec.set_ylabel(f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
     ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
     ax_spec.set_xlim(spec_tstart, spec_tend)
-    
+
     return ax_spec_time, ax_spec, ax_spec_freq
 
 

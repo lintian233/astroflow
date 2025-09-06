@@ -461,9 +461,12 @@ def muti_pulsar_search(
 
     detect_dir = os.path.join(output_dir, "detect")
     file_basename = os.path.basename(file).split(".")[0]
-
+    
     os.makedirs(detect_dir, exist_ok=True)
+    # start_time = time.time()
     candidates = detector.mutidetect(dmtimes)
+    # end_time = time.time()
+    # print(f"[TIMER] Detect: {end_time - start_time:.2f} s")
     if candidates is None:
         candidates = []
         

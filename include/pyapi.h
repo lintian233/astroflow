@@ -24,13 +24,13 @@ dedisperseddata_uint8 dedispered_fil(std::string filename, float dm_low,
 
 template <typename T>
 dedisperseddata_uint8 
-dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
+dedisperse_spec_py(py::array_t<T, py::array::c_style> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
                    float dm_step, int time_downsample, float t_sample, int target_id,
                    std::string mask_file, rficonfig rficfg);
 
 template <typename T>
-Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
+Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T, py::array::c_style> data, Header header,
                                        float dm, float tstart, float tend,
                                        float freq_start, float freq_end, 
                                        std::string maskfile, rficonfig rficfg);

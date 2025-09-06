@@ -24,12 +24,12 @@ class PsrFits(SpectrumBase):
     def __init__(self, filename):
         super().__init__()
         self._filename = filename
+        self._reshaped_data = None  # 缓存reshape后的数据
         self._load_data()
         self._type = SpectrumType.PSRFITS
     
-    # @iotimeit
     def _load_data(self):
-        with fits.open(self.filename, memmap=True) as hdul:  # memmap=True 更稳
+        with fits.open(self.filename) as hdul:  # memmap=True 更稳
             header0 = hdul[0].header
             header1 = hdul[1].header
             data = hdul[1].data
@@ -39,7 +39,6 @@ class PsrFits(SpectrumBase):
 
         data_ = data["DATA"][:, :, 0, :, 0]
 
-        # 频率步长与通道数
         foff = header1["CHAN_BW"]
         nchans = header1["NCHAN"]
 
@@ -47,16 +46,15 @@ class PsrFits(SpectrumBase):
             foff = -foff
             fch1 = fch1 - (nchans - 1) * foff
             data_ = np.flip(data_, axis=1) 
-
-        # data_ = np.ascontiguousarray(data_)
-
-        try:
-            self._data = data_.reshape(-1)
-        except Exception as e:
-            # reval
-            self._data = data_.ravel()
-
-        ndata = data_.shape[0] * data_.shape[1]
+        
+        
+        self._data = np.ascontiguousarray(data_)
+        if len(data_.shape) == 3:
+            ndata = data_.shape[0] * data_.shape[1]
+        elif len(data_.shape) == 2:
+            ndata = data_.shape[0]
+        else:
+            ndata = data_.shape[0] * data_.shape[1] if len(data_.shape) > 1 else data_.shape[0] // nchans
         self._header = Header(
             mjd=mjd,
             filename=self.filename,
@@ -71,7 +69,13 @@ class PsrFits(SpectrumBase):
 
     def get_spectrum(self) -> np.ndarray:
         if self._reshaped_data is None:
-            self._reshaped_data = self._data.reshape((self._header.ndata, self._header.nchans))
+            if len(self._data.shape) == 3:
+                self._reshaped_data = self._data.reshape((self._header.ndata, self._header.nchans))
+            elif len(self._data.shape) == 2:
+                self._reshaped_data = self._data
+            else:
+                # 一维数组: reshape to (ndata, nchans)
+                self._reshaped_data = self._data.reshape((self._header.ndata, self._header.nchans))
         return self._reshaped_data
 
     def get_original_data(self) -> np.ndarray:

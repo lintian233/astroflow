@@ -283,66 +283,84 @@ void bind_header(py::module &m) {
 
 template <typename T>
 dedisperseddata_uint8
-dedisperse_spec_py(py::array_t<T> data, Header header, float dm_low,
+dedisperse_spec_py(py::array_t<T, py::array::c_style> data, Header header, float dm_low,
                    float dm_high, float freq_start, float freq_end,
                    float dm_step, int time_downsample, float t_sample, int target_id, std::string mask_file, rficonfig rficfg) {
 
   auto data_ptr = data.request();
-  auto data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
+  T *data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
 
-  if (data_ptr.ndim != 1) {
-    throw std::runtime_error("data must be 1D");
+  if (data_ptr.ndim == 1) {
+    // 一维数组，直接使用
+  } else if (data_ptr.ndim == 2) {
+    // 二维数组 (ntime, nchans)，直接使用
+  } else if (data_ptr.ndim == 3) {
+    // 三维数组 (dim1, dim2, nchans)，前两个维度是时间维度
+    // 在 C++ 端将其视为 (dim1*dim2, nchans) 的二维数组
+    // 由于使用 c_style，内存是连续的，可以直接当作一维数组处理
+  } else {
+    throw std::runtime_error("data must be 1D, 2D, or 3D");
   }
 
+  // 使用 py::array::c_style 参数，pybind11 会自动确保数据是 C-contiguous 的
   return gpucal::dedisperse_spec<T>(data_ptr_ptr, header, dm_low, dm_high,
                                     freq_start, freq_end, dm_step, REF_FREQ_END,
                                     time_downsample, t_sample, target_id, mask_file, rficfg);
 }
 
 template dedisperseddata_uint8
-dedisperse_spec_py<uint8_t>(py::array_t<uint8_t> data, Header header,
+dedisperse_spec_py<uint8_t>(py::array_t<uint8_t, py::array::c_style> data, Header header,
                             float dm_low, float dm_high, float freq_start,
                             float freq_end, float dm_step, int time_downsample,
                             float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
-dedisperse_spec_py<uint16_t>(py::array_t<uint16_t> data, Header header,
+dedisperse_spec_py<uint16_t>(py::array_t<uint16_t, py::array::c_style> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,
                              float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template dedisperseddata_uint8
-dedisperse_spec_py<uint32_t>(py::array_t<uint32_t> data, Header header,
+dedisperse_spec_py<uint32_t>(py::array_t<uint32_t, py::array::c_style> data, Header header,
                              float dm_low, float dm_high, float freq_start,
                              float freq_end, float dm_step, int time_downsample,
                              float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
 template <typename T>
-Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T> data, Header header,
+Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T, py::array::c_style> data, Header header,
                                        float tstart, float tend, float dm,
                                        float freq_start, float freq_end, std::string maskfile, rficonfig rficfg) {
   auto data_ptr = data.request();
   T *data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
 
-  if (data_ptr.ndim != 1) {
-    throw std::runtime_error("data must be 1D");
+  if (data_ptr.ndim == 1) {
+    // 一维数组，直接使用
+  } else if (data_ptr.ndim == 2) {
+    // 二维数组 (ntime, nchans)，直接使用
+  } else if (data_ptr.ndim == 3) {
+    // 三维数组 (dim1, dim2, nchans)，前两个维度是时间维度
+    // 在 C++ 端将其视为 (dim1*dim2, nchans) 的二维数组
+    // 由于使用 c_style，内存是连续的，可以直接当作一维数组处理
+  } else {
+    throw std::runtime_error("data must be 1D, 2D, or 3D");
   }
 
+  // 使用 py::array::c_style 参数，pybind11 会自动确保数据是 C-contiguous 的
   return cpucal::dedisperse_spec_with_dm<T>(data_ptr_ptr, header, dm, tstart,
                                             tend, freq_start, freq_end, maskfile, rficfg);
 }
 
 template Spectrum<uint8_t>
-dedisperse_spec_with_dm_py<uint8_t>(py::array_t<uint8_t> data, Header header,
+dedisperse_spec_with_dm_py<uint8_t>(py::array_t<uint8_t, py::array::c_style> data, Header header,
                                     float dm, float tstart, float tend,
                                     float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
 
 template Spectrum<uint16_t>
-dedisperse_spec_with_dm_py<uint16_t>(py::array_t<uint16_t> data, Header header,
+dedisperse_spec_with_dm_py<uint16_t>(py::array_t<uint16_t, py::array::c_style> data, Header header,
                                      float dm, float tstart, float tend,
                                      float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
 
 template Spectrum<uint32_t>
-dedisperse_spec_with_dm_py<uint32_t>(py::array_t<uint32_t> data, Header header,
+dedisperse_spec_with_dm_py<uint32_t>(py::array_t<uint32_t, py::array::c_style> data, Header header,
                                      float dm, float tstart, float tend,
                                      float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
