@@ -317,7 +317,7 @@ class TaskConfig:
     def dm_limt(self):
         dm_limt = self._config_data.get("dm_limt")
         if dm_limt is None:
-            raise ValueError("dm_limt not found in config file.")
+            return None
         self._checker_dm_limt(dm_limt)
         return dm_limt
 
