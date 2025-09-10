@@ -38,7 +38,7 @@ Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discu
 
 <h2 id="updates">Updates</h2>
 
-
+- **Sep 10, 2025** - feat: GPU-accelerated IQRM algorithm implementation based on Bhardwaj et al. (2022) with enhanced RFI configuration
 - **Aug 22, 2025** - feat: Add GPU-accelerated RFI marking and decouple CPU/GPU implementations
 - **Aug 21, 2025** — Public preview of `astroflow` CLI ; CUDA dedispersion and YOLO-based detector integrated.  
 - **Aug 20, 2025** — Docker image (CUDA 12.x, PyTorch) and end-to-end benchmark scripts.  
@@ -222,19 +222,36 @@ freqrange:
 <details>
   <summary>RFI Mitigation</summary>
 
-| Option | Description | Example |
-|--------|-------------|---------|
-| `rfi` | RFI mitigation method | `ai`/`your`/`mixup` |
-| `maskfile` | Single RFI mask file | `/path/to/file` |
-| `maskdir` | Directory containing RFI masks | `/path/to/RFI_MASK/` |
+| Option | Description | Example | Default |
+|--------|-------------|---------|---------|
+| `rfi` | RFI configuration | See below | - |
+| `maskfile` | Single RFI mask file | `/path/to/file` | - |
+| `maskdir` | Directory containing RFI masks | `/path/to/RFI_MASK/` | - |
 
-Example RFI configuration:
+**RFI Configuration:**
 ```yaml
-rfi: ai
+rfi:
+  use_mask: 0      # Use external mask files (0/1)
+  use_iqrm: 1      # Use IQRM algorithm for RFI detection (0/1)
+  use_zero_dm: 1   # Use zero-DM for RFI detection (0/1)
+
+iqrm:
+  mode: 1            # Statistical mode: 0=mean, 1=std
+  radius_frac: 0.10  # Radius fraction for lag selection
+  nsigma: 3.0        # Sigma threshold for outlier detection
+  geofactor: 1.5     # Geometric factor for lag progression
+  win_sec: 0         # Window size in seconds (0 for full data)
+  hop_sec: 1.0       # Hop size in seconds for sliding windows
+  include_tail: true # Include remaining data at the end
+
+# Traditional mask-based RFI mitigation
 maskfile: /path/to/maskdfile.bad_chans
 # OR use directory for multiple files
 maskdir: /path/to/maskdir
 ```
+
+**RFI IQRM Algorithm:**
+AstroFlow implements the IQRM (Iterative Quartile Range Mitigation) algorithm described in [Bhardwaj et al. (2022)](https://academic.oup.com/mnras/article/510/1/1393/6449380?login=false) with full GPU acceleration.
 
 </details>
 
@@ -303,8 +320,22 @@ modelname: yolov11n
 # use default
 # modelpath: yolo11n_0816_v1.pt 
 
-rfi: ai
-maskfile: file.bad_chans
+rfi:
+  use_mask: 0
+  use_iqrm: 1
+  use_zero_dm: 1
+
+iqrm:
+  mode: 1
+  radius_frac: 0.10
+  nsigma: 3.0
+  geofactor: 1.5
+  win_sec: 0
+  hop_sec: 1.0
+  include_tail: true
+
+# Optional: external mask file
+# maskfile: file.bad_chans
 
 tsample:
   - name: t0
@@ -354,7 +385,20 @@ modelname: yolov11n
 # modelpath: yolo11n_0816_v1.pt 
 plotworker: 16
 
-rfi: ai
+rfi:
+  use_mask: 0        # Use external mask files
+  use_iqrm: 1        # Also use IQRM for additional RFI detection
+  use_zero_dm: 0
+
+iqrm:
+  mode: 1
+  radius_frac: 0.10
+  nsigma: 7.0
+  geofactor: 1.5
+  win_sec: 0
+  hop_sec: 1.0
+  include_tail: true
+
 maskdir: FAST_PREFIX_RFI_MASK
 
 tsample:
@@ -368,7 +412,7 @@ dm_limt:
 
 dmrange:
   - name: dm3
-    dm_low: 80
+    dm_low:  100
     dm_high: 700
     dm_step: 1
 

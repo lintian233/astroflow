@@ -36,6 +36,10 @@
 反馈：使用 [Issues](https://github.com/lintian233/astroflow/issues) 或 [Discussions](https://github.com/lintian233/astroflow/discussions)。
 <!-- 参见 [贡献指南](./CONTRIBUTING.md) 了解如何参与。 -->
 
+<h2 id="updates">更新</h2>
+
+- **2025年8月21日** — `astroflow` CLI公开预览；集成CUDA消色散和基于YOLO的检测器
+- **2025年8月20日** — Docker镜像（CUDA 12.x，PyTorch）和端到端基准测试脚本
 
 <!-- > [!NOTE]
 > 路线图和里程碑在 [Projects](https://github.com/lintian233/astroflow/projects) 中跟踪。 -->
@@ -212,20 +216,36 @@ freqrange:
 <details>
   <summary>RFI抑制</summary>
 
-| 选项 | 描述 | 示例 |
-|------|------|------|
-| `rfi` | RFI抑制方法 | `ai`/`your`/`mixup` |
-| `maskfile` | 单个RFI掩码文件 | `/path/to/file` |
-| `maskdir` | 包含RFI掩码的目录 | `/path/to/RFI_MASK/` |
+| 选项 | 描述 | 示例 | 默认值 |
+|------|------|------|-------|
+| `rfi` | RFI配置 | 见下方 | - |
+| `maskfile` | 单个RFI掩码文件 | `/path/to/file` | - |
+| `maskdir` | 包含RFI掩码的目录 | `/path/to/RFI_MASK/` | - |
 
-RFI配置示例：
+**RFI配置：**
 ```yaml
-rfi: ai
+rfi:
+  use_mask: 0      # 使用外部掩码文件 (0/1)
+  use_iqrm: 1      # 使用IQRM算法进行RFI检测 (0/1)
+  use_zero_dm: 1   # 使用零色散度进行RFI检测 (0/1)
+
+iqrm:
+  mode: 1            # 统计模式：0=均值，1=标准差
+  radius_frac: 0.10  # 滞后选择的半径分数
+  nsigma: 3.0        # 异常值检测的σ阈值
+  geofactor: 1.5     # 滞后递进的几何因子
+  win_sec: 0         # 窗口大小（秒）（0表示使用全部数据）
+  hop_sec: 1.0       # 滑动窗口的跳跃大小（秒）
+  include_tail: true # 是否包含末尾剩余数据
+
+# 传统基于掩码的RFI抑制
 maskfile: /path/to/maskdfile.bad_chans
 # 或使用目录处理多个文件
 maskdir: /path/to/maskdir
 ```
 
+**RFI IQRM算法：**
+AstroFlow实现了[Bhardwaj et al.(2022)](https://academic.oup.com/mnras/article/510/1/1393/6449380?login=false)论文中描述的IQRM（迭代四分位距抑制）算法，并提供完整的GPU加速。算法详细细节参见
 </details>
 
 <!-- <details>
@@ -289,11 +309,22 @@ cputhread: 32
 
 snrhold: 5
 modelname: yolov11n
-# use default
+# 使用默认模型
 # modelpath: yolo11n_0816_v1.pt 
 
-rfi: ai
-maskfile: file.bad_chans
+rfi:
+  use_mask: 0
+  use_iqrm: 1
+  use_zero_dm: 0
+
+iqrm:
+  mode: 1
+  radius_frac: 0.10
+  nsigma: 3.0
+  geofactor: 1.5
+  win_sec: 0
+  hop_sec: 1.0
+  include_tail: true
 
 tsample:
   - name: t0
@@ -324,7 +355,7 @@ specconfig:
 
 ```
 
-**FAST_PREFIX数据集处理：**
+**FAST_FREX数据集处理：**
 ```yaml
 input: FAST_PREFIX_DATA
 output: FAST_PREFIX
@@ -339,11 +370,25 @@ detgpu: 1
 cputhread: 64
 
 modelname: yolov11n
-# use default
+# 使用默认模型
 # modelpath: yolo11n_0816_v1.pt 
 plotworker: 16
 
-rfi: ai
+rfi:
+  use_mask: 0
+  use_iqrm: 1        # 同时使用IQRM进行额外的RFI检测
+  use_zero_dm: 0
+
+iqrm:
+  mode: 1
+  radius_frac: 0.10
+  nsigma: 7.0
+  geofactor: 1.5
+  win_sec: 0
+  hop_sec: 1.0
+  include_tail: true
+
+# 外部掩码目录
 maskdir: FAST_PREFIX_RFI_MASK
 
 tsample:
