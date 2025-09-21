@@ -303,6 +303,10 @@ specconfig:
 <details>
   <summary>Real Examples</summary>
 
+**FAST_PREX Dataset Processing:**
+
+For a detailed guide on processing this dataset, see the [FAST PREX Dataset Tutorial](https://github.com/lintian233/astroflow/blob/main/docs/fast_prex.md).
+
 **Single Pulsar Observation (Crab):**
 ```yaml
 input: B0534+2200_20250413_194909_ant01p0.fil 
@@ -363,78 +367,8 @@ specconfig:
   maxpercentile: 100
   tband: 10 #ms
   mode: subband # subband/standard
-
 ```
 
-**FAST_PREFIX Dataset Processing:**
-```yaml
-input: FAST_PREFIX_DATA
-output: FAST_PREFIX
-mode: dataset
-
-candpath: fast_prefix_candidate.csv
-timedownfactor: 8
-confidence: 0.372
-
-dedgpu: 0
-detgpu: 1
-cputhread: 64
-
-modelname: yolov11n
-# use default
-# modelpath: yolo11n_0816_v1.pt 
-plotworker: 16
-
-rfi:
-  use_mask: 0        # Use external mask files
-  use_iqrm: 1        # Also use IQRM for additional RFI detection
-  use_zero_dm: 0
-
-iqrm:
-  mode: 1
-  radius_frac: 0.10
-  nsigma: 7.0
-  geofactor: 1.5
-  win_sec: 0
-  hop_sec: 1.0
-  include_tail: true
-
-maskdir: FAST_PREFIX_RFI_MASK
-
-tsample:
-  - name: t2
-    t: 0.5
-
-dm_limt:
-  - name: limt4
-    dm_low: 100
-    dm_high: 700
-
-dmrange:
-  - name: dm3
-    dm_low:  100
-    dm_high: 700
-    dm_step: 1
-
-freqrange:
-  - name: freq3
-    freq_start: 1000
-    freq_end: 1499.5
-
-
-dmtconfig:
-  minpercentile: 0
-  maxpercentile: 99.9
-  meadianbulr: 1 3
-  guassion: 1 5
-
-specconfig:
-  minpercentile: 0    
-  maxpercentile: 100
-  tband: 120 #ms
-  mode: standard # subband/standard
-
-```
 </details>
 
 <h2 id="contrib">Contributors</h2>

@@ -133,3 +133,32 @@ You should see png like:
 <div align="center">
   <img src="./frb180417.png" width="100%" />
 </div>
+
+---
+
+## 5) Troubleshooting
+
+### Model Download Failure
+
+`astroflow` will automatically download the required AI model on its first run. If you see an error message like the one below, it means the automatic download failed after several attempts, likely due to network issues or file corruption.
+
+```
+Warning: Model file checksum mismatch on attempt 1/3. Expected d4305e273fec6f5733f3c0a823fa5275064b015d549fda26529e0b1b8f59c124, but got xxxxxxx. The file is corrupted and will be re-downloaded.
+.......
+Error: Failed to download model from https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt after 3 attempts.
+```
+
+**Solution: Manual Download**
+
+You can manually download the model and place it in the correct directory.
+
+1.  Create the configuration directory if it doesn't exist:
+    ```bash
+    mkdir -p ~/.config/astroflow
+    ```
+
+2.  Download the model file using `wget` or `curl`:
+    ```bash
+    wget -O ~/.config/astroflow/yolo11n_0816_v1.pt "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt"
+    ```
+    Alternatively, you can download it from your browser and move it to `~/.config/astroflow/yolo11n_0816_v1.pt`.

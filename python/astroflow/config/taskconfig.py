@@ -2,6 +2,7 @@ import os
 from sympy import preorder_traversal
 import yaml
 import urllib.request
+import hashlib
 
 
 from .rficonfig import RFIConfig, IQRMConfig
@@ -101,20 +102,51 @@ class TaskConfig:
 
 
     def get_model(self):
-        model_url_path = "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt" 
-        config_dir = "~/.config/astroflow"
-        config_dir = os.path.expanduser(config_dir)
+        model_url_path = "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt"
+        expected_sha256 = "d4305e273fec6f5733f3c0a823fa5275064b015d549fda26529e0b1b8f59c124" # SHA256 for yolo11n_0816_v1.pt
+        max_retries = 3
+        
+        config_dir = os.path.expanduser("~/.config/astroflow")
         os.makedirs(config_dir, exist_ok=True)
         
-        model_filename = "yolov1n_0816_v1.pt"
+        model_filename = os.path.basename(model_url_path)
         local_model_path = os.path.join(config_dir, model_filename)
         
-        if not os.path.exists(local_model_path):
-            print(f"Downloading model from {model_url_path}...")
-            urllib.request.urlretrieve(model_url_path, local_model_path)
-            print(f"Model downloaded to {local_model_path}")
+        for attempt in range(max_retries):
+            # --- Download if needed ---
+            if not os.path.exists(local_model_path):
+                print(f"Downloading model from {model_url_path}...")
+                try:
+                    urllib.request.urlretrieve(model_url_path, local_model_path)
+                    print(f"Model downloaded to {local_model_path}")
+                except Exception as e:
+                    print(f"Warning: Failed to download model on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt + 1 == max_retries:
+                        raise IOError(f"Failed to download model from {model_url_path} after {max_retries} attempts.")
+                    continue # Retry
+
+            # --- Validation ---
+            if not os.path.exists(local_model_path) or os.path.getsize(local_model_path) == 0:
+                print(f"Warning: Model file is missing or empty on attempt {attempt + 1}/{max_retries}. Retrying download.")
+                if os.path.exists(local_model_path):
+                    os.remove(local_model_path)
+                continue # Retry
+
+            with open(local_model_path, "rb") as f:
+                sha256_hash = hashlib.sha256(f.read()).hexdigest()
+            
+            if sha256_hash == expected_sha256:
+                print("Model checksum verified successfully.")
+                return local_model_path # Success
+            else:
+                print(
+                    f"Warning: Model file checksum mismatch on attempt {attempt + 1}/{max_retries}. "
+                    f"Expected {expected_sha256}, but got {sha256_hash}. "
+                    "The file is corrupted and will be re-downloaded."
+                )
+                os.remove(local_model_path) # Remove corrupted file
         
-        return local_model_path
+        raise IOError(f"Failed to obtain a valid model file after {max_retries} attempts.")
 
 
     def _checker_dm_limt(self, dm_limt):
