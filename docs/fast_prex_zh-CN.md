@@ -32,6 +32,9 @@
 # 为数据创建一个目录
 mkdir -p fast_prex_data && cd fast_prex_data
 
+#提取FRB链接，并保存为fast_prex_frbs.txt
+cat fast_prex.txt | grep FRB > fast_prex_frbs.txt
+
 # 运行并行下载
 xargs -P 8 -n 1 -I {} bash -c '
   url="$1"
@@ -42,7 +45,7 @@ xargs -P 8 -n 1 -I {} bash -c '
   # 使用断点续传 (-c) 和清晰的进度条进行下载
   echo "正在下载: $filename"
   wget -c --show-progress --progress=bar:force:noscroll -O "$filename" "$url"
-' _ {} < ../fast_prex.txt
+' _ {} < fast_prex_frbs.txt
 ```
 
 此脚本会遍历 `fast_prex.txt` 中的每个 URL：

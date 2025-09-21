@@ -32,6 +32,9 @@ We will use `xargs` and `wget` to perform a parallel download, which significant
 # Create a directory for the data
 mkdir -p fast_prex_data && cd fast_prex_data
 
+# extract FRBs url and save as fast_prex_frbs.txt
+cat fast_prex.txt | grep FRB > fast_prex_frbs.txt
+
 # Run the parallel download
 xargs -P 8 -n 1 -I {} bash -c '
   url="$1"
@@ -42,7 +45,7 @@ xargs -P 8 -n 1 -I {} bash -c '
   # Download with resume (-c) and a clean progress bar
   echo "Downloading: $filename"
   wget -c --show-progress --progress=bar:force:noscroll -O "$filename" "$url"
-' _ {} < ../fast_prex.txt
+' _ {} < fast_prex_frbs.txt
 ```
 
 This script iterates through each URL in `fast_prex.txt`:
