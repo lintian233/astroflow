@@ -902,11 +902,20 @@ def monitor_directory_for_pulsar_search(
     
     # Track processed files to avoid reprocessing
     processed_files: Set[str] = set()
-    
-    # Initial scan to populate processed files set
+
+    # Initial scan to find and process existing files
     logger.info("Performing initial directory scan...")
-    processed_files = _get_supported_files(monitor_dir)
-    logger.info(f"Found {len(processed_files)} existing files (will be ignored)")
+    existing_files = _get_supported_files(monitor_dir)
+    logger.info(f"Found {len(existing_files)} existing files to process.")
+
+    if existing_files:
+        for file_path in tqdm(sorted(existing_files), desc="Processing existing files"):
+            _process_new_file(
+                file_path, task_config, detector, plotter, mutidetect
+            )
+            processed_files.add(file_path)
+
+    logger.info("Initial processing complete. Starting to monitor for new files.")
     
     try:
         while True:

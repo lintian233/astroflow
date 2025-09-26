@@ -764,12 +764,13 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
     ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
     
-    time_bin_duration = (pulse_width / 2) * header.tsamp if pulse_width else 4 * header.tsamp
+    subtsamp = specconfig.get("subtsamp", 4)
+    time_bin_duration = (pulse_width / subtsamp) * header.tsamp if pulse_width else 4 * header.tsamp
     time_bin_size = max(1, int(time_bin_duration / header.tsamp))  # Convert to samples
     
     n_time_samples, n_freq_channels = spec_data.shape
-    
-    n_freq_subbands = 128
+
+    n_freq_subbands = specconfig.get("subfreq", 128)
     freq_subband_size = max(1, n_freq_channels // n_freq_subbands)
     
     n_time_bins = max(1, n_time_samples // time_bin_size)
