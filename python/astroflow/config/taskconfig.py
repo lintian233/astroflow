@@ -98,8 +98,16 @@ class TaskConfig:
     #                 )
     #     else:
     #         raise ValueError("Invalid format for preprocess in config file.")
-
-
+    @property
+    def minfileage(self):
+        minfileage = self._config_data.get("minfileage")
+        if minfileage is None:
+            minfileage = 0
+        if not isinstance(minfileage, (int, float)):
+            raise ValueError("minfileage must be a number.")
+        if minfileage < 0:
+            raise ValueError("minfileage must be non-negative.")
+        return minfileage
 
     def get_model(self):
         model_url_path = "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt"

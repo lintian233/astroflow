@@ -793,20 +793,22 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
             subband_value = np.sum(spec_data[t_start:t_end, f_start:f_end])
             subband_matrix[t_bin, f_bin] = subband_value
     
-    for f_bin in range(n_freq_subbands):
-        freq_column = subband_matrix[:, f_bin]
-        
-        # Robust normalization: handle constant or near-constant columns
-        col_min = np.min(freq_column)
-        col_max = np.max(freq_column)
-        denom = col_max - col_min
-        if np.isclose(denom, 0) or denom < 1e-10:
-            freq_column_norm = np.zeros_like(freq_column)
-        else:
-            freq_column_norm = (freq_column - col_min) / denom
-        subband_matrix[:, f_bin] = freq_column_norm
+    subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
     
-
+    if specconfig.get("normalize", True):
+        for f_bin in range(n_freq_subbands):
+            freq_column = subband_matrix[:, f_bin]
+            
+            # Robust normalization: handle constant or near-constant columns
+            col_min = np.min(freq_column)
+            col_max = np.max(freq_column)
+            denom = col_max - col_min
+            if np.isclose(denom, 0) or denom < 1e-10:
+                freq_column_norm = np.zeros_like(freq_column)
+            else:
+                freq_column_norm = (freq_column - col_min) / denom
+            subband_matrix[:, f_bin] = freq_column_norm
+    
 
     # Step 4: Create axes for subband visualization
     subband_time_axis = np.linspace(spec_tstart, spec_tend, n_time_bins + 1)

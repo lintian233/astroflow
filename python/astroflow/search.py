@@ -749,35 +749,43 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
         plotter.close()
 
 
-def _get_supported_files(directory: str) -> Set[str]:
+def _get_supported_files(directory: str, min_age_seconds: float = 0.0) -> Set[str]:
     """
-    Get all supported files (.fil, .fits) in a directory.
+    Get all supported files (.fil, .fits) in a directory that are at least
+    min_age_seconds old.
     
     Parameters
     ----------
     directory : str
         Directory path to scan for supported files
+    min_age_seconds : float, optional
+        Minimum age in seconds for files to be considered (default: 0.0).
+        Files modified more recently than this will be excluded.
         
     Returns
     -------
     Set[str]
-        Set of full file paths for all supported files found
+        Set of full file paths for all supported files found that meet
+        the age criteria
         
     Examples
     --------
-    >>> files = _get_supported_files('/data/observations')
-    >>> print(f"Found {len(files)} supported files")
+    >>> files = _get_supported_files('/data/observations', min_age_seconds=60.0)
+    >>> print(f"Found {len(files)} supported files older than 60 seconds")
     """
     if not os.path.exists(directory):
         return set()
     
     supported_files = set()
+    current_time = time.time()
     try:
         for filename in os.listdir(directory):
             if any(filename.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
                 full_path = os.path.join(directory, filename)
                 if os.path.isfile(full_path):
-                    supported_files.add(full_path)
+                    mtime = os.path.getmtime(full_path)
+                    if current_time - mtime >= min_age_seconds:
+                        supported_files.add(full_path)
     except PermissionError:
         logger.warning(f"Permission denied accessing directory: {directory}")
     except Exception as e:
@@ -905,7 +913,8 @@ def monitor_directory_for_pulsar_search(
 
     # Initial scan to find and process existing files
     logger.info("Performing initial directory scan...")
-    existing_files = _get_supported_files(monitor_dir)
+    age_time = task_config.minfileage
+    existing_files = _get_supported_files(monitor_dir, min_age_seconds=age_time)
     logger.info(f"Found {len(existing_files)} existing files to process.")
 
     if existing_files:
@@ -925,7 +934,7 @@ def monitor_directory_for_pulsar_search(
                 break
             
             # Get current files in directory
-            current_files = _get_supported_files(monitor_dir)
+            current_files = _get_supported_files(monitor_dir, min_age_seconds=age_time)
             
             # Find new files
             new_files = current_files - processed_files
