@@ -541,10 +541,12 @@ def _process_single_file_search(
                     confidence=task_config.confidence,
                     time_downsample=task_config.timedownfactor,
                 )
-                
-                # Check if already processed
+                # output_dir + files_dir_last
+                files_dir = os.path.dirname(file_path)
+                basedir = os.path.basename(files_dir)
+                output_dir = os.path.join(task_config.output, basedir)
                 file_basename = os.path.basename(file_path).split(".")[0]
-                cached_dir_path = _get_cached_dir_path(output_dir, task_config.input, config)
+                cached_dir_path = _get_cached_dir_path(output_dir, files_dir, config)
                 file_dir = os.path.join(cached_dir_path, file_basename)
                 
                 print(f"checking {file_dir}")
@@ -751,13 +753,14 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
 
 def _get_supported_files(directory: str, min_age_seconds: float = 0.0) -> Set[str]:
     """
-    Get all supported files (.fil, .fits) in a directory that are at least
-    min_age_seconds old.
+    Get all supported files (.fil, .fits) in directories matching the pattern
+    that are at least min_age_seconds old.
     
     Parameters
     ----------
     directory : str
-        Directory path to scan for supported files
+        Directory path pattern to scan for supported files. Supports wildcards
+        (e.g., '/data/observations/*FFT*') to match multiple directories.
     min_age_seconds : float, optional
         Minimum age in seconds for files to be considered (default: 0.0).
         Files modified more recently than this will be excluded.
@@ -770,26 +773,36 @@ def _get_supported_files(directory: str, min_age_seconds: float = 0.0) -> Set[st
         
     Examples
     --------
-    >>> files = _get_supported_files('/data/observations', min_age_seconds=60.0)
-    >>> print(f"Found {len(files)} supported files older than 60 seconds")
+    >>> files = _get_supported_files('/data/observations/*FFT*', min_age_seconds=60.0)
+    >>> print(f"Found {len(files)} supported files in matching directories older than 60 seconds")
     """
+    import glob
+    
     if not os.path.exists(directory):
-        return set()
+        # If directory is a pattern, expand it
+        dirs = glob.glob(directory)
+        print(f"Expanded directories: {dirs}")
+    else:
+        dirs = [directory]
     
     supported_files = set()
     current_time = time.time()
-    try:
-        for filename in os.listdir(directory):
-            if any(filename.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
-                full_path = os.path.join(directory, filename)
-                if os.path.isfile(full_path):
-                    mtime = os.path.getmtime(full_path)
-                    if current_time - mtime >= min_age_seconds:
-                        supported_files.add(full_path)
-    except PermissionError:
-        logger.warning(f"Permission denied accessing directory: {directory}")
-    except Exception as e:
-        logger.error(f"Error scanning directory {directory}: {e}")
+    for dir_path in dirs:
+        if not os.path.exists(dir_path):
+            continue
+        
+        try:
+            for filename in os.listdir(dir_path):
+                if any(filename.endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+                    full_path = os.path.join(dir_path, filename)
+                    if os.path.isfile(full_path):
+                        mtime = os.path.getmtime(full_path)
+                        if current_time - mtime >= min_age_seconds:
+                            supported_files.add(full_path)
+        except PermissionError:
+            logger.warning(f"Permission denied accessing directory: {dir_path}")
+        except Exception as e:
+            logger.error(f"Error scanning directory {dir_path}: {e}")
     
     return supported_files
 
@@ -894,9 +907,6 @@ def monitor_directory_for_pulsar_search(
     """
     monitor_dir = _normalize_path(task_config.input)
     output_dir = _normalize_path(task_config.output)
-    
-    if not os.path.exists(monitor_dir):
-        raise FileNotFoundError(f"Monitor directory not found: {monitor_dir}")
     
     logger.info(f"Starting directory monitoring for: {monitor_dir}")
     logger.info(f"Check interval: {check_interval} seconds")

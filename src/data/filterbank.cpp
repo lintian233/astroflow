@@ -633,7 +633,6 @@ void Filterbank::get_string(FILE *inputfile, string &strtmp) {
   fread(&nchar, sizeof(int), 1, inputfile);
   if (feof(inputfile)) {
     cerr << "Error in reading the header of File" << endl;
-    exit(0);
   }
   if (nchar > 80 || nchar < 1)
     return;
@@ -658,8 +657,7 @@ long long Filterbank::sizeof_file(const char name[]) /* includefile */
   struct stat stbuf;
 
   if (stat(name, &stbuf) == -1) {
-    fprintf(stderr, "f_siz: can't access %s\n", name);
-    exit(0);
+    cerr << "f_siz: can't access " << name << endl;
   }
   return (stbuf.st_size);
 }

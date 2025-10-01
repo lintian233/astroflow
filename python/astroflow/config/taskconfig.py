@@ -262,6 +262,15 @@ class TaskConfig:
         return self._config_data.get("detgpu", 0)
     
     @property
+    def include_last(self):
+        include_last = self._config_data.get("include_last")
+        if include_last is None:
+            include_last = False
+        if not isinstance(include_last, bool):
+            raise ValueError("include_last must be a boolean.")
+        return include_last
+
+    @property
     def rficonfig(self):
         if self._rficonfig is None:
             rfi = self._config_data.get("rfi")

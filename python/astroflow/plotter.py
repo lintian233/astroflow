@@ -795,7 +795,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
     
-    if specconfig.get("normalize", True):
+    if specconfig.get("norm", True):
         for f_bin in range(n_freq_subbands):
             freq_column = subband_matrix[:, f_bin]
             
@@ -1059,17 +1059,17 @@ def plot_candidate(
         
         # Generate output filename and save
         output_filename = (
-            f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
+            f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.jpg"
         )
         print(f"Saving: {os.path.basename(output_filename)}")
 
         plt.savefig(
             output_filename,
-            dpi=dpi,
-            format="png",
+            dpi=70,  # Reduced from 150 to lower resolution for smaller file size
+            format="jpg",
             bbox_inches="tight",
         )
-        
+
     except Exception as e:
         print(f"Error in plot_candidate: {e}")
         raise

@@ -81,24 +81,18 @@ def astroflow_main():
             
     elif mode == "monitor":
         # 监控模式
-        if not task_config.input or not os.path.exists(task_config.input):
-            raise FileNotFoundError(f"Monitor directory not found: {task_config.input}")
+        print(f"Starting directory monitoring mode...")
+        print(f"Monitoring directory: {task_config.input}")
+        print(f"Check interval: {args.check_interval} seconds")
+        if args.stop_file:
+            print(f"Stop file: {args.stop_file}")
+        print("Press Ctrl+C to stop monitoring")
         
-        if os.path.isdir(task_config.input):
-            print(f"Starting directory monitoring mode...")
-            print(f"Monitoring directory: {task_config.input}")
-            print(f"Check interval: {args.check_interval} seconds")
-            if args.stop_file:
-                print(f"Stop file: {args.stop_file}")
-            print("Press Ctrl+C to stop monitoring")
-            
-            monitor_directory_for_pulsar_search(
-                task_config, 
-                check_interval=args.check_interval,
-                stop_file=args.stop_file
-            )
-        else:
-            raise ValueError(f"Monitor path is not a directory: {task_config.input}")
+        monitor_directory_for_pulsar_search(
+            task_config, 
+            check_interval=args.check_interval,
+            stop_file=args.stop_file
+        )
     elif mode == "dataset":
         # 数据集搜索模式
         if not task_config.candpath or not os.path.exists(task_config.candpath):
