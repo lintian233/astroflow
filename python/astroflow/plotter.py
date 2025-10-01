@@ -1056,19 +1056,33 @@ def plot_candidate(
             fontsize=16,
             y=0.96,
         )
-        
-        # Generate output filename and save
-        output_filename = (
-            f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.jpg"
-        )
-        print(f"Saving: {os.path.basename(output_filename)}")
 
-        plt.savefig(
-            output_filename,
-            dpi=70,  # Reduced from 150 to lower resolution for smaller file size
-            format="jpg",
-            bbox_inches="tight",
-        )
+        savetype = specconfig.get("savetype", "png")
+        if savetype == "jpg":
+            # Generate output filename and save
+            output_filename = (
+                f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.jpg"
+            )
+            print(f"Saving: {os.path.basename(output_filename)}")
+
+            plt.savefig(
+                output_filename,
+                dpi=100,
+                format="jpg",
+                bbox_inches="tight",
+            )
+        else:
+            output_filename = (
+                f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
+            )
+            print(f"Saving: {os.path.basename(output_filename)}")
+
+            plt.savefig(
+                output_filename,
+                dpi=dpi,
+                format="png",
+                bbox_inches="tight",
+            )
 
     except Exception as e:
         print(f"Error in plot_candidate: {e}")

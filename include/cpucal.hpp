@@ -201,199 +201,271 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
 }
 
 template <typename T>
-Spectrum<T> dedispered_fil_with_dm(Filterbank *fil, float tstart, float tend,
-                                   float dm, float freq_start, float freq_end, std::string maskfile, rficonfig rficfg) {
+Spectrum<T> dedispered_fil_with_dm(
+    Filterbank* fil,
+    float tstart, float tend,
+    float dm,
+    float freq_start, float freq_end,
+    std::string maskfile,
+    rficonfig rficfg)
+{
+    omp_set_num_threads(32);
 
-  omp_set_num_threads(32);
-
-  size_t t_start_idx = static_cast<size_t>(tstart / fil->tsamp);
-  size_t t_end_idx = static_cast<size_t>(tend / fil->tsamp);
-  size_t t_len = t_end_idx - t_start_idx;
-
-  float fil_freq_min = fil->frequency_table[0];
-  float fil_freq_max = fil->frequency_table[fil->nchans - 1];
-
-  if (freq_start < fil_freq_min || freq_end > fil_freq_max) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Frequency range [%.3f-%.3f MHz] out of filterbank range "
-             "[%.3f-%.3f MHz]",
-             freq_start, freq_end, fil_freq_min, fil_freq_max);
-    throw std::invalid_argument(error_msg);
-  }
-  size_t chan_start =
-      static_cast<size_t>((freq_start - fil_freq_min) /
-                          (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
-  size_t chan_end =
-      static_cast<size_t>((freq_end - fil_freq_min) /
-                          (fil_freq_max - fil_freq_min) * (fil->nchans - 1));
-
-  chan_start = std::max(static_cast<size_t>(0), chan_start);
-  chan_end = std::min(static_cast<size_t>(fil->nchans - 1), chan_end);
-
-  RfiMarkerCPU<T> rfi_marker(maskfile);
-  Spectrum<T> result;
-  result.nbits = fil->nbits;
-  result.ntimes = t_len;
-  result.tstart = tstart;
-  result.tend = tend;
-  result.dm = dm;
-  T *origin_data = static_cast<T *>(fil->data);
-  
-  if (rficfg.use_iqrm) {
-    // auto win_masks = rfi_iqrm<T>(origin_data, chan_start, chan_end, fil->ndata, fil->nchans, fil->tsamp, rficfg);
-    auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(origin_data, chan_start, chan_end, fil->ndata, fil->nchans, fil->tsamp, rficfg);
-    rfi_marker.mask(origin_data, fil->nchans, fil->ndata, win_masks);
-  }
-
-  if (rficfg.use_mask) {
-    rfi_marker.mark_rfi(origin_data, fil->nchans, fil->ndata);
-  }
-
-  result.nchans = chan_end - chan_start;
-  result.freq_start = fil->frequency_table[chan_start];
-  result.freq_end = fil->frequency_table[chan_end];
-  result.data = std::shared_ptr<T[]>(new T[t_len * (result.nchans)](),
-                                     [](T *p) { delete[] p; });
-
-  int *dm_delays_table = new int[result.nchans];
-
-#pragma omp parallel for schedule(dynamic)
-  for (size_t ch = chan_start; ch < chan_end; ++ch) {
-    const float freq = fil->frequency_table[ch];
-    const float delay =
-        4148.808f * dm *
-        (1.0f / (freq * freq) - 1.0f / (fil->frequency_table[chan_end] *
-                                        fil->frequency_table[chan_end]));
-
-    dm_delays_table[ch - chan_start] =
-        static_cast<int>(std::round(delay / fil->tsamp));
-  }
-
-#pragma omp parallel for schedule(dynamic)
-  for (size_t ti = 0; ti < t_len; ++ti) {
-#pragma omp simd
-    for (size_t ch = chan_start; ch < chan_end; ++ch) {
-      size_t target_idx = t_start_idx + ti + dm_delays_table[ch - chan_start];
-      if (target_idx < fil->ndata) {
-        result.data[ti * result.nchans + ch - chan_start] =
-            origin_data[target_idx * fil->nchans + ch];
-      } else {
-        result.data[ti * result.nchans + ch - chan_start] = 0;
-      }
+    // ---- 基本时间索引 ----
+    if (tend <= tstart) {
+        throw std::invalid_argument("tend must be > tstart");
     }
-  }
-  delete[] dm_delays_table;
+    const size_t t_start_idx = static_cast<size_t>(tstart / fil->tsamp);
+    const size_t t_end_idx   = static_cast<size_t>(tend   / fil->tsamp);
+    size_t t_len_req         = (t_end_idx > t_start_idx) ? (t_end_idx - t_start_idx) : 0;
+    if (t_len_req == 0 || t_start_idx >= fil->ndata) {
+        throw std::invalid_argument("Invalid time window for this file.");
+    }
 
-  return result;
+    // ---- 频道范围（半开区间）并兼容升/降序 ----
+    const float f0 = fil->frequency_table[0];
+    const float fN = fil->frequency_table[fil->nchans - 1];
+    const float fmin = std::min(f0, fN);
+    const float fmax = std::max(f0, fN);
+    if (freq_start < fmin || freq_end > fmax || freq_end <= freq_start) {
+        char buf[256];
+        snprintf(buf, sizeof(buf),
+                 "Frequency range [%.3f, %.3f] MHz is out of file range [%.3f, %.3f] MHz",
+                 freq_start, freq_end, fmin, fmax);
+        throw std::invalid_argument(buf);
+    }
+
+    auto freq_to_index = [&](float f)->size_t {
+        // 线性映射；对升/降序都成立
+        double pos = (f - f0) / (double)(fN - f0);            // ∈[0,1]
+        double raw = pos * (double)(fil->nchans - 1);
+        if (raw < 0.0) raw = 0.0;
+        if (raw > (double)(fil->nchans - 1)) raw = (double)(fil->nchans - 1);
+        return static_cast<size_t>(std::floor(raw + 1e-9));   // 向下取整
+    };
+
+    size_t chan_start      = freq_to_index(freq_start);
+    size_t chan_end_incl   = freq_to_index(freq_end);
+    if (chan_end_incl < chan_start) std::swap(chan_start, chan_end_incl);
+    size_t chan_end_excl   = std::min(chan_end_incl + 1, static_cast<size_t>(fil->nchans));
+    const size_t sel_nch   = (chan_end_excl > chan_start) ? (chan_end_excl - chan_start) : 0;
+    if (sel_nch == 0) {
+        throw std::invalid_argument("Empty channel selection.");
+    }
+
+    // 频段内的最低/最高频（与升/降序无关）
+    const float f_low  = std::min(fil->frequency_table[chan_start],
+                                  fil->frequency_table[chan_end_excl - 1]);
+    const float f_high = std::max(fil->frequency_table[chan_start],
+                                  fil->frequency_table[chan_end_excl - 1]);
+
+    // ---- 每通道延时表（参考频率取最高频 -> 延时最小为0）----
+    std::unique_ptr<int[]> dm_delays(new int[sel_nch]);
+    int delay_max_idx = 0;
+#pragma omp parallel for schedule(static)
+    for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
+        const float fch   = fil->frequency_table[ch];
+        const float delay = 4148.808f * dm * (1.0f/(fch*fch) - 1.0f/(f_high*f_high)); // 秒
+        int d_idx = (int)std::lround(delay / fil->tsamp); // 采样点
+        dm_delays[ch - chan_start] = d_idx;
+    }
+    // 求最大延时
+    for (size_t i = 0; i < sel_nch; ++i) delay_max_idx = std::max(delay_max_idx, dm_delays[i]);
+
+    // ---- 有效输出长度：必须保证访问 t_start_idx + ti + delay_max_idx < fil->ndata ----
+    size_t t_len_eff_cap = (fil->ndata > t_start_idx)
+                           ? (fil->ndata - t_start_idx)
+                           : 0;
+    size_t t_len_eff = 0;
+    if (t_len_eff_cap > (size_t)delay_max_idx) {
+        t_len_eff = std::min(t_len_req, t_len_eff_cap - (size_t)delay_max_idx);
+    }
+    if (t_len_eff == 0) {
+        throw std::invalid_argument("Time window too short for this DM and band (no valid samples after dedispersion).");
+    }
+
+    // ---- RFI：只在“局部输入切片”上运行（长度 = t_len_eff + delay_max_idx）----
+    // 这样解色散访问到的所有原始样本都被一致地标注/掩膜。
+    T* origin_data = static_cast<T*>(fil->data);
+    const size_t slice_len_for_rfi = t_len_eff + (size_t)delay_max_idx;
+    T* slice_ptr = origin_data + t_start_idx * fil->nchans;
+
+    RfiMarkerCPU<T> rfi_marker(maskfile);
+    if (rficfg.use_iqrm) {
+        auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(
+            slice_ptr,               // 指向局部起点
+            chan_start, chan_end_excl,
+            slice_len_for_rfi,       // 覆盖局部 + 最大延时
+            fil->nchans,
+            fil->tsamp, rficfg);
+        rfi_marker.mask(slice_ptr, fil->nchans, slice_len_for_rfi, win_masks);
+    }
+    if (rficfg.use_mask) {
+        // 静态掩膜同样只作用在切片上（不必动全局）
+        rfi_marker.mark_rfi(slice_ptr, fil->nchans, slice_len_for_rfi);
+    }
+
+    // ---- 输出光谱 ----
+    Spectrum<T> result;
+    result.nbits       = fil->nbits;
+    result.ntimes      = t_len_eff;
+    result.tstart      = tstart;
+    result.tend        = tstart + (float)t_len_eff * fil->tsamp;
+    result.dm          = dm;
+    result.nchans      = sel_nch;
+    result.freq_start  = std::min(fil->frequency_table[chan_start],
+                                  fil->frequency_table[chan_end_excl - 1]);
+    result.freq_end    = std::max(fil->frequency_table[chan_start],
+                                  fil->frequency_table[chan_end_excl - 1]);
+    result.data        = std::shared_ptr<T[]>(new T[(size_t)result.ntimes * (size_t)result.nchans](),
+                                              [](T* p){ delete[] p; });
+
+    // ---- 解色散填充（只写有效长度 t_len_eff）----
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t ti = 0; ti < (ptrdiff_t)result.ntimes; ++ti) {
+#pragma omp simd
+        for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
+            const int d = dm_delays[ch - chan_start];
+            const size_t src_idx = (size_t)ti + (size_t)d;  // 相对于 slice_ptr 的偏移
+            // 由 t_len_eff 的定义，src_idx < slice_len_for_rfi 恒成立，无需额外边界判断
+            result.data[(size_t)ti * (size_t)result.nchans + (size_t)(ch - chan_start)]
+                = slice_ptr[src_idx * fil->nchans + (size_t)ch];
+        }
+    }
+
+    return result;
 }
+
 
 template <typename T>
-Spectrum<T> dedisperse_spec_with_dm(T *spec, Header header, float dm,
-                                    float tstart, float tend, float freq_start,
-                                    float freq_end, std::string maskfile, rficonfig rficfg) {
-  omp_set_num_threads(32);
-  PRINT_VAR(header.tsamp);
-  
+Spectrum<T> dedisperse_spec_with_dm(
+    T* spec, Header header, float dm,
+    float tstart, float tend,
+    float freq_start, float freq_end,
+    std::string maskfile, rficonfig rficfg)
+{
+    omp_set_num_threads(32);
 
-
-  size_t t_start_idx = static_cast<size_t>(tstart / header.tsamp);
-  size_t t_end_idx = static_cast<size_t>(tend / header.tsamp);
-  size_t t_len = t_end_idx - t_start_idx;
-  if (t_len <= 0) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg), "Invalid time range [%.3f-%.3f s]",
-             tstart, tend);
-    throw std::invalid_argument(error_msg);
-  }
-  PRINT_VAR(t_len);
-  PRINT_VAR(t_start_idx);
-  PRINT_VAR(t_end_idx);
-
-  float *frequency_table = new float[header.nchans];
-  for (size_t i = 0; i < header.nchans; i++) {
-    frequency_table[i] = header.fch1 + i * header.foff;
-  }
-
-  float fil_freq_min = frequency_table[0];
-  float fil_freq_max = frequency_table[header.nchans - 1];
-  PRINT_VAR(fil_freq_min);
-  PRINT_VAR(fil_freq_max);
-
-  if (freq_start < fil_freq_min || freq_end > fil_freq_max) {
-    char error_msg[256];
-    snprintf(error_msg, sizeof(error_msg),
-             "Frequency range [%.3f-%.3f MHz] out of filterbank range "
-             "[%.3f-%.3f MHz]",
-             freq_start, freq_end, fil_freq_min, fil_freq_max);
-    throw std::invalid_argument(error_msg);
-  }
-  size_t chan_start =
-      static_cast<size_t>((freq_start - fil_freq_min) /
-                          (fil_freq_max - fil_freq_min) * (header.nchans - 1));
-  size_t chan_end =
-      static_cast<size_t>((freq_end - fil_freq_min) /
-                          (fil_freq_max - fil_freq_min) * (header.nchans - 1));
-
-  chan_start = std::max(static_cast<size_t>(0), chan_start);
-  chan_end = std::min(static_cast<size_t>(header.nchans - 1), chan_end);
-  RfiMarkerCPU<T> rfi_marker(maskfile);
-
-  if (rficfg.use_iqrm) {
-    auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(spec, chan_start, chan_end, header.ndata, header.nchans, header.tsamp, rficfg);
-    // printf("IQRM found %zu bad windows\n", win_masks.size());
-    rfi_marker.mask(spec, header.nchans, header.ndata, win_masks);
-  }
-
-  if (rficfg.use_mask) {
-    rfi_marker.mark_rfi(spec, header.nchans, header.ndata);
-  }
-
-  Spectrum<T> result;
-  result.nbits = header.nbits;
-  result.ntimes = t_len;
-  result.tstart = tstart;
-  result.tend = tend;
-  result.dm = dm;
-
-  result.nchans = chan_end - chan_start;
-  result.freq_start = frequency_table[chan_start];
-  result.freq_end = frequency_table[chan_end];
-  result.data = std::shared_ptr<T[]>(new T[t_len * (result.nchans)](),
-                                     [](T *p) { delete[] p; });
-
-  int *dm_delays_table = new int[result.nchans];
-
-#pragma omp parallel for schedule(dynamic)
-  for (size_t ch = chan_start; ch < chan_end; ++ch) {
-    const float freq = frequency_table[ch];
-    const float delay =
-        4148.808f * dm *
-        (1.0f / (freq * freq) -
-         1.0f / (frequency_table[chan_end] * frequency_table[chan_end]));
-
-    dm_delays_table[ch - chan_start] =
-        static_cast<int>(std::round(delay / header.tsamp));
-  }
-
-#pragma omp parallel for schedule(dynamic)
-  for (size_t ti = 0; ti < t_len; ++ti) {
-#pragma omp simd
-    for (size_t ch = chan_start; ch < chan_end; ++ch) {
-      size_t target_idx = t_start_idx + ti + dm_delays_table[ch - chan_start];
-      if (target_idx < header.ndata) {
-        result.data[ti * result.nchans + ch - chan_start] =
-            spec[target_idx * header.nchans + ch];  
-      } else {
-        result.data[ti * result.nchans + ch - chan_start] = 0;
-      }
+    // ---- 时间窗口 ----
+    if (tend <= tstart) {
+        throw std::invalid_argument("tend must be > tstart");
     }
-  }
-  delete[] dm_delays_table;
-  delete[] frequency_table;
+    size_t t_start_idx = static_cast<size_t>(tstart / header.tsamp);
+    size_t t_end_idx   = static_cast<size_t>(tend   / header.tsamp);
+    size_t t_len_req   = (t_end_idx > t_start_idx) ? (t_end_idx - t_start_idx) : 0;
+    if (t_len_req == 0 || t_start_idx >= header.ndata) {
+        throw std::invalid_argument("Invalid time window for this file.");
+    }
 
-  return result;
+    // ---- 构造频率表 ----
+    std::vector<float> frequency_table(header.nchans);
+    for (size_t i = 0; i < header.nchans; i++) {
+        frequency_table[i] = header.fch1 + i * header.foff;
+    }
+    float f0   = frequency_table.front();
+    float fN   = frequency_table.back();
+    float fmin = std::min(f0, fN);
+    float fmax = std::max(f0, fN);
+
+    if (freq_start < fmin || freq_end > fmax || freq_end <= freq_start) {
+        char buf[256];
+        snprintf(buf, sizeof(buf),
+                 "Frequency range [%.3f, %.3f] MHz out of file range [%.3f, %.3f] MHz",
+                 freq_start, freq_end, fmin, fmax);
+        throw std::invalid_argument(buf);
+    }
+
+    auto freq_to_index = [&](float f)->size_t {
+        double pos = (f - f0) / (double)(fN - f0);
+        double raw = pos * (double)(header.nchans - 1);
+        if (raw < 0.0) raw = 0.0;
+        if (raw > (double)(header.nchans - 1)) raw = (double)(header.nchans - 1);
+        return static_cast<size_t>(std::floor(raw + 1e-9));
+    };
+
+    size_t chan_start    = freq_to_index(freq_start);
+    size_t chan_end_incl = freq_to_index(freq_end);
+    if (chan_end_incl < chan_start) std::swap(chan_start, chan_end_incl);
+    size_t chan_end_excl = std::min(chan_end_incl + 1, static_cast<size_t>(header.nchans));
+
+    size_t sel_nch = (chan_end_excl > chan_start) ? (chan_end_excl - chan_start) : 0;
+    if (sel_nch == 0) {
+        throw std::invalid_argument("Empty channel selection.");
+    }
+
+    // ---- 计算延时表 ----
+    const float f_high = std::max(frequency_table[chan_start],
+                                  frequency_table[chan_end_excl - 1]);
+    std::unique_ptr<int[]> dm_delays(new int[sel_nch]);
+    int delay_max_idx = 0;
+#pragma omp parallel for schedule(static)
+    for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
+        float fch   = frequency_table[ch];
+        float delay = 4148.808f * dm * (1.0f/(fch*fch) - 1.0f/(f_high*f_high));
+        int d_idx   = (int)std::lround(delay / header.tsamp);
+        dm_delays[ch - chan_start] = d_idx;
+    }
+    for (size_t i = 0; i < sel_nch; ++i) delay_max_idx = std::max(delay_max_idx, dm_delays[i]);
+
+    // ---- 输出时间长度：必须保证访问有效 ----
+    size_t t_len_cap = (header.ndata > t_start_idx)
+                       ? (header.ndata - t_start_idx)
+                       : 0;
+    size_t t_len_eff = 0;
+    if (t_len_cap > (size_t)delay_max_idx) {
+        t_len_eff = std::min(t_len_req, t_len_cap - (size_t)delay_max_idx);
+    }
+    if (t_len_eff == 0) {
+        throw std::invalid_argument("Time window too short for this DM and band.");
+    }
+
+    // ---- RFI（局部+最大延时）----
+    T* slice_ptr = spec + t_start_idx * header.nchans;
+    size_t slice_len_for_rfi = t_len_eff + (size_t)delay_max_idx;
+    RfiMarkerCPU<T> rfi_marker(maskfile);
+    if (rficfg.use_iqrm) {
+        auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(
+            slice_ptr,
+            chan_start, chan_end_excl,
+            slice_len_for_rfi,
+            header.nchans,
+            header.tsamp, rficfg);
+        rfi_marker.mask(slice_ptr, header.nchans, slice_len_for_rfi, win_masks);
+    }
+    if (rficfg.use_mask) {
+        rfi_marker.mark_rfi(slice_ptr, header.nchans, slice_len_for_rfi);
+    }
+
+    // ---- 构造输出 ----
+    Spectrum<T> result;
+    result.nbits      = header.nbits;
+    result.ntimes     = t_len_eff;
+    result.tstart     = tstart;
+    result.tend       = tstart + (float)t_len_eff * header.tsamp;
+    result.dm         = dm;
+    result.nchans     = sel_nch;
+    result.freq_start = std::min(frequency_table[chan_start],
+                                 frequency_table[chan_end_excl - 1]);
+    result.freq_end   = std::max(frequency_table[chan_start],
+                                 frequency_table[chan_end_excl - 1]);
+    result.data       = std::shared_ptr<T[]>(new T[result.ntimes * result.nchans](),
+                                             [](T* p){ delete[] p; });
+
+    // ---- 解色散 ----
+#pragma omp parallel for schedule(dynamic)
+    for (ptrdiff_t ti = 0; ti < (ptrdiff_t)result.ntimes; ++ti) {
+#pragma omp simd
+        for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
+            int d = dm_delays[ch - chan_start];
+            size_t src_idx = (size_t)ti + (size_t)d; // 相对于 slice_ptr
+            result.data[(size_t)ti * result.nchans + (size_t)(ch - chan_start)]
+                = slice_ptr[src_idx * header.nchans + (size_t)ch];
+        }
+    }
+
+    return result;
 }
+
 
 } // namespace cpucal
 #endif //_CPUCAL_H
