@@ -14,7 +14,8 @@ from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter
- 
+from numpy.polynomial import Chebyshev
+
 
 from .config.taskconfig import TaskConfig
 from .dedispered import dedisperse_spec_with_dm
@@ -133,7 +134,6 @@ def calculate_frb_snr(spec, noise_range=None, threshold_sigma=5.0, toa_sample_id
     Returns:
         tuple: (snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality))
     """
-    
     # Step 1: Frequency-integrated time series with outlier-resistant summation
     time_series = np.sum(spec, axis=1)  # Sum over frequency axis
     # Apply Gaussian filter for smoothing
@@ -511,6 +511,38 @@ def _setup_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis,
     return ax_spec_time, ax_spec, ax_spec_freq
 
 
+def _detrend_frequency(data: np.ndarray, poly_order: int = 6) -> np.ndarray:
+    """
+    Remove bandpass shape along frequency axis for each time sample using Chebyshev fit.
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        Spectrum data in (time, freq) format
+    poly_order : int
+        Order of Chebyshev polynomial for fitting
+    
+    Returns
+    -------
+    np.ndarray
+        Flattened data with frequency baseline removed
+    """
+    ntime, nchan = data.shape
+    # 将频率通道归一化到 [-1, 1]，数值更稳定
+    x = np.linspace(-1, 1, nchan)
+    detrended = np.zeros_like(data)
+
+    for t in range(ntime):
+        y = data[t, :]
+        valid = np.isfinite(y) & (y != 0)
+        if valid.sum() > poly_order + 2:
+            cheb = Chebyshev.fit(x[valid], y[valid], deg=poly_order, domain=[-1, 1])
+            fitted = cheb(x)
+            detrended[t, :] = y - fitted
+        else:
+            detrended[t, :] = y  # 如果有效点太少，就跳过拟合
+
+    return detrended
 
 
 def _detrend(data: np.ndarray, axis: int = -1, 
@@ -792,9 +824,11 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
             # Sum all values in this subband cell
             subband_value = np.sum(spec_data[t_start:t_end, f_start:f_end])
             subband_matrix[t_bin, f_bin] = subband_value
+
+    subband_matrix = _detrend_frequency(subband_matrix.T, poly_order=20).T
     
     subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
-    
+
     if specconfig.get("norm", True):
         for f_bin in range(n_freq_subbands):
             freq_column = subband_matrix[:, f_bin]

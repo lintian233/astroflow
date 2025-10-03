@@ -45,6 +45,7 @@ dev = ["pytest>=6.0", "pytest-cov", "black", "flake8"]
 [project.scripts]
 astroflow = "astroflow.cli:main"
 astrorfimask = "astroflow.rfimask:astrorfimask"
+specplot = "astroflow.specplot:main"
 
 [tool.setuptools]
 include-package-data = true

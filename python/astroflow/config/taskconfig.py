@@ -34,10 +34,44 @@ class TaskConfig:
         os.environ['OMP_NUM_THREADS'] = f'{cputhread}'
         
     def _load_config(self):
-        if not self.config_file or not os.path.exists(self.config_file):
-            raise FileNotFoundError(f"Config file {self.config_file} not found.")
-        with open(self.config_file, "r") as file:
-            return yaml.safe_load(file)
+        # 定义默认配置，直接写死在代码里
+        default_config = {
+            "cputhread": 16,
+            "modelname": "yolov11n",
+            "mode": "single",
+            "batchsize": 128,
+            "plotworker": 1,
+            "dmtconfig": {"minpercentile": 0, "maxpercentile": 100},
+            "specconfig": {"minpercentile": 0, "maxpercentile": 100},
+            "tsample": [
+                {"name": "default", "t": 0.5}
+            ],
+            "confidence": 0.5,
+            "dedgpu": 0,
+            "detgpu": 0,
+            "rfi": {
+                "use_mask": False,
+                "use_zero_dm": False,
+                "use_iqrm": True,
+            },
+            "iqrm": {
+                "mode": 0,
+                "radius_frac": 0.2,
+                "nsigma": 5.0,
+                "geofactor": 1.0,
+                "win_sec": 0,
+                "hop_sec": 0.5,
+                "include_tail": True,
+            }
+        }
+
+        if self.config_file and os.path.exists(self.config_file):
+            with open(self.config_file, "r") as file:
+                return yaml.safe_load(file)
+        else:
+            print("⚠️ Warning: NO config file found; Use Default Config, Maybe core dump ⚠️")
+            return default_config
+
 
     def _checker_tsample(self, tsample):
         if isinstance(tsample, list):
