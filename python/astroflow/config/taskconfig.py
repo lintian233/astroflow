@@ -52,13 +52,13 @@ class TaskConfig:
             "rfi": {
                 "use_mask": False,
                 "use_zero_dm": False,
-                "use_iqrm": True,
+                "use_iqrm": False,
             },
             "iqrm": {
-                "mode": 0,
-                "radius_frac": 0.2,
-                "nsigma": 5.0,
-                "geofactor": 1.0,
+                "mode": 1,
+                "radius_frac": 0.1,
+                "nsigma": 3.0,
+                "geofactor": 1.5,
                 "win_sec": 0,
                 "hop_sec": 0.5,
                 "include_tail": True,

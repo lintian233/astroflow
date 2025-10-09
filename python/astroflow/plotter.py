@@ -811,23 +811,16 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     # print(f"Freq subband size: {freq_subband_size} channels, Time bin size: {time_bin_size} samples ({time_bin_duration*1000:.3f} ms)")
     
     # Step 3: Create subband matrix
-    subband_matrix = np.zeros((n_time_bins, n_freq_subbands))
+    # Vectorized implementation to replace slow nested loops
+    trimmed_time_len = n_time_bins * time_bin_size
+    trimmed_freq_len = n_freq_subbands * freq_subband_size
     
-    for t_bin in range(n_time_bins):
-        t_start = t_bin * time_bin_size
-        t_end = min((t_bin + 1) * time_bin_size, n_time_samples)
-        
-        for f_bin in range(n_freq_subbands):
-            f_start = f_bin * freq_subband_size
-            f_end = min((f_bin + 1) * freq_subband_size, n_freq_channels)
-            
-            # Sum all values in this subband cell
-            subband_value = np.sum(spec_data[t_start:t_end, f_start:f_end])
-            subband_matrix[t_bin, f_bin] = subband_value
-
-    subband_matrix = _detrend_frequency(subband_matrix.T, poly_order=20).T
+    subband_matrix = spec_data[:trimmed_time_len, :trimmed_freq_len].reshape(
+        n_time_bins, time_bin_size, n_freq_subbands, freq_subband_size
+    ).sum(axis=(1, 3))
     
     subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
+    # subband_matrix = _detrend_frequency(subband_matrix.T, poly_order=6).T
 
     if specconfig.get("norm", True):
         for f_bin in range(n_freq_subbands):
@@ -892,11 +885,6 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     spec_vmin = np.percentile(subband_matrix, specconfig.get("minpercentile", 0.1))
     spec_vmax = np.percentile(subband_matrix, specconfig.get("maxpercentile", 99.9))
 
-    if spec_vmin == 0:
-        non_zero_values = subband_matrix[subband_matrix > 0]
-        if non_zero_values.size > 0:
-            spec_vmin = non_zero_values.min()
-
     im = ax_spec.imshow(
         subband_matrix.T,
         aspect="auto",
@@ -907,22 +895,6 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         vmax=spec_vmax,
         interpolation='nearest'  # Use nearest neighbor to preserve subband structure
     )
-    
-    # Add TOA line to main spectrum plot
-    # if toa is not None:
-    #     ax_spec.axvline(toa, color='white', linestyle='--', linewidth=0.8, 
-    #                    alpha=0.8, label='TOA')
-    
-    # Add grid to show subband boundaries
-    # for i in range(1, n_freq_subbands):
-    #     freq_boundary = subband_freq_axis[i]
-    #     ax_spec.axhline(freq_boundary, color='white', linestyle='-', 
-    #                    linewidth=0.5, alpha=0.3)
-    
-    # for i in range(1, n_time_bins):
-    #     time_boundary = subband_time_axis[i]
-    #     ax_spec.axvline(time_boundary, color='white', linestyle='-', 
-    #                    linewidth=0.3, alpha=0.2)
     
     ax_spec.set_ylabel(f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size} channels each)\n"
                       f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
