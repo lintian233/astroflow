@@ -214,7 +214,7 @@ class TaskConfig:
     def snrhold(self):
         snrhold = self._config_data.get("snrhold")
         if snrhold is None:
-            snrhold = 0
+            snrhold = -100
         if not isinstance(snrhold, (int, float)):
             raise ValueError("snrhold must be a number.")
         return snrhold

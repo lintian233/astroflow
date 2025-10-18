@@ -1,21 +1,19 @@
+import gc
 import multiprocessing
 import os
 import time
-import gc
 
 import cv2
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
 import seaborn
-import matplotlib.patches as mpatches
-from scipy.ndimage import gaussian_filter
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy.optimize import curve_fit
-from scipy.ndimage import gaussian_filter
 from numpy.polynomial import Chebyshev
-
+from scipy.ndimage import gaussian_filter
+from scipy.optimize import curve_fit
 
 from .config.taskconfig import TaskConfig
 from .dedispered import dedisperse_spec_with_dm
@@ -24,8 +22,6 @@ from .io.filterbank import Filterbank
 from .io.psrfits import PsrFits
 from .spectrum import Spectrum
 from .utils import get_freq_end_toa
-
-
 
 
 def error_tracer(func):
@@ -788,6 +784,41 @@ def _setup_detrend_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     return ax_spec_time, ax_spec, ax_spec_freq
 
 
+def downsample_freq_weighted_vec(spec_data, freq_axis, n_out):
+    """
+    完全向量化的频率方向降采样。
+    保证能量守恒 & 无跑频。
+    spec_data: [ntime, nfreq_in]
+    freq_axis: 频率中心(升序)
+    n_out:     目标子带数
+    """
+    ntime, nfreq_in = spec_data.shape
+
+    # 原始通道边界
+    f_edges_in = np.concatenate((
+        [freq_axis[0] - (freq_axis[1] - freq_axis[0]) / 2],
+        0.5 * (freq_axis[:-1] + freq_axis[1:]),
+        [freq_axis[-1] + (freq_axis[-1] - freq_axis[-2]) / 2],
+    ))
+    widths_in = np.diff(f_edges_in)
+
+    # 目标通道边界
+    f_edges_out = np.linspace(f_edges_in[0], f_edges_in[-1], n_out + 1)
+    freq_out = 0.5 * (f_edges_out[:-1] + f_edges_out[1:])
+
+    # 计算重叠矩阵 (n_out × nfreq_in)
+    lo = np.maximum.outer(f_edges_out[:-1], f_edges_in[:-1])
+    hi = np.minimum.outer(f_edges_out[1:], f_edges_in[1:])
+    overlap = np.clip(hi - lo, 0, None)
+
+    # 归一化加权矩阵
+    weights = overlap / widths_in[np.newaxis, :]
+    weights /= np.sum(weights, axis=1, keepdims=True)
+
+    # 向量化矩阵乘法 (保持能量)
+    spec_out = spec_data @ weights.T
+    return spec_out.astype(np.float32), freq_out
+
 def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_axis, 
                                  spec_tstart, spec_tend, specconfig, header, 
                                  toa=None, dm=None, pulse_width=None, snr=None):
@@ -798,27 +829,26 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     
     subtsamp = specconfig.get("subtsamp", 4)
     time_bin_duration = (pulse_width / subtsamp) * header.tsamp if pulse_width else 4 * header.tsamp
-    time_bin_size = max(1, int(time_bin_duration / header.tsamp))  # Convert to samples
-    
-    n_time_samples, n_freq_channels = spec_data.shape
+    time_bin_size = max(1, int(time_bin_duration / header.tsamp))
 
+    n_time_samples, n_freq_channels = spec_data.shape
     n_freq_subbands = specconfig.get("subfreq", 128)
-    freq_subband_size = max(1, n_freq_channels // n_freq_subbands)
-    
     n_time_bins = max(1, n_time_samples // time_bin_size)
-    
-    # print(f"Subband analysis: {n_freq_subbands} freq subbands × {n_time_bins} time bins")
-    # print(f"Freq subband size: {freq_subband_size} channels, Time bin size: {time_bin_size} samples ({time_bin_duration*1000:.3f} ms)")
-    
-    # Step 3: Create subband matrix
-    # Vectorized implementation to replace slow nested loops
     trimmed_time_len = n_time_bins * time_bin_size
-    trimmed_freq_len = n_freq_subbands * freq_subband_size
+
+    freq_subband_size = max(1, n_freq_channels / n_freq_subbands)
     
-    subband_matrix = spec_data[:trimmed_time_len, :trimmed_freq_len].reshape(
-        n_time_bins, time_bin_size, n_freq_subbands, freq_subband_size
-    ).sum(axis=(1, 3))
+    # curr_time = time.time()
+    spec_data_t = spec_data[:trimmed_time_len, :].reshape(
+        n_time_bins, time_bin_size, n_freq_channels
+    ).sum(axis=1)
     
+    subband_matrix, subband_freq_centers = downsample_freq_weighted_vec(
+        spec_data_t, spec_freq_axis, n_freq_subbands
+    )
+    # c_end_time = time.time()s
+    # print(f"Subband processing time: {c_end_time - curr_time:.3f} seconds")
+
     subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
     # subband_matrix = _detrend_frequency(subband_matrix.T, poly_order=6).T
 
@@ -868,16 +898,26 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     # Step 6: Frequency marginal from subband analysis only
     subband_freq_series = np.sum(subband_matrix, axis=0)
     
+    zero_band = np.all(np.isclose(subband_matrix, 0.0, atol=0), axis=0)
+    subband_freq_series[zero_band] = np.nan
+
+
+    finite_vals = np.asarray(subband_freq_series)[np.isfinite(subband_freq_series)]
+    low_bound, high_bound = np.min(finite_vals), np.max(finite_vals)
+
     # Create frequency centers for subband plotting
     subband_freq_centers = 0.5 * (subband_freq_axis[:-1] + subband_freq_axis[1:])
-    
+
     ax_spec_freq.plot(subband_freq_series, subband_freq_centers, "-", color="black", linewidth=1, 
                      alpha=0.8)
     
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
     ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
-    
+    ax_spec_freq.set_xlim(
+    low_bound - 0.1 * abs(high_bound - low_bound),
+    high_bound + 0.1 * abs(high_bound - low_bound)
+    )
     # Main subband spectrum plot
     extent_subband = [subband_time_axis[0], subband_time_axis[-1], 
                      subband_freq_axis[0], subband_freq_axis[-1]]
@@ -896,7 +936,7 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
         interpolation='nearest'  # Use nearest neighbor to preserve subband structure
     )
     
-    ax_spec.set_ylabel(f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size} channels each)\n"
+    ax_spec.set_ylabel(f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size:.2f} channels each)\n"
                       f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
     ax_spec.set_xlabel(f"Time (s) - {n_time_bins} Bins ({time_bin_duration*1000:.3f} ms each)\n"
                       f"TSAMP={header.tsamp:.6e}s, Bin Size={time_bin_size} samples duration={n_time_bins * time_bin_duration*1000:.1f} ms")
@@ -1037,7 +1077,7 @@ def plot_candidate(
                     fig, gs, spec_data, spec_time_axis, spec_freq_axis,
                     spec_tstart, spec_tend, specconfig, header, toa=peak_time, dm=dm, pulse_width=pulse_width, snr=snr
                 )
-            elif specconfig.get("mode") == "standard" or specconfig.get("mode") is None:
+            elif specconfig.get("mode") == "standard" or specconfig.get("mode") is None or specconfig.get("mode") == "std":
                 _setup_spectrum_plots(
                     fig, gs, spec_data, spec_time_axis, spec_freq_axis,
                     spec_tstart, spec_tend, specconfig, header, toa=peak_time, dm=dm, pulse_width=pulse_width, snr=snr
