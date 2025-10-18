@@ -788,9 +788,15 @@ def downsample_freq_weighted_vec(spec_data, freq_axis, n_out):
     """
     完全向量化的频率方向降采样。
     保证能量守恒 & 无跑频。
-    spec_data: [ntime, nfreq_in]
-    freq_axis: 频率中心(升序)
-    n_out:     目标子带数
+
+    参数
+    ------
+    spec_data : ndarray
+        [ntime, nfreq_in] 的动态谱
+    freq_axis : ndarray
+        频率中心(升序)。
+    n_out : int
+        目标子带数。
     """
     ntime, nfreq_in = spec_data.shape
 
@@ -848,8 +854,8 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     )
     # c_end_time = time.time()s
     # print(f"Subband processing time: {c_end_time - curr_time:.3f} seconds")
-
-    subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
+    if specconfig.get("dtrend", False):
+        subband_matrix = _detrend(subband_matrix, axis=0, type='linear')
     # subband_matrix = _detrend_frequency(subband_matrix.T, poly_order=6).T
 
     if specconfig.get("norm", True):
@@ -973,6 +979,7 @@ def plot_candidate(
         ValueError: If file_path has unsupported extension
         Exception: If data loading or processing fails
     """
+    origin_data = None
     try:
         # Parse candidate information
         dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox = _parse_candidate_info(candinfo)
@@ -1000,7 +1007,6 @@ def plot_candidate(
         ax_time, ax_main, ax_dm = _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, toa)
         
         # Load and process spectrum data
-        origin_data = None
         try:
             origin_data = _load_data_file(file_path)
             header = origin_data.header()
@@ -1051,12 +1057,13 @@ def plot_candidate(
             if snr < snrhold:
                 plt.close('all')
                 if origin_data is not None:
-                    if hasattr(origin_data, "close"):
+                    close_method = getattr(origin_data, "close", None)
+                    if callable(close_method):
                         try:
-                            origin_data.close()
+                            close_method()
                         except Exception:
                             pass
-                    del origin_data
+                    origin_data = None
                 
                 del spectrum, spec_data, initial_spectrum, initial_spec_data
                 gc.collect()
@@ -1137,11 +1144,12 @@ def plot_candidate(
     finally:
         # Cleanup
         plt.close('all')
-        if 'origin_data' in locals() and origin_data is not None:
-            if hasattr(origin_data, "close"):
+        if origin_data is not None:
+            close_method = getattr(origin_data, "close", None)
+            if callable(close_method):
                 try:
-                    origin_data.close()
+                    close_method()
                 except Exception:
                     pass
-            del origin_data
+            origin_data = None
         gc.collect()

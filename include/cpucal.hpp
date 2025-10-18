@@ -284,25 +284,27 @@ Spectrum<T> dedispered_fil_with_dm(
         throw std::invalid_argument("Time window too short for this DM and band (no valid samples after dedispersion).");
     }
 
-    // ---- RFI：只在“局部输入切片”上运行（长度 = t_len_eff + delay_max_idx）----
-    // 这样解色散访问到的所有原始样本都被一致地标注/掩膜。
+    // ---- RFI：只在“局部输入切片”上运行 ----
+    // 扩展窗口以覆盖解色散所需的所有样本
     T* origin_data = static_cast<T*>(fil->data);
-    const size_t slice_len_for_rfi = t_len_eff + (size_t)delay_max_idx;
-    T* slice_ptr = origin_data + t_start_idx * fil->nchans;
+    size_t rfi_t_start_idx = (t_start_idx > (size_t)delay_max_idx) ? (t_start_idx - delay_max_idx) : 0;
+    size_t rfi_offset_from_t_start = t_start_idx - rfi_t_start_idx;
+    T* slice_ptr_for_rfi = origin_data + rfi_t_start_idx * fil->nchans;
+    size_t slice_len_for_rfi = std::min(t_len_eff + rfi_offset_from_t_start + 2 * delay_max_idx, (size_t)fil->ndata - rfi_t_start_idx);
 
     RfiMarkerCPU<T> rfi_marker(maskfile);
     if (rficfg.use_iqrm) {
         auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(
-            slice_ptr,               // 指向局部起点
+            slice_ptr_for_rfi,       // 指向扩展切片的起点
             chan_start, chan_end_excl,
             slice_len_for_rfi,       // 覆盖局部 + 最大延时
             fil->nchans,
             fil->tsamp, rficfg);
-        rfi_marker.mask(slice_ptr, fil->nchans, slice_len_for_rfi, win_masks);
+        rfi_marker.mask(slice_ptr_for_rfi, fil->nchans, slice_len_for_rfi, win_masks);
     }
     if (rficfg.use_mask) {
-        // 静态掩膜同样只作用在切片上（不必动全局）
-        rfi_marker.mark_rfi(slice_ptr, fil->nchans, slice_len_for_rfi);
+        // 静态掩膜同样只作用在扩展切片上
+        rfi_marker.mark_rfi(slice_ptr_for_rfi, fil->nchans, slice_len_for_rfi);
     }
 
     // ---- 输出光谱 ----
@@ -326,10 +328,9 @@ Spectrum<T> dedispered_fil_with_dm(
 #pragma omp simd
         for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
             const int d = dm_delays[ch - chan_start];
-            const size_t src_idx = (size_t)ti + (size_t)d;  // 相对于 slice_ptr 的偏移
-            // 由 t_len_eff 的定义，src_idx < slice_len_for_rfi 恒成立，无需额外边界判断
+            const size_t src_idx = t_start_idx + (size_t)ti + (size_t)d;  // 相对于 origin_data 的绝对偏移
             result.data[(size_t)ti * (size_t)result.nchans + (size_t)(ch - chan_start)]
-                = slice_ptr[src_idx * fil->nchans + (size_t)ch];
+                = origin_data[src_idx * fil->nchans + (size_t)ch];
         }
     }
 
@@ -420,20 +421,23 @@ Spectrum<T> dedisperse_spec_with_dm(
     }
 
     // ---- RFI（局部+最大延时）----
-    T* slice_ptr = spec + t_start_idx * header.nchans;
-    size_t slice_len_for_rfi = t_len_eff + (size_t)delay_max_idx;
+    size_t rfi_t_start_idx = (t_start_idx > (size_t)delay_max_idx) ? (t_start_idx - delay_max_idx) : 0;
+    size_t rfi_offset_from_t_start = t_start_idx - rfi_t_start_idx;
+    T* slice_ptr_for_rfi = spec + rfi_t_start_idx * header.nchans;
+    size_t slice_len_for_rfi = std::min(t_len_eff + rfi_offset_from_t_start + 2 * delay_max_idx, header.ndata - rfi_t_start_idx);
+
     RfiMarkerCPU<T> rfi_marker(maskfile);
     if (rficfg.use_iqrm) {
         auto win_masks = iqrm_cuda::rfi_iqrm_gpu_host<T>(
-            slice_ptr,
+            slice_ptr_for_rfi,
             chan_start, chan_end_excl,
             slice_len_for_rfi,
             header.nchans,
             header.tsamp, rficfg);
-        rfi_marker.mask(slice_ptr, header.nchans, slice_len_for_rfi, win_masks);
+        rfi_marker.mask(slice_ptr_for_rfi, header.nchans, slice_len_for_rfi, win_masks);
     }
     if (rficfg.use_mask) {
-        rfi_marker.mark_rfi(slice_ptr, header.nchans, slice_len_for_rfi);
+        rfi_marker.mark_rfi(slice_ptr_for_rfi, header.nchans, slice_len_for_rfi);
     }
 
     // ---- 构造输出 ----
@@ -457,9 +461,9 @@ Spectrum<T> dedisperse_spec_with_dm(
 #pragma omp simd
         for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
             int d = dm_delays[ch - chan_start];
-            size_t src_idx = (size_t)ti + (size_t)d; // 相对于 slice_ptr
+            size_t src_idx = t_start_idx + (size_t)ti + (size_t)d; // 相对于 spec
             result.data[(size_t)ti * result.nchans + (size_t)(ch - chan_start)]
-                = slice_ptr[src_idx * header.nchans + (size_t)ch];
+                = spec[src_idx * header.nchans + (size_t)ch];
         }
     }
 
