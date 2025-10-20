@@ -137,7 +137,14 @@ specconfig:
   maxpercentile: 100
   tband: 120 # 毫秒。动态谱图的时间窗口
   mode: subband # 'subband' 或 'standard' 或 'detrend'
+  dtrend: True # 可选：对子带做线性去趋势（默认 false）
+  norm: False   # 可选：子带归一化（默认 true）
+  subfreq: 128 # 可选：子带数量（默认 128）
+  subtsamp: 4  # 可选：时间聚合因子（默认 4）
+  savetype: png # 可选：输出格式 png/jpg
 ```
+
+以上附加控制项均为可选配置，删除后将回退为绘图模块的默认值。
 
 **关键参数解释:**
 

@@ -87,6 +87,11 @@ specconfig:
   maxpercentile: 99
   tband: 120                # 时间带宽
   mode: subband             # 模式，可选 [subband, standard, detrend]
+  dtrend: false             # 可选：对子带做线性去趋势（默认 false）
+  norm: true                # 可选：子带归一化（默认 true）
+  subfreq: 128              # 可选：子带数量（默认 128）
+  subtsamp: 2               # 可选：时间聚合因子（默认 4）
+  savetype: png             # 可选：输出格式 png/jpg
 ```
 
 > 说明

@@ -287,8 +287,21 @@ specconfig:
   minpercentile: 0          # 缩放最小百分位数
   maxpercentile: 100        # 缩放最大百分位数
   tband: 20                 # 时间带宽，毫秒（FAST数据使用120）
-  mode: subband             # 绘图模式：subband/standard
+  mode: subband             # 绘图模式：subband(std)/standard/detrend
+  dtrend: false             # 可选：按子带线性去趋势（默认 false） (mode == subband)
+  norm: true                # 可选：子带归一化到 [0,1]（默认 true） (mode == subband)
+  subfreq: 256              # 可选：子带数量（默认 128） (mode == subband)
+  subtsamp: 2               # 可选：子带时间聚合因子（默认 4） (mode == subband)
+  savetype: png             # 可选：候选图像格式 png/jpg（默认 png）
 ```
+
+**额外频谱控制选项**
+
+- `dtrend`（布尔，默认 `false`）：对子带执行线性去趋势，削弱带通信号基线。
+- `norm`（布尔，默认 `true`）：对子带做最小-最大归一化，增强弱脉冲可见度。
+- `subfreq`（整数，默认 `128`）：`subband` 模式下输出的频率子带数。
+- `subtsamp`（整数，默认 `4`）：构建子带时间 bin 的采样聚合因子。
+- `savetype`（"png" | "jpg"，默认 `png`）：候选图像的输出格式。
 
 </details>
 
@@ -354,7 +367,11 @@ specconfig:
   minpercentile: 0    
   maxpercentile: 100
   tband: 10 #ms
-  mode: subband # subband/standard
+  mode: subband # subband/standard/detrend
+  subfreq: 256 # 可选（默认 128）
+  subtsamp: 2  # 可选（默认 4）
+  norm: true   # 可选：子带归一化
+  savetype: png # 可选：输出 png/jpg
 
 ```
 

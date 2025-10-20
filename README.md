@@ -295,8 +295,21 @@ specconfig:
   minpercentile: 0          # Minimum percentile for scaling
   maxpercentile: 100        # Maximum percentile for scaling
   tband: 20                 # Time band in ms (120 for FAST data)
-  mode: subband             # Plot mode: subband/standard
+  mode: subband             # Plot mode: subband(std)/standard/detrend
+  dtrend: false             # Optional: enable per-channel trend removal (mode=subband) (default false)
+  norm: true                # Optional: min-max normalize each subband (default true) (mode=subband)
+  subfreq: 256              # Optional: subbands when mode=subband (default 128)
+  subtsamp: 2               # Optional: time binning factor when mode=subband (default 4)
+  savetype: png             # Optional: export format png/jpg (default png)
 ```
+
+**Optional spectrum controls**
+
+- `dtrend` (bool, default `false`): apply linear detrending per subband to suppress bandpass structure.
+- `norm` (bool, default `true`): normalize each subband to [0, 1] to enhance weak pulses.
+- `subfreq` (int, default `128`): number of frequency subbands in `subband` mode.
+- `subtsamp` (int, default `4`): time downsampling factor used to form subband time bins.
+- `savetype` ("png" | "jpg", default `png`): choose the image format for saved candidate plots.
 
 </details>
 
@@ -366,7 +379,11 @@ specconfig:
   minpercentile: 0    
   maxpercentile: 100
   tband: 10 #ms
-  mode: subband # subband/standard
+  mode: subband # subband/standard/detrend
+  subfreq: 256 # optional (default 128)
+  subtsamp: 2  # optional (default 4)
+  norm: true   # optional per-subband normalization
+  savetype: png # optional png/jpg export
 ```
 
 </details>

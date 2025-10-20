@@ -89,7 +89,14 @@ specconfig:
   maxpercentile: 99
   tband: 120                # time bands
   mode: subband             # one of [subband, standard, detrend]
+  dtrend: false             # optional: linear detrending per subband (default false)
+  norm: true                # optional: normalize each subband (default true)
+  subfreq: 128              # optional: subbands in subband mode (default 128)
+  subtsamp: 2               # optional: time binning factor (default 4)
+  savetype: png             # optional: image format png/jpg
 ```
+
+> Tip: `subfreq`, `subtsamp`, `dtrend`, `norm`, and `savetype` are optional. Remove any line to fall back to the default behaviour shown in the comment.
 
 > Notes
 > - If you run on a multi-GPU box, switch `dedgpu`/`detgpu` to the indices you want (or use `CUDA_VISIBLE_DEVICES`).

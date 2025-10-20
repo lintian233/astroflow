@@ -139,7 +139,14 @@ specconfig:
   maxpercentile: 100
   tband: 120 # ms. Time window for the dynamic spectrum plot.
   mode: subband # 'subband' or 'standard' or 'detrend'
+  dtrend: True # optional: per-subband detrending (default false)
+  norm: False   # optional: per-subband normalization (default true)
+  subfreq: 256 # optional: number of subbands (default 128)
+  subtsamp: 4  # optional: time binning factor (default 4)
+  savetype: png # optional: image format png/jpg
 ```
+
+Optional spectrum controls give you finer control over the plotting step—comment out any of the extra lines above to fall back to the defaults baked into the plotter.
 
 **Key Parameter Explanations:**
 - **`mode: dataset`**: This mode is designed to process a list of data files. It performs a blind search on each file and then uses the ground truth information (DM, time) from the `candpath` file to automatically classify the detected candidates (e.g., as `candidate`, `detect`, or `background`) and calculate performance metrics. It is ideal for validation, performance testing, and characterization of the pipeline.
