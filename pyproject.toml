@@ -12,7 +12,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "pulseflow"
-version = "0.1.6"
+version = "0.1.7"
 description = "High-performance radio astronomy single pulse search tools"
 requires-python = ">=3.10"
 readme = "README.md"
