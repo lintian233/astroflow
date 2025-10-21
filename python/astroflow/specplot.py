@@ -47,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         "--log_level", type=str, default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level"
     )
+    parser.add_argument(
+        "--spec",
+        action="store_true",
+        help="Plot only the detrended spectrum (single panel)",
+    )
     return parser.parse_args()
 
 
@@ -80,7 +85,7 @@ def load_data(file_path: str) -> Union[Filterbank, PsrFits]:
         raise ValueError(f"Unsupported file type: {ext}. Supported: .fil, .fits")
 
 
-def calculate_dynamic_range(data: np.ndarray, percentiles=(1, 99.9)) -> Tuple[float, float]:
+def calculate_dynamic_range(data: np.ndarray, percentiles=(1, 99.99)) -> Tuple[float, float]:
     finite = np.isfinite(data)
     if not finite.any():
         vmin, vmax = np.percentile(data, percentiles)
@@ -210,7 +215,7 @@ def _detrend(data: np.ndarray, axis: int = -1,
             A = np.ones((Npts, 2), dtype)
             A[:, 0] = np.arange(1, Npts + 1, dtype=dtype) / Npts
             sl = slice(bp[m], bp[m + 1])
-            coef, resids, rank, s = linalg.lstsq(A, newdata[sl])
+            coef = linalg.lstsq(A, newdata[sl])[0]  # type: ignore[index]
             newdata[sl] = newdata[sl] - A @ coef
 
         # Put data back in original shape.
@@ -233,6 +238,7 @@ def plot_dedispersed_spectrum(
     figsize: Tuple[float, float] = (10, 10),
     subfreq: Optional[int] = None,
     subtsamp: int = 1,
+    spec_only: bool = False,
 ) -> str:
     os.makedirs(output_path, exist_ok=True)
 
@@ -295,53 +301,74 @@ def plot_dedispersed_spectrum(
     freq_axis = np.linspace(f_start, f_end, data.shape[1])
 
     # === 绘图 ===
-    fig, axes = plt.subplots(
-        2, 2, figsize=figsize, dpi=dpi,
-        gridspec_kw={"height_ratios": [3, 1], "width_ratios": [1, 1]}
-    )
-    ((ax_spec_raw, ax_spec), (ax_time, ax_bp)) = axes
+    basename = Path(file_path).stem
+    extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
     plt.rcParams["image.origin"] = "lower"
 
-    basename = Path(file_path).stem
-    fig.suptitle(f"{basename} | t={tstart:.3f}-{tend:.3f}s | DM={dm:.3f}", fontsize=14)
+    if spec_only:
+        fig, ax_spec = plt.subplots(figsize=figsize, dpi=dpi)
+        # fig.suptitle(f"{basename} - t={tstart:.3f}-{tend:.3f}s - DM={dm:.3f}", fontsize=16)
+        ax_spec.imshow(
+            data.T,
+            aspect="auto",
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+        )
+        ax_spec.set_ylabel("Frequency (MHz)")
+        ax_spec.set_xlabel("Time (s)")
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+    else:
+        fig, axes = plt.subplots(
+            2, 2, figsize=figsize, dpi=dpi,
+            gridspec_kw={"height_ratios": [3, 1], "width_ratios": [1, 1]}
+        )
+        ((ax_spec_raw, ax_spec), (ax_time, ax_bp)) = axes
+        fig.suptitle(f"{basename} | t={tstart:.3f}-{tend:.3f}s | DM={dm:.3f}", fontsize=16)
 
-    # 原始动态频谱
-    extent = [time_axis[0], time_axis[-1], freq_axis[0], freq_axis[-1]]
-    im_raw = ax_spec_raw.imshow(data_raw.T, aspect="auto", cmap="viridis",
-                                vmin=np.percentile(data_raw[data_raw != 0], 1),
-                                vmax=np.percentile(data_raw[data_raw != 0], 99),
-                                extent=extent)
-    ax_spec_raw.set_ylabel("Frequency (MHz)")
-    ax_spec_raw.set_title("Raw Spectrum")
-    ax_spec_raw.tick_params(axis="x", labelbottom=False)
+        im_raw = ax_spec_raw.imshow(
+            data_raw.T,
+            aspect="auto",
+            cmap="viridis",
+            vmin=np.percentile(data_raw[data_raw != 0], 1),
+            vmax=np.percentile(data_raw[data_raw != 0], 99),
+            extent=extent,
+        )
+        ax_spec_raw.set_ylabel("Frequency (MHz)")
+        ax_spec_raw.set_title("Raw Spectrum")
+        ax_spec_raw.tick_params(axis="x", labelbottom=False)
 
-    # 去基线后的动态频谱
-    im_detrend = ax_spec.imshow(data.T, aspect="auto", cmap="viridis",
-                                vmin=vmin, vmax=vmax, extent=extent)
-    ax_spec.set_title("Detrended Spectrum")
-    ax_spec.tick_params(axis="y", labelleft=False)
-    ax_spec.tick_params(axis="x", labelbottom=False)
+        ax_spec.imshow(
+            data.T,
+            aspect="auto",
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+        )
+        ax_spec.set_title("Detrended Spectrum")
+        ax_spec.tick_params(axis="y", labelleft=False)
+        ax_spec.tick_params(axis="x", labelbottom=False)
 
-    # 时间序列
-    time_series = data.sum(axis=1)
-    ax_time.plot(time_axis, time_series, "k-", lw=0.8, alpha=0.8)
-    ax_time.set_ylabel("Integrated Power")
-    ax_time.set_xlabel("Time (s)")
-    ax_time.grid(True, alpha=0.3)
-    ax_time.set_xlim(extent[0], extent[1])
+        time_series = data.sum(axis=1)
+        ax_time.plot(time_axis, time_series, "k-", lw=0.8, alpha=0.8)
+        ax_time.set_ylabel("Integrated Power")
+        ax_time.set_xlabel("Time (s)")
+        ax_time.grid(True, alpha=0.3)
+        ax_time.set_xlim(extent[0], extent[1])
 
-    # Bandpass 对比
-    # ax_bp.plot(freq_axis, bandpass_raw, "r", lw=1.5, label="Raw", alpha=0.7)
-    ax_bp.plot(freq_axis, bandpass_flat, "b", lw=1.5, label="Detrended", alpha=0.7)
-    ax_bp.set_xlabel("Frequency (MHz)")
-    ax_bp.set_ylabel("Mean Amplitude")
-    ax_bp.legend()
-    ax_bp.grid(True, alpha=0.3)
-    ax_bp.set_xlim(freq_axis[0], freq_axis[-1])
-    ax_bp.tick_params(axis="y", labelleft=False, labelright=True, right=True)
-    ax_bp.yaxis.set_label_position("right")
+        # ax_bp.plot(freq_axis, bandpass_raw, "r", lw=1.5, label="Raw", alpha=0.7)
+        ax_bp.plot(freq_axis, bandpass_flat, "b", lw=1.5, label="Detrended", alpha=0.7)
+        ax_bp.set_xlabel("Frequency (MHz)")
+        ax_bp.set_ylabel("Mean Amplitude")
+        ax_bp.legend()
+        ax_bp.grid(True, alpha=0.3)
+        ax_bp.set_xlim(freq_axis[0], freq_axis[-1])
+        ax_bp.tick_params(axis="y", labelleft=False, labelright=True, right=True)
+        ax_bp.yaxis.set_label_position("right")
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
 
     output_file = os.path.join(output_path, f"{basename}_t{tstart:.3f}-{tend:.3f}_DM{dm:.3f}.png")
     plt.savefig(output_file, dpi=dpi, bbox_inches="tight", facecolor="white")
@@ -359,7 +386,7 @@ def main() -> None:
         args.file_path, args.toa, args.dm, args.output_path,
         tband=args.tband, freq_start=args.freq_start, freq_end=args.freq_end,
         mask=mask, dpi=args.dpi, figsize=tuple(args.figsize),
-        subfreq=args.subfreq, subtsamp=args.subtsamp,
+        subfreq=args.subfreq, subtsamp=args.subtsamp, spec_only=args.spec,
     )
 
 

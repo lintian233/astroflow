@@ -55,6 +55,7 @@ class PsrFits(SpectrumBase):
             ndata = data_.shape[0]
         else:
             ndata = data_.shape[0] * data_.shape[1] if len(data_.shape) > 1 else data_.shape[0] // nchans
+            
         self._header = Header(
             mjd=mjd,
             filename=self.filename,
