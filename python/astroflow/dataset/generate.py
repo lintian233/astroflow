@@ -1,6 +1,5 @@
 import os
 import json
-from turtle import back
 from tqdm import tqdm
 import pandas as pd
 from typing import Tuple, Optional, Union, Dict, Any, List
@@ -317,4 +316,5 @@ def count_frb_dataset(
     plotter.close()
     logger.info(f"Total candidates found: {current_candidates}/{total_candidates}")
     logger.info(f"Missed candidates: {len(missed_candiates)}")
-    print(f"Missed candidate files: {'\n '.join(missed_candiates)}")
+    print("Missed candidate files:\n " + "\n ".join(missed_candiates))
+
