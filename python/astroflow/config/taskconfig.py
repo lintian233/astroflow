@@ -133,6 +133,14 @@ class TaskConfig:
     #     else:
     #         raise ValueError("Invalid format for preprocess in config file.")
     @property
+    def gencand(self):
+        gencand = self._config_data.get("gencand")
+        if gencand is None:
+            gencand = False
+        if not isinstance(gencand, bool):
+            raise ValueError("gencand must be a boolean.")
+        return gencand
+    @property
     def minfileage(self):
         minfileage = self._config_data.get("minfileage")
         if minfileage is None:

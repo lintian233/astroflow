@@ -1,4 +1,6 @@
+import fcntl
 import gc
+import json
 import multiprocessing
 import os
 import time
@@ -951,6 +953,48 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     return ax_spec_time, ax_spec, ax_spec_freq
 
 
+def _save_candidate_info(file_path, cand_info):
+    """
+    Atomically appends candidate information to a CSV-like file.
+
+    Args:
+        file_path (str): The path to the file.
+        cand_info (dict): The candidate information to append.
+    """
+    header = "file,mjd,dms,toa,toa_ref_freq_end,snr,pulse_width_ms,freq_start,freq_end,file_path,plot_path"
+    
+    # The order of values must match the header
+    values = [
+        cand_info.get("file", ""),
+        cand_info.get("mjd", ""),
+        cand_info.get("dms", ""),
+        cand_info.get("toa", ""),
+        cand_info.get("toa_ref_freq_end", ""),
+        cand_info.get("snr", ""),
+        cand_info.get("pulse_width_ms", ""),
+        cand_info.get("freq_start", ""),
+        cand_info.get("freq_end", ""),
+        cand_info.get("file_path", ""),
+        cand_info.get("plot_path", ""),
+    ]
+    line = ",".join(map(str, values))
+
+    with open(file_path, 'a+') as f:
+        try:
+            # Acquire an exclusive lock
+            fcntl.flock(f, fcntl.LOCK_EX)
+            
+            f.seek(0, os.SEEK_END)
+            if f.tell() == 0:
+                f.write(header + "\n")
+            
+            f.write(line + "\n")
+
+        finally:
+            # Release the lock
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
 def plot_candidate(
     dmt: DmTime, 
     candinfo, 
@@ -1007,15 +1051,15 @@ def plot_candidate(
         ax_time, ax_main, ax_dm = _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, toa)
         
         # Load and process spectrum data
+        origin_data = _load_data_file(file_path)
+        header = origin_data.header()
+        taskconfig = TaskConfig()
         try:
-            origin_data = _load_data_file(file_path)
-            header = origin_data.header()
             ref_toa = get_freq_end_toa(origin_data.header(), freq_end, toa, dm)
             # First pass: get initial spectrum for pulse width estimation
             tband = specconfig.get("tband", 0.5)  # Default to 0.5 seconds if not specified
             initial_spec_tstart, initial_spec_tend = _calculate_spectrum_time_window(toa, 0, header.tsamp, tband)
             
-            taskconfig = TaskConfig()
             basename = os.path.basename(file_path).split(".")[0]
             mask_file_dir = taskconfig.maskdir
             maskfile = f"{mask_file_dir}/{basename}_your_rfi_mask.bad_chans"
@@ -1113,8 +1157,9 @@ def plot_candidate(
         savetype = specconfig.get("savetype", "png")
         if savetype == "jpg":
             # Generate output filename and save
+            imgname = f"{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.jpg"
             output_filename = (
-                f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.jpg"
+                f"{save_path}/{imgname}"
             )
             print(f"Saving: {os.path.basename(output_filename)}")
 
@@ -1125,8 +1170,9 @@ def plot_candidate(
                 bbox_inches="tight",
             )
         else:
+            imgname = f"{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
             output_filename = (
-                f"{save_path}/{snr:.2f}_{pulse_width_ms:.2f}_{dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
+                f"{save_path}/{imgname}"
             )
             print(f"Saving: {os.path.basename(output_filename)}")
 
@@ -1136,13 +1182,30 @@ def plot_candidate(
                 format="png",
                 bbox_inches="tight",
             )
+        
+        #file_path, file, mjd, dms, toa, toa_ref_freq_end, snr, pulse_width_ms, freq_start, freq_end
+        if taskconfig.gencand:
+            cand_info = {
+                "file": os.path.basename(file_path),
+                "mjd": header.mjd + (round(ref_toa,3) / 86400.0),
+                "dms": dm,
+                "toa": round(ref_toa, 3),
+                "toa_ref_freq_end": toa,
+                "snr": round(snr, 2),
+                "pulse_width_ms": round(pulse_width_ms, 2),
+                "freq_start": freq_start,
+                "freq_end": freq_end,
+                "file_path": file_path,
+                "plot_path": imgname,
+            }
+            candsinfopath = f"{save_path}/astroflow_cands.csv"
+            _save_candidate_info(candsinfopath, cand_info)
 
     except Exception as e:
         print(f"Error in plot_candidate: {e}")
         raise
     
     finally:
-        # Cleanup
         plt.close('all')
         if origin_data is not None:
             close_method = getattr(origin_data, "close", None)
