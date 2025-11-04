@@ -374,7 +374,7 @@ def _calculate_spectrum_time_window(toa: float, pulse_width_samples: float, tsam
 
     spec_tstart = max(0, toa - time_size)
     spec_tend = toa + time_size
-    return np.round(spec_tstart, 3), np.round(spec_tend, 3)
+    return spec_tstart, spec_tend
 
 
 def _setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, toa):
