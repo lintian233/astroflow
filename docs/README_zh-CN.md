@@ -36,13 +36,6 @@
 反馈：使用 [Issues](https://github.com/lintian233/astroflow/issues) 或 [Discussions](https://github.com/lintian233/astroflow/discussions)。
 <!-- 参见 [贡献指南](./CONTRIBUTING.md) 了解如何参与。 -->
 
-<h2 id="updates">更新</h2>
-
-- **2025年8月21日** — `astroflow` CLI公开预览；集成CUDA消色散和基于YOLO的检测器
-- **2025年8月20日** — Docker镜像（CUDA 12.x，PyTorch）和端到端基准测试脚本
-
-<!-- > [!NOTE]
-> 路线图和里程碑在 [Projects](https://github.com/lintian233/astroflow/projects) 中跟踪。 -->
 
 <h2 id="preview">预览</h2>
 
@@ -95,6 +88,12 @@
 > **ASTROFLOW: A Real-Time End-to-End Pipeline for Radio Single-Pulse Searches**  
 > https://arxiv.org/abs/2511.02328
 
+
+<h2 id="todo">TODO</h2>
+
+- 增加 psrdada 数据格式支持，并提供零拷贝的内存映射接口以适配高吞吐流式数据。
+- 在多参数搜索流程中复用已完成解色散的数据产品，避免重复计算。
+- 完善发布通用的注入脉冲与模型微调模块（待发布）。
 
 <h2 id="usage">YAML配置</h2>
 

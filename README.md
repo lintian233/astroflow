@@ -31,21 +31,9 @@ One stop realtime GPU-accelerated single-pulse/FRB search pipeline
 - ⚡ **GPU-Accelerated Processing** - CUDA dedispersion with advanced optimizations (FMA, shared memory, loop unrolling)
 - 🤖 **AI-Powered Detection** - YOLOv11n trained on 100k+ sim FRBs dataset with high accuracy
 - 🧹 **Complete RFI Mitigation** - RFI removal with PSRFITS & FILTERBANK support  
-- ⚙️ **User-Friendly Pipeline** - Simple YAML configuration with Docker deployment and bilingual interface
+- ⚙️ **User-Friendly Pipeline** - Simple YAML configuration; easy deployment; Docker deployment
 
 Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discussions](https://github.com/lintian233/astroflow/discussions).  
-<!-- See [Contribution Guide](./docs/CONTRIBUTING.md) for how to get involved. -->
-
-<h2 id="updates">Updates</h2>
-
-- **Sep 10, 2025** - feat: GPU-accelerated IQRM algorithm implementation based on Bhardwaj et al. (2022) with enhanced RFI configuration
-- **Aug 22, 2025** - feat: Add GPU-accelerated RFI marking and decouple CPU/GPU implementations
-- **Aug 21, 2025** — Public preview of `astroflow` CLI ; CUDA dedispersion and YOLO-based detector integrated.  
-- **Aug 20, 2025** — Docker image (CUDA 12.x, PyTorch) and end-to-end benchmark scripts.  
-
-<!-- > [!NOTE]
-> Roadmap and milestones are tracked in [Projects](https://github.com/lintian233/astroflow/projects). -->
-
 <h2 id="preview">Preview</h2>
 
 <div align="center">
@@ -101,6 +89,25 @@ If you use **AstroFlow** in your research, please cite:
 > **ASTROFLOW: A Real-Time End-to-End Pipeline for Radio Single-Pulse Searches**  
 > https://arxiv.org/abs/2511.02328
 
+
+<!-- See [Contribution Guide](./docs/CONTRIBUTING.md) for how to get involved. -->
+
+<h2 id="updates">Updates</h2>
+
+- **Sep 10, 2025** - feat: GPU-accelerated IQRM algorithm implementation based on Bhardwaj et al. (2022) with enhanced RFI configuration
+- **Aug 22, 2025** - feat: Add GPU-accelerated RFI marking and decouple CPU/GPU implementations
+- **Aug 21, 2025** — Public preview of `astroflow` CLI ; CUDA dedispersion and YOLO-based detector integrated.  
+- **Aug 20, 2025** — Docker image (CUDA 12.x, PyTorch) and end-to-end benchmark scripts.  
+
+<!-- > [!NOTE]
+> Roadmap and milestones are tracked in [Projects](https://github.com/lintian233/astroflow/projects). -->
+
+<h2 id="todo">TODO</h2>
+
+- Add psrdada format ingestion plus zero-copy memory mapping for high-throughput streaming.
+- Reuse dedispersed data products across multi-parameter searches to reduce repeated computation.
+- Polish and release the general injection-pulse plus model fine-tuning module (pending).
+- Refactor documentation and publish it on Read the Docs.
 
 <h2 id="usage">YAML Configuration</h2>
 
