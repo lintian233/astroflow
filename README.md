@@ -95,23 +95,12 @@ Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discu
 
 <h2 id="citation">Citation</h2>
 
-If you use **AstroFlow** in your research, please cite our work:
+If you use **AstroFlow** in your research, please cite:
 
 > [!NOTE]
-> Our scientific paper describing the AstroFlow pipeline is currently **in preparation**. 
-> We will update this section with the proper paper citation once our manuscript is published. 
-> Please check back for updates or watch this repository for announcements.
-> In the meantime, please cite this repository:
-> 
-```bibtex
-@misc{astroflow2025,
-  title={AstroFlow: GPU-accelerated single-pulse/FRB search pipeline},
-  author={lintian233},
-  year={2025},
-  url={https://github.com/lintian233/astroflow},
-  note={Software pipeline for fast radio burst detection and analysis}
-}
-```
+> **ASTROFLOW: A Real-Time End-to-End Pipeline for Radio Single-Pulse Searches**  
+> https://arxiv.org/abs/2511.02328
+
 
 <h2 id="usage">YAML Configuration</h2>
 

@@ -89,23 +89,12 @@
 
 <h2 id="citation">引用</h2>
 
-如果您在研究中使用了**AstroFlow**，请引用我们的工作：
+如果您在研究中使用了**AstroFlow**，请引用:
 
 > [!NOTE]
-> 描述AstroFlow流水线的科学论文目前**正在准备中**。
-> 我们将在手稿发表后更新此部分的正式论文引用。
-> 请定期查看更新或关注此仓库的公告。
-> 与此同时，请引用此仓库：
-> 
-```bibtex
-@misc{astroflow2025,
-  title={AstroFlow: GPU-accelerated single-pulse/FRB search pipeline},
-  author={lintian233},
-  year={2025},
-  url={https://github.com/lintian233/astroflow},
-  note={Software pipeline for fast radio burst detection and analysis}
-}
-```
+> **ASTROFLOW: A Real-Time End-to-End Pipeline for Radio Single-Pulse Searches**  
+> https://arxiv.org/abs/2511.02328
+
 
 <h2 id="usage">YAML配置</h2>
 
