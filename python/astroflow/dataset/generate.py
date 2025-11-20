@@ -96,7 +96,8 @@ def _check_dm_match(
 
 
 def muti_pulsar_search_detect(
-    file: str,
+    # file: str,
+    origin_data: SpectrumBase,
     output_dir: str,
     config: Config,
     detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
@@ -104,7 +105,8 @@ def muti_pulsar_search_detect(
     frbcandidate: Optional[pd.DataFrame] = None,
 ) -> int:
     """Perform multi-pulsar search and detection."""
-    origin_data = _load_spectrum_data(file)
+    # origin_data = _load_spectrum_data(file)
+    file = origin_data._filename
 
 
     taskconfig = TaskConfig()
@@ -206,51 +208,53 @@ def _process_single_file(
 ) -> bool:
     """Process a single file with all parameter combinations."""
     file_detected = False
-    
-    for dm_item in task_config.dmrange:
-        for freq_item in task_config.freqrange:
-            for tsample_item in task_config.tsample:
-                config = Config(
-                    dm_low=dm_item["dm_low"],
-                    dm_high=dm_item["dm_high"],
-                    dm_step=dm_item["dm_step"],
-                    freq_start=freq_item["freq_start"],
-                    freq_end=freq_item["freq_end"],
-                    t_sample=tsample_item["t"],
-                    confidence=task_config.confidence,
-                    time_downsample=task_config.timedownfactor,
-                )
-                
-                # Check if already processed
-                file_basename = os.path.basename(file_path).split(".")[0]
-                base_dir = os.path.basename(task_config.input)
-                base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
-                base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
-                base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
-                
-                cached_dir = os.path.join(output_dir, "cached")
-                file_dir = os.path.join(cached_dir, base_dir, file_basename)
-                
-                
-                if os.path.exists(file_dir):
-                    logger.info(f"Skipping already processed file: {file_basename}")
-                    # 检查 candidate_detect_dir 目录下是否有文件，如果没有则 detection_flag = 0
-                    candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename)
-                    if any(os.scandir(candidate_detect_dir)):
-                        file_detected = True
-                    continue
-
-
-                try:
-                    detection_flag = muti_pulsar_search_detect(
-                        file_path, output_dir, config, detector, plotter, candidate
+    origin_data = _load_spectrum_data(file_path)
+    try:
+        for dm_item in task_config.dmrange:
+            for freq_item in task_config.freqrange:
+                for tsample_item in task_config.tsample:
+                    config = Config(
+                        dm_low=dm_item["dm_low"],
+                        dm_high=dm_item["dm_high"],
+                        dm_step=dm_item["dm_step"],
+                        freq_start=freq_item["freq_start"],
+                        freq_end=freq_item["freq_end"],
+                        t_sample=tsample_item["t"],
+                        confidence=task_config.confidence,
+                        time_downsample=task_config.timedownfactor,
                     )
-                    if detection_flag == 1:
-                        file_detected = True
-                    os.makedirs(file_dir, exist_ok=True)
-                except Exception as e:
-                    logger.error(f"Error processing {file_path} with config: {e}")
-    
+                    
+                    # Check if already processed
+                    file_basename = os.path.basename(file_path).split(".")[0]
+                    base_dir = os.path.basename(task_config.input)
+                    base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
+                    base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
+                    base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
+                    
+                    cached_dir = os.path.join(output_dir, "cached")
+                    file_dir = os.path.join(cached_dir, base_dir, file_basename)
+                    
+                    
+                    if os.path.exists(file_dir):
+                        logger.info(f"Skipping already processed file: {file_basename}")
+                        # 检查 candidate_detect_dir 目录下是否有文件，如果没有则 detection_flag = 0
+                        candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename)
+                        if any(os.scandir(candidate_detect_dir)):
+                            file_detected = True
+                        continue
+
+
+                    try:
+                        detection_flag = muti_pulsar_search_detect(
+                            origin_data, output_dir, config, detector, plotter, candidate
+                        )
+                        if detection_flag == 1:
+                            file_detected = True
+                        os.makedirs(file_dir, exist_ok=True)
+                    except Exception as e:
+                        logger.error(f"Error processing {file_path} with config: {e}")
+    finally:
+        del origin_data
     return file_detected
 
 

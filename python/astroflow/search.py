@@ -304,7 +304,7 @@ def single_pulsar_search_with_dm(
 
 
 def single_pulsar_search(
-    file: str,
+    origin_data: SpectrumBase,
     output_dir: str,
     config: Config,
     detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
@@ -354,8 +354,8 @@ def single_pulsar_search(
     >>> candidates = single_pulsar_search('obs.fil', '/output', config, detector, plotter)
     >>> print(f"Found {len(candidates)} candidates")
     """
-    origin_data = _load_spectrum_data(file)
-
+    # origin_data = _load_spectrum_data(file)
+    file = origin_data._filename
     maskfile = TaskConfig().maskfile
 
     dmtimes = dedisperse_spec(
@@ -382,12 +382,13 @@ def single_pulsar_search(
             plotter.plot_candidate(data, candinfo, detect_dir, file)
             candidates.extend(candidate)
     
-    del origin_data
+    # del origin_data
     return candidates
 
 
 def muti_pulsar_search(
-    file: str,
+    # file: str,
+    origin_data: SpectrumBase,
     output_dir: str,
     config: Config,
     detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
@@ -438,8 +439,8 @@ def muti_pulsar_search(
     >>> for i, cand in enumerate(candidates):
     ...     print(f"Candidate {i}: DM={cand[4]}, confidence={cand[5]}")
     """
-    origin_data = _load_spectrum_data(file)
-
+    # origin_data = _load_spectrum_data(file)
+    file = origin_data._filename
     taskconfig = TaskConfig()
     base_name = os.path.basename(file).split(".")[0]
     mask_file_dir = taskconfig.maskdir
@@ -473,7 +474,7 @@ def muti_pulsar_search(
     for i, candinfo in enumerate(candidates):
         plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, detect_dir, file)
     
-    del origin_data
+    # del origin_data
     return candidates
 
     
@@ -528,52 +529,57 @@ def _process_single_file_search(
     >>> _process_single_file_search('obs.fil', task_config, detector, 
     ...                           plotter, '/output', False)
     """
-    for dm_item in task_config.dmrange:
-        for freq_item in task_config.freqrange:
-            for tsample_item in task_config.tsample:
-                config = Config(
-                    dm_low=dm_item["dm_low"],
-                    dm_high=dm_item["dm_high"],
-                    dm_step=dm_item["dm_step"],
-                    freq_start=freq_item["freq_start"],
-                    freq_end=freq_item["freq_end"],
-                    t_sample=tsample_item["t"],
-                    confidence=task_config.confidence,
-                    time_downsample=task_config.timedownfactor,
-                )
-                # output_dir + files_dir_last
-                files_dir = os.path.dirname(file_path)
-                basedir = os.path.basename(files_dir)
-                output_dir = os.path.join(task_config.output, basedir)
-                file_basename = os.path.basename(file_path).split(".")[0]
-                cached_dir_path = _get_cached_dir_path(output_dir, files_dir, config)
-                file_dir = os.path.join(cached_dir_path, file_basename)
-                
-                print(f"checking {file_dir}")
-                if os.path.exists(file_dir):
-                    continue
+    origin_data = _load_spectrum_data(file_path)
+    try:
+        for dm_item in task_config.dmrange:
+            for freq_item in task_config.freqrange:
+                for tsample_item in task_config.tsample:
+                    config = Config(
+                        dm_low=dm_item["dm_low"],
+                        dm_high=dm_item["dm_high"],
+                        dm_step=dm_item["dm_step"],
+                        freq_start=freq_item["freq_start"],
+                        freq_end=freq_item["freq_end"],
+                        t_sample=tsample_item["t"],
+                        confidence=task_config.confidence,
+                        time_downsample=task_config.timedownfactor,
+                    )
+                    # output_dir + files_dir_last
+                    files_dir = os.path.dirname(file_path)
+                    basedir = os.path.basename(files_dir)
+                    output_dir = os.path.join(task_config.output, basedir)
+                    file_basename = os.path.basename(file_path).split(".")[0]
+                    cached_dir_path = _get_cached_dir_path(output_dir, files_dir, config)
+                    file_dir = os.path.join(cached_dir_path, file_basename)
+                    
+                    print(f"checking {file_dir}")
+                    if os.path.exists(file_dir):
+                        continue
 
-                try:
-                    if mutidetect:
-                        muti_pulsar_search(
-                            file_path,
-                            output_dir,
-                            config,
-                            detector,
-                            plotter,
-                        )
-                    else:
-                        single_pulsar_search(
-                            file_path,
-                            output_dir,
-                            config,
-                            detector,
-                            plotter,
-                        )
-                    os.makedirs(file_dir, exist_ok=True)
-                except Exception as e:
-                    logger.error(f"Error processing {file_path}: {e}")
-
+                    try:
+                        if mutidetect:
+                            muti_pulsar_search(
+                                # file_path,
+                                origin_data,
+                                output_dir,
+                                config,
+                                detector,
+                                plotter,
+                            )
+                        else:
+                            single_pulsar_search(
+                                # file_path,
+                                origin_data,
+                                output_dir,
+                                config,
+                                detector,
+                                plotter,
+                            )
+                        os.makedirs(file_dir, exist_ok=True)
+                    except Exception as e:
+                        logger.error(f"Error processing {file_path}: {e}")
+    finally:
+        del origin_data
 
 def single_pulsar_search_dir(task_config: TaskConfig) -> None:
     """
@@ -591,7 +597,8 @@ def single_pulsar_search_dir(task_config: TaskConfig) -> None:
     Raises
     ------
     FileNotFoundError
-        If the input directory does not exist
+        If the input directo
+        ry does not exist
         
     Notes
     -----
@@ -702,7 +709,7 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
     
     # Initialize detector and plotter
     detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
-
+    origin_data = _load_spectrum_data(file_path)
     try:
         for dm_item in task_config.dmrange:
             for freq_item in task_config.freqrange:
@@ -731,7 +738,8 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
                     try:
                         if mutidetect:
                             muti_pulsar_search(
-                                file_path,
+                                # file_path,
+                                origin_data,
                                 task_config.output,
                                 config,
                                 detector,
@@ -739,7 +747,8 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
                             )
                         else:
                             single_pulsar_search(
-                                file_path,
+                                # file_path,
+                                origin_data,
                                 task_config.output,
                                 config,
                                 detector,
@@ -748,6 +757,7 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
                     except Exception as e:
                         logger.error(f"Error processing {file_path} with config: {e}")
     finally:
+        del origin_data
         plotter.close()
 
 

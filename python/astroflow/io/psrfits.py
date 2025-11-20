@@ -28,6 +28,7 @@ class PsrFits(SpectrumBase):
         self._load_data()
         self._type = SpectrumType.PSRFITS
     
+    # @iotimeit
     def _load_data(self):
         with fits.open(self.filename) as hdul:  # memmap=True 更稳
             header0 = hdul[0].header
