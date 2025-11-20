@@ -1,12 +1,11 @@
+import time
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 
 import cv2
-import numba as nb
 import numpy as np
 import seaborn
 import torch
-import time
 # override
 from typing_extensions import override
 from ultralytics import YOLO
@@ -17,16 +16,6 @@ from .model.binnet import BinaryNet
 from .model.centernet import centernet
 from .model.centernetutils import get_res
 from .spectrum import Spectrum
-
-
-@nb.njit(nb.float32[:, :](nb.uint64[:, :]), parallel=True, cache=True)
-def nb_convert(src):
-    dst = np.empty(src.shape, dtype=np.float32)
-    rows, cols = src.shape
-    for i in nb.prange(rows):
-        for j in range(cols):
-            dst[i, j] = src[i, j]  # 隐式类型转换
-    return dst
 
 
 class FrbDetector(ABC):
