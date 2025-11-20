@@ -2,6 +2,9 @@ import os
 import json
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
+from pathlib import Path
+from itertools import product
 from typing import Tuple, Optional, Union, Dict, Any, List
 
 from ..dedispered import dedisperse_spec
@@ -198,6 +201,15 @@ def _create_detector_and_plotter(task_config: TaskConfig) -> Tuple[Union[CenterN
     return detector, plotter
 
 
+def _get_cached_dir_path(output_dir: str, input_dir: str, config: Config) -> str:
+    """Construct the cached directory path."""
+    base_dir = os.path.basename(input_dir)
+    base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
+    base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
+    base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
+    return os.path.join(output_dir, "cached", base_dir)
+
+
 def _process_single_file(
     file_path: str,
     candidate: pd.DataFrame,
@@ -208,53 +220,63 @@ def _process_single_file(
 ) -> bool:
     """Process a single file with all parameter combinations."""
     file_detected = False
-    origin_data = _load_spectrum_data(file_path)
+    
+    file_path_p = Path(file_path)
+    file_basename = file_path_p.stem
+
+    # Check if already detected in a previous run
+    candidate_detect_dir = Path(output_dir) / "candidate" / file_basename
+    if candidate_detect_dir.exists() and any(candidate_detect_dir.iterdir()):
+        logger.info(f"Candidate already detected for {file_basename}, skipping processing.")
+        return True
+
+    missing_jobs = []
+    for dm_item, freq_item, tsample_item in product(
+        task_config.dmrange, task_config.freqrange, task_config.tsample
+    ):
+        config = Config(
+            dm_low=dm_item["dm_low"],
+            dm_high=dm_item["dm_high"],
+            dm_step=dm_item["dm_step"],
+            freq_start=freq_item["freq_start"],
+            freq_end=freq_item["freq_end"],
+            t_sample=tsample_item["t"],
+            confidence=task_config.confidence,
+            time_downsample=task_config.timedownfactor,
+        )
+
+        cached_dir_path = _get_cached_dir_path(output_dir, task_config.input, config)
+        file_dir = Path(cached_dir_path) / file_basename
+
+        if not file_dir.exists():
+            missing_jobs.append((config, file_dir))
+        else:
+            logger.info(f"Skipping cached config for {file_basename}")
+
+    if not missing_jobs:
+        logger.info(f"All parameter combinations for {file_basename} are already cached.")
+        return False
+
+    origin_data = None
     try:
-        for dm_item in task_config.dmrange:
-            for freq_item in task_config.freqrange:
-                for tsample_item in task_config.tsample:
-                    config = Config(
-                        dm_low=dm_item["dm_low"],
-                        dm_high=dm_item["dm_high"],
-                        dm_step=dm_item["dm_step"],
-                        freq_start=freq_item["freq_start"],
-                        freq_end=freq_item["freq_end"],
-                        t_sample=tsample_item["t"],
-                        confidence=task_config.confidence,
-                        time_downsample=task_config.timedownfactor,
-                    )
-                    
-                    # Check if already processed
-                    file_basename = os.path.basename(file_path).split(".")[0]
-                    base_dir = os.path.basename(task_config.input)
-                    base_dir += f"-{config.dm_low}DM-{config.dm_high}DM"
-                    base_dir += f"-{config.freq_start}MHz-{config.freq_end}MHz"
-                    base_dir += f"-{config.dm_step}DM-{config.t_sample}s"
-                    
-                    cached_dir = os.path.join(output_dir, "cached")
-                    file_dir = os.path.join(cached_dir, base_dir, file_basename)
-                    
-                    
-                    if os.path.exists(file_dir):
-                        logger.info(f"Skipping already processed file: {file_basename}")
-                        # 检查 candidate_detect_dir 目录下是否有文件，如果没有则 detection_flag = 0
-                        candidate_detect_dir = os.path.join(output_dir, "candidate", file_basename)
-                        if any(os.scandir(candidate_detect_dir)):
-                            file_detected = True
-                        continue
-
-
-                    try:
-                        detection_flag = muti_pulsar_search_detect(
-                            origin_data, output_dir, config, detector, plotter, candidate
-                        )
-                        if detection_flag == 1:
-                            file_detected = True
-                        os.makedirs(file_dir, exist_ok=True)
-                    except Exception as e:
-                        logger.error(f"Error processing {file_path} with config: {e}")
+        origin_data = _load_spectrum_data(file_path)
+        for config, file_dir in missing_jobs:
+            try:
+                detection_flag = muti_pulsar_search_detect(
+                    origin_data, output_dir, config, detector, plotter, candidate
+                )
+                if detection_flag == 1:
+                    file_detected = True
+                
+                file_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Error processing {file_path} with config {config}: {e}")
+    except Exception as e:
+        logger.error(f"Error loading file {file_path}: {e}")
     finally:
-        del origin_data
+        if origin_data is not None:
+            del origin_data
+            
     return file_detected
 
 
