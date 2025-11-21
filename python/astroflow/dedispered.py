@@ -28,22 +28,32 @@ def dedisperse_spec(
     target: int = 1,
     maskfile="mask.txt",
 ) -> List[DmTime]:
+    
+    """This `if` statement was written to reuse the C++ implementation for filterbank data for the following reasons:
+    1. Early versions of the dedispersion code only supported the filterbank format, so the `dedispered_fil_with_dm` function was specifically designed for the `Filterbank` class.
+    2. As the astroflow library evolved, it added support for other spectral data formats like `SpectrumBase`. However, the generic dedispersion implementation from that time was slower.
+    3. The author suspected that the double mapping of large data blocks between Python and C++ could be a performance bottleneck (though this was never benchmarked). Therefore, the `dedispered_fil_with_dm` function was kept to leverage its efficient C++ implementation.
+    3.1 Mapping filterbank data from C++ for read/write operations, back to Python, and then back again seemed redundant.
 
-    if spectrum.type == SpectrumType.FIL:
-        filename = spectrum.filename
-        dmtimes = dedispered_fil(
-            filename,
-            dm_low,
-            dm_high,
-            freq_start,
-            freq_end,
-            dm_step,
-            time_downsample,
-            t_sample,
-            target,
-            maskfile,
-        )
-        return dmtimes
+    -- With ongoing code optimization, this check is no longer necessary. `SpectrumBase` can now be used directly for dedispersion. 
+    This might cause a minor speed decrease for single-parameter searches but significantly reduces repetitive I/O overhead in multi-parameter searches."
+    """
+
+    # if spectrum.type == SpectrumType.FIL:
+    #     filename = spectrum.filename
+    #     dmtimes = dedispered_fil(
+    #         filename,
+    #         dm_low,
+    #         dm_high,
+    #         freq_start,
+    #         freq_end,
+    #         dm_step,
+    #         time_downsample,
+    #         t_sample,
+    #         target,
+    #         maskfile,
+    #     )
+    #     return dmtimes
 
     spec, header = spectrum.core_data
     data = _astro_core._dedisperse_spec(
@@ -92,9 +102,18 @@ def dedisperse_spec_with_dm(
     freq_end: float = -1,
     maskfile="mask.txt",
 ) -> Spectrum:
-    if spectrum.type == SpectrumType.FIL:
-        fil = Filterbank(spectrum.filename)
-        return dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end, maskfile)
+    """This `if` statement was written to reuse the C++ implementation for filterbank data for the following reasons:
+    1. Early versions of the dedispersion code only supported the filterbank format, so the `dedispered_fil_with_dm` function was specifically designed for the `Filterbank` class.
+    2. As the astroflow library evolved, it added support for other spectral data formats like `SpectrumBase`. However, the generic dedispersion implementation from that time was slower.
+    3. The author suspected that the double mapping of large data blocks between Python and C++ could be a performance bottleneck (though this was never benchmarked). Therefore, the `dedispered_fil_with_dm` function was kept to leverage its efficient C++ implementation.
+    3.1 Mapping filterbank data from C++ for read/write operations, back to Python, and then back again seemed redundant.
+
+    -- With ongoing code optimization, this check is no longer necessary. `SpectrumBase` can now be used directly for dedispersion. 
+    This might cause a minor speed decrease for single-parameter searches but significantly reduces repetitive I/O overhead in multi-parameter searches."
+    """
+    # if spectrum.type == SpectrumType.FIL:
+    #     fil = Filterbank(spectrum.filename)
+    #     return dedispered_fil_with_dm(fil, tstart, tend, dm, freq_start, freq_end, maskfile)
 
     spec, header = spectrum.core_data
     if freq_start == freq_end == -1:
