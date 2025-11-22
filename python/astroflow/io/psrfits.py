@@ -11,7 +11,7 @@ def iotimeit(func):
     def wrapper(*args, **kwargs):
         start = time.time()
         result = func(*args, **kwargs)
-        print(f"[INFO] I/O : {(time.time() - start):2f} s")
+        print(f"[INFO] I/O : {(time.time() - start):.4f} s")
         return result
 
     return wrapper
@@ -28,7 +28,7 @@ class PsrFits(SpectrumBase):
         self._load_data()
         self._type = SpectrumType.PSRFITS
     
-    # @iotimeit
+    @iotimeit
     def _load_data(self):
         with fits.open(self.filename) as hdul:  # memmap=True 更稳
             header0 = hdul[0].header
