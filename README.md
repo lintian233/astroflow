@@ -108,6 +108,15 @@ If you use **AstroFlow** in your research, please cite:
 - Reuse dedispersed data products across multi-parameter searches to reduce repeated computation.
 - Polish and release the general injection-pulse plus model fine-tuning module (pending).
 - Refactor documentation and publish it on Read the Docs.
+- Test coverage
+
+> Starting from v0.1.10, the release frequency of astroflow will be reduced. A new version will be released every 1-2 months (or even longer).
+> 
+> The version on TestPypi will be updated more frequently. If you want to use a newer version, use the following command to install:
+> ```bash
+> pip install -i https://test.pypi.org/simple/ pulseflow
+> ```
+
 
 <h2 id="usage">YAML Configuration</h2>
 
