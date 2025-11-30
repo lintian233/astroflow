@@ -28,10 +28,14 @@ English | [简体中文](./docs/README_zh-CN.md)
 
 One stop realtime GPU-accelerated single-pulse/FRB search pipeline
 
+<div align="center">
+  <img src="./docs/arch.png" width="100%" />
+</div>
+
 - ⚡ **GPU-Accelerated Processing** - CUDA dedispersion with advanced optimizations (FMA, shared memory, loop unrolling)
 - 🤖 **AI-Powered Detection** - YOLOv11n trained on 100k+ sim FRBs dataset with high accuracy
-- 🧹 **Complete RFI Mitigation** - RFI removal with PSRFITS & FILTERBANK support  
-- ⚙️ **User-Friendly Pipeline** - Simple YAML configuration; easy deployment; Docker deployment
+- 🧹 **RFI Mitigation** - RFI removal with PSRFITS & FILTERBANK support  
+- ⚙️ **User-Friendly Pipeline** - Simple YAML configuration; easy deployment(pypi); Docker deployment
 
 Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discussions](https://github.com/lintian233/astroflow/discussions).  
 <h2 id="preview">Preview</h2>
