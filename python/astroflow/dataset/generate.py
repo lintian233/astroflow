@@ -163,10 +163,18 @@ def muti_pulsar_search_detect(
         )
         candinfo.append(ref_toa)
         
+        onlycand = taskconfig.onlycand
+        if onlycand:
+            if not _check_candidate_match(dm, toa, origin_dm, origin_toa, ref_toa):
+                continue
+            else:
+                detection_flag = 1
+                continue
+
         if _check_candidate_match(dm, toa, origin_dm, origin_toa, ref_toa):
+            detection_flag = 1
             plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, candidate_detect_dir, file)
             plotter.pack_candidate(dmtimes[candinfo[4]], candinfo, output_dir, file)
-            detection_flag = 1
         elif _check_dm_match(dm, origin_dm):
             plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, detect_dir, file)
         else:

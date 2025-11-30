@@ -940,7 +940,6 @@ def _setup_subband_spectrum_plots(fig, gs, spec_data, spec_time_axis, spec_freq_
     zero_band = np.all(np.isclose(subband_matrix, 0.0, atol=0), axis=0)
     subband_freq_series[zero_band] = np.nan
 
-
     finite_vals = np.asarray(subband_freq_series)[np.isfinite(subband_freq_series)]
     low_bound, high_bound = np.min(finite_vals), np.max(finite_vals)
 

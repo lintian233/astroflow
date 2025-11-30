@@ -87,6 +87,7 @@ dedgpu: 0                 # GPU device ID for dedispersion
 detgpu: 0                 # GPU device ID for AI detection (use a different ID for multi-GPU)
 cputhread: 32             # Number of CPU threads for I/O and pre-processing
 plotworker: 16            # Number of parallel processes for generating candidate plots
+# onlycand: True          # Optional: Disable candidate plotting for benchmarking (reduces I/O) (TestPypi current)
 
 # --- Detection Parameters ---
 modelname: yolov11n       # AI model for detection.
@@ -152,6 +153,8 @@ Optional spectrum controls give you finer control over the plotting step—comme
 - **`mode: dataset`**: This mode is designed to process a list of data files. It performs a blind search on each file and then uses the ground truth information (DM, time) from the `candpath` file to automatically classify the detected candidates (e.g., as `candidate`, `detect`, or `background`) and calculate performance metrics. It is ideal for validation, performance testing, and characterization of the pipeline.
 - **`timedownfactor: 8`**: FAST data has a high time resolution. Down-sampling by a factor of 8 makes the pipeline more sensitive to temporally broader pulses, which is common for scattered FRBs, while also reducing computational load.
 - **`dm_step: 1`**: At high dispersion measures (DM > 100 pc cm⁻³), the dispersion smearing within a single channel becomes larger than the smearing between adjacent DM trials with a step of 1.0. This makes it a computationally efficient choice without sacrificing significant sensitivity. For optimal detection performance, it is strongly recommended that the total number of DM trials (calculated as `(dm_high - dm_low) / dm_step`) and the total DM range (`dm_high - dm_low`) both exceed 512(for FRBs).
+
+> **Performance Tip**: The FAST_PREX task is I/O bound. If you want to benchmark this task, it is recommended to enable `onlycand: True` in the YAML configuration. This setting disables the candidate plotting module, avoiding unnecessary I/O and making the benchmark results more stable. (TestPypi Current)
 
 ---
 

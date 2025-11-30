@@ -87,6 +87,7 @@ dedgpu: 0                 # 用于色散延迟消除的 GPU 设备 ID
 detgpu: 0                 # 用于 AI 检测的 GPU 设备 ID (在多 GPU 环境下可使用不同 ID)
 cputhread: 32             # 用于 I/O 和预处理的 CPU 线程数
 plotworker: 16            # 用于生成候选体绘图的并行进程数
+# onlycand: True          # 可选：禁用候选体绘图以进行基准测试（减少 I/O）(TestPypi 目前)
 
 # --- 检测参数 ---
 modelname: yolov11n       # 用于检测的 AI 模型
@@ -152,6 +153,8 @@ specconfig:
 - **`timedownfactor: 8`**: FAST 数据具有很高的时间分辨率。通过因子 8 进行降采样，可以使流水线对时间上更宽的脉冲（这在散射的 FRB 中很常见）更敏感，同时也能减少计算负荷。
 - **`iqrm` 设置**: 迭代四分位距缓解 (IQRM) 算法的设置被调整得较为积极 (`nsigma: 7.0`)，以处理 FAST 望远镜经常遇到的复杂 RFI 环境。
 - **`dm_step: 1`**: 在高色散量（DM > 100 pc cm⁻³）下，单个通道内的色散弥散效应变得比步长为 1.0 的相邻 DM 试验之间的弥散效应更大。这使其成为一种计算效率高的选择，而不会牺牲显著的灵敏度。为了获得最佳的检测性能，强烈建议 DM 试验的总数（计算方式为 `(dm_high - dm_low) / dm_step`）和总 DM 范围（`dm_high - dm_low`）都超过 512（对于FRB）。
+
+> **性能提示**：FAST_PREX 任务是 I/O 主导的。如果您想要对这个任务进行测速（Benchmark），建议在 YAML 配置中启用 `onlycand: True`。该配置会禁用候选体绘图模块，避免不必要的 I/O 操作，从而使 Benchmark 结果更加稳定。(TestPypi current)
 
 ---
 

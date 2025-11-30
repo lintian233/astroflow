@@ -151,6 +151,15 @@ class TaskConfig:
             raise ValueError("minfileage must be non-negative.")
         return minfileage
 
+    @property
+    def onlycand(self):
+        onlycand = self._config_data.get("onlycand")
+        if onlycand is None:
+            onlycand = False
+        if not isinstance(onlycand, bool):
+            raise ValueError("onlycand must be a boolean.")
+        return onlycand
+
     def get_model(self):
         model_url_path = "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt"
         expected_sha256 = "d4305e273fec6f5733f3c0a823fa5275064b015d549fda26529e0b1b8f59c124" # SHA256 for yolo11n_0816_v1.pt
