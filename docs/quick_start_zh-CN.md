@@ -42,11 +42,12 @@ dedgpu: 0                 # 解色散所用 GPU
 detgpu: 0                 # 检测所用 GPU
 cputhread: 8              # CPU 线程数（I/O 与预处理）
 
-plotworker: 2             # 绘图进程数
+plotworker: 1             # 绘图进程数
 
 modelname: yolov11n       # 检测模型名称（当前支持 yolov11n）
 
 # maskfile: none.txt      # RFI 掩码文件（无则禁用）
+gencand: true             # 创建候选体输出汇总文件
 
 tsample:
   - name: t1
@@ -84,14 +85,14 @@ dmtconfig:
 # 动态频谱图配置
 specconfig:
   minpercentile: 0.1
-  maxpercentile: 99
-  tband: 120                # 时间带宽
-  mode: subband             # 模式，可选 [subband, standard, detrend]
-  dtrend: false             # 可选：对子带做线性去趋势（默认 false）
-  norm: true                # 可选：子带归一化（默认 true）
-  subfreq: 128              # 可选：子带数量（默认 128）
-  subtsamp: 2               # 可选：时间聚合因子（默认 4）
-  savetype: png             # 可选：输出格式 png/jpg
+  maxpercentile: 99.9
+  tband: 120                # time bands
+  mode: subband             # one of [subband, standard, detrend]
+  dtrend: true             # optional: linear detrending per subband (default false)
+  norm: false                # optional: normalize each subband (default true)
+  subfreq: 128              # optional: subbands in subband mode (default 128)
+  subtsamp: 2               # optional: time binning factor (default 4)
+  savetype: png             # optional: image format png/jpg
 ```
 
 > 说明
@@ -107,17 +108,16 @@ astroflow frb180417.yaml
 
 你会看到类似如下日志输出：
 ```
+❯ astroflow ./frb20180417.yaml 
 Detected mode: single
-Starting single file search for: FRB180417.fil
-Using device: cuda:0 NAME: NVIDIA GeForce GTX 1660 SUPER
-...
-DM Range: 10-600, Freq Range: 1130-1465, TSample: 0.5
-...
-Typed data shape: [591, 5120]
-Typed slicing preprocessing completed: 13 slices generated
-Processed 12 samples in one batch.
-Plotting candidate: DM=473.591, TOA=2.042, Freq=1130-1465 MHz, ...
-Saving 21.85_4.44_473.591_2.042_frb180417_T_2.0s_2.5s_DM_10_600_F_1130_1465.png
+Starting single file search for: ....
+[TIMER] IO : 0.001 seconds, 1387.844 MB/s
+[INFO] Using device 0: ....
+[INFO] RFICONFIG use_iqrm=0, use_zero_dm=0, use_mask=0
+....
+[INFO]: INPUT SHAPE = [591, 5120], T: 6.484 s, SDM1: 591, ST2: 394, N: 13
+....
+Saving: 9.07_2.86_473.591_2.042_FRB180417_T_2.0s_2.5s_DM_10_600_F_1130_1465.png
 ```
 
 ---

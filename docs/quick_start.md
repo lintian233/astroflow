@@ -42,17 +42,18 @@ dedgpu: 0                 # GPU index for dedispersion
 detgpu: 0                 # GPU index for detection
 cputhread: 8              # CPU workers (I/O, prep)
 
-plotworker: 2             # Plotting workers
+plotworker: 1             # Plotting workers
 
 modelname: yolov11n       # Detection model (current: yolov11n)
 
 # maskfile: none.txt      # RFI mask file (or  disable)
+gencand: true             # generate candidate info csv file
 
 tsample:
   - name: t1
     t: 0.5                 # seconds per detection slice 
     # (pulse_width ~ 1-10 ms 0.5s is recommended )
-    # (pulsewith ~ 0.1-0.5 ms 0.05s is is recommended )
+    # (pulsewith ~ 0.1-0.5 ms <0.05s is is recommended )
 
 
 # human-readable label for DM limits
@@ -86,11 +87,11 @@ dmtconfig:
 # Dynamic spectrum plot scaling
 specconfig:
   minpercentile: 0.1
-  maxpercentile: 99
+  maxpercentile: 99.9
   tband: 120                # time bands
   mode: subband             # one of [subband, standard, detrend]
-  dtrend: false             # optional: linear detrending per subband (default false)
-  norm: true                # optional: normalize each subband (default true)
+  dtrend: true             # optional: linear detrending per subband (default false)
+  norm: false                # optional: normalize each subband (default true)
   subfreq: 128              # optional: subbands in subband mode (default 128)
   subtsamp: 2               # optional: time binning factor (default 4)
   savetype: png             # optional: image format png/jpg
@@ -111,17 +112,16 @@ astroflow frb180417.yaml
 
 You should see logs like:
 ```
+❯ astroflow ./frb20180417.yaml 
 Detected mode: single
-Starting single file search for: FRB180417.fil
-Using device: cuda:0 NAME: NVIDIA GeForce GTX 1660 SUPER
-...
-DM Range: 10-600, Freq Range: 1130-1465, TSample: 0.5
-...
-Typed data shape: [591, 5120]
-Typed slicing preprocessing completed: 13 slices generated
-Processed 12 samples in one batch.
-Plotting candidate: DM=473.591, TOA=2.042, Freq=1130-1465 MHz, ...
-Saving 21.85_4.44_473.591_2.042_frb180417_T_2.0s_2.5s_DM_10_600_F_1130_1465.png
+Starting single file search for: ....
+[TIMER] IO : 0.001 seconds, 1387.844 MB/s
+[INFO] Using device 0: ....
+[INFO] RFICONFIG use_iqrm=0, use_zero_dm=0, use_mask=0
+....
+[INFO]: INPUT SHAPE = [591, 5120], T: 6.484 s, SDM1: 591, ST2: 394, N: 13
+....
+Saving: 9.07_2.86_473.591_2.042_FRB180417_T_2.0s_2.5s_DM_10_600_F_1130_1465.png
 ```
 
 ---
