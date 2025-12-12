@@ -32,6 +32,51 @@ jobs:
           python -m pip install -U pip
           pip install "cibuildwheel==2.*"
 
+      - name: Set CI dev version (dev<run_number> only)
+        run: |
+          python - <<'PY'
+          import os, re, pathlib, sys
+
+          run_number = os.environ["GITHUB_RUN_NUMBER"]
+          p = pathlib.Path("pyproject.toml")
+          s = p.read_text(encoding="utf-8")
+
+          m = re.search(r'(?ms)^\[project\].*?^version\s*=\s*"([^"]+)"', s)
+          kind = "pep621" if m else None
+          cur = m.group(1) if m else None
+          if not cur:
+            m = re.search(r'(?ms)^\[tool\.poetry\].*?^version\s*=\s*"([^"]+)"', s)
+            kind = "poetry" if m else None
+            cur = m.group(1) if m else None
+          if not cur:
+            print("Cannot find version in pyproject.toml", file=sys.stderr)
+            sys.exit(1)
+
+          m0 = re.match(r'^(\d+(?:\.\d+)+)', cur)
+          base = m0.group(1) if m0 else cur
+          ver = f"{base}.dev{run_number}"
+
+          if kind == "pep621":
+            s, n = re.subn(
+              r'(?ms)^(\[project\].*?^version\s*=\s*")[^"]*(")',
+              r"\g<1>" + ver + r"\g<2>",
+              s
+            )
+          else:
+            s, n = re.subn(
+              r'(?ms)^(\[tool\.poetry\].*?^version\s*=\s*")[^"]*(")',
+              r"\g<1>" + ver + r"\g<2>",
+              s
+            )
+
+          if n == 0:
+            print("Failed to rewrite version", file=sys.stderr)
+            sys.exit(1)
+
+          p.write_text(s, encoding="utf-8")
+          print("CI version set to:", ver)
+          PY
+
       - name: Build wheels in your manylinux+CUDA image
         env:
           # ✅ 需要支持的 Python 版本（全覆盖 cp38..cp312）
