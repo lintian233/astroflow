@@ -118,7 +118,7 @@ If you use **AstroFlow** in your research, please cite:
 > 
 > The version on TestPypi will be updated more frequently. If you want to use a newer version, use the following command to install:
 > ```bash
-> pip install -i https://test.pypi.org/simple/ pulseflow
+> pip install --pre -i https://test.pypi.org/simple/  pulseflow --extra-index-url https://pypi.org/simple
 > ```
 
 
