@@ -37,9 +37,14 @@ class PsrFits(SpectrumBase):
 
         fch1 = header0["OBSFREQ"] - header0["OBSBW"] / 2
         mjd = header0["STT_IMJD"] + header0["STT_SMJD"] / 86400.0
-
-        data_ = data["DATA"][:, :, 0, :, 0]
-
+        # print(f"[INFO] NPOL: {header1['NPOL']}, POL_TYPE: {header1['POL_TYPE']}")        
+        if header1["NPOL"] == 1: #AABB AA
+            data_ = data["DATA"][:, :, 0, :, 0]
+        elif header1["NPOL"] >= 2:
+            data_ = ((data["DATA"][:, :, 0, :, 0] + data["DATA"][:, :, 1, :, 0]) / 2).astype(data["DATA"].dtype)
+        else:
+            raise ValueError(f"Unsupported NPOL value: {header1['NPOL']}, POL_TYPE: {header1['POL_TYPE']}")
+        
         foff = header1["CHAN_BW"]
         nchans = header1["NCHAN"]
 
