@@ -36,7 +36,7 @@ class PsrFits(SpectrumBase):
             data = hdul[1].data
 
         fch1 = header0["OBSFREQ"] - header0["OBSBW"] / 2
-        mjd = header0["STT_IMJD"] + header0["STT_SMJD"] / 86400.0
+        mjd = header0["STT_IMJD"] + header0["STT_SMJD"] / 86400.0 + header0["STT_OFFS"] / 86400.0
         # print(f"[INFO] NPOL: {header1['NPOL']}, POL_TYPE: {header1['POL_TYPE']}")        
         if header1["NPOL"] == 1: #AABB AA
             data_ = data["DATA"][:, :, 0, :, 0]

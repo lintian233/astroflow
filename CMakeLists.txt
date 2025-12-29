@@ -106,7 +106,7 @@ set(CUDA_BASE_FLAGS
   "--expt-extended-lambda"
   "--default-stream per-thread"
 )
-set(CMAKE_CUDA_FLAGS "-Xcudafe --diag_suppress=esa_on_defaulted_function_ignored")
+set(CMAKE_CUDA_FLAGS "-allow-unsupported-compiler -Xcudafe --diag_suppress=esa_on_defaulted_function_ignored")
 set(CMAKE_CUDA_FLAGS_DEBUG "-O0 -g -G -lineinfo --ptxas-options=-v -Xcompiler=-O0 -Xcompiler=-g")
 
 string(REPLACE ";" " " CMAKE_CUDA_FLAGS_RELEASE

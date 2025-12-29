@@ -346,7 +346,7 @@ Spectrum<T> dedisperse_spec_with_dm(
     std::string maskfile, rficonfig rficfg)
 {
     omp_set_num_threads(32);
-
+    
     // ---- 时间窗口 ----
     if (tend <= tstart) {
         throw std::invalid_argument("tend must be > tstart");
@@ -356,6 +356,18 @@ Spectrum<T> dedisperse_spec_with_dm(
     size_t t_len_req   = (t_end_idx > t_start_idx) ? (t_end_idx - t_start_idx) : 0;
     if (t_len_req == 0 || t_start_idx >= header.ndata) {
         throw std::invalid_argument("Invalid time window for this file.");
+    }
+
+    if (freq_start >= freq_end) {
+        throw std::invalid_argument("freq_end must be > freq_start");
+    }
+
+    if (dm < 0.0f) {
+        throw std::invalid_argument("dm must be >= 0");
+    }
+
+    if (header.foff < 0) {
+        throw std::invalid_argument("frequency channels are in descending order, which is not supported yet.");
     }
 
     // ---- 构造频率表 ----
