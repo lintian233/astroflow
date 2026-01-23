@@ -1,0 +1,406 @@
+from __future__ import annotations
+
+import cv2
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import numpy as np
+
+from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
+
+
+def prepare_dm_data(dmt):
+    """Prepare DM-Time data for plotting."""
+    dm_data = np.array(dmt.data, dtype=np.float32)
+    dm_data = cv2.cvtColor(dm_data, cv2.COLOR_BGR2GRAY)
+    dm_data = cv2.normalize(dm_data, None, 0, 255, cv2.NORM_MINMAX)
+    time_axis = np.linspace(dmt.tstart, dmt.tend, dm_data.shape[1])
+    dm_axis = np.linspace(dmt.dm_low, dmt.dm_high, dm_data.shape[0])
+
+    return dm_data, time_axis, dm_axis
+
+
+def calculate_spectrum_time_window(toa, pulse_width_samples, tsamp, tband, multiplier=40.0):
+    """Calculate spectrum time window around TOA based on pulse width."""
+    if pulse_width_samples > 0:
+        pulse_width_seconds = pulse_width_samples * tsamp
+        time_size = multiplier * pulse_width_seconds / 2
+    else:
+        time_size = (tband * 1e-3) / 2
+
+    spec_tstart = max(0, toa - time_size)
+    spec_tend = toa + time_size
+    return spec_tstart, spec_tend
+
+
+def setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, toa):
+    """Setup DM-Time subplot components."""
+    ax_time = fig.add_subplot(gs[0, 0])
+    ax_main = fig.add_subplot(gs[1, 0], sharex=ax_time)
+    ax_dm = fig.add_subplot(gs[1, 1], sharey=ax_main)
+
+    # Main DM-Time plot
+    ax_main.imshow(
+        dm_data,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        vmin=dm_vmin,
+        vmax=dm_vmax,
+        extent=[time_axis[0], time_axis[-1], dm_axis[0], dm_axis[-1]],
+    )
+    ax_main.set_xlabel("Time (s)", fontsize=12, labelpad=10)
+    ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
+
+    # Add dashed ellipse around the candidate region.
+    time_range = time_axis[-1] - time_axis[0]
+    dm_range = dm_axis[-1] - dm_axis[0]
+    radius_time = time_range * 0.05
+    radius_dm = dm_range * 0.07
+
+    circle = mpatches.Ellipse(
+        (toa, dm),
+        width=2 * radius_time,
+        height=2 * radius_dm,
+        fill=False,
+        linestyle="--",
+        linewidth=2,
+        edgecolor="white",
+        alpha=0.7,
+        label=f"Candidate: DM={dm:.2f}, TOA={toa:.3f}s",
+    )
+    ax_main.add_patch(circle)
+
+    # DM marginal plot
+    dm_sum = np.max(dm_data, axis=1)
+    ax_dm.plot(dm_sum, dm_axis, lw=1.5, color="darkblue")
+    ax_dm.tick_params(axis="y", labelleft=False)
+    ax_dm.grid(alpha=0.3)
+
+    # Time marginal plot
+    time_sum = np.max(dm_data, axis=0)
+    ax_time.plot(time_axis, time_sum, lw=1.5, color="darkred")
+    ax_time.tick_params(axis="x", labelbottom=False)
+    ax_time.grid(alpha=0.3)
+    ax_time.text(
+        0.02,
+        0.95,
+        f"DM: {dm:.2f} pc $cm^{{-3}}$ \n TOA: {toa:.3f}s",
+        transform=ax_time.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
+    return ax_time, ax_main, ax_dm
+
+
+def setup_spectrum_plots(
+    fig,
+    gs,
+    spec_data,
+    spec_time_axis,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    toa=None,
+    dm=None,
+    pulse_width=None,
+    snr=None,
+):
+    """Setup standard spectrum subplot components without subband analysis."""
+    ax_spec_time = fig.add_subplot(gs[0, 2])
+    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+
+    time_series = np.sum(spec_data, axis=1)
+    ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
+
+    if toa is not None:
+        ax_spec_time.axvline(toa, color="blue", linestyle="--", linewidth=1, alpha=0.8, label=f"TOA: {toa:.3f}s")
+
+    if snr is not None and pulse_width is not None:
+        pulse_width_ms = pulse_width * header.tsamp * 1000 if pulse_width > 0 else -1
+        ax_spec_time.text(
+            0.02,
+            0.96,
+            f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms",
+            transform=ax_spec_time.transAxes,
+            fontsize=10,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+        )
+
+    ax_spec_time.set_ylabel("Integrated Power")
+    ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.grid(True, alpha=0.3)
+    if toa is not None:
+        ax_spec_time.legend(fontsize=9, loc="upper right")
+
+    freq_series = np.sum(spec_data, axis=0)
+    vmin = freq_series[freq_series > 0].min()
+    vmax = freq_series.max()
+    ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
+    ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
+    ax_spec_freq.grid(True, alpha=0.3)
+    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
+    ax_spec_freq.set_xlim(vmin, vmax * 1.01)
+
+    spec_vmin = np.percentile(spec_data, specconfig.minpercentile)
+    spec_vmax = np.percentile(spec_data, specconfig.maxpercentile)
+    if spec_vmin == 0:
+        non_zero_values = spec_data[spec_data > 1]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
+
+    extent = [spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]]
+    ax_spec.imshow(
+        spec_data.T,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=extent,
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+    )
+
+    ax_spec.set_ylabel(f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
+    ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
+    ax_spec.set_xlim(spec_tstart, spec_tend)
+
+    return ax_spec_time, ax_spec, ax_spec_freq
+
+
+def setup_detrend_spectrum_plots(
+    fig,
+    gs,
+    spec_data,
+    spec_time_axis,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    toa=None,
+    dm=None,
+    pulse_width=None,
+    snr=None,
+    detrend_type="linear",
+):
+    """Setup spectrum subplot components with detrending applied for better signal visibility."""
+    ax_spec_time = fig.add_subplot(gs[0, 2])
+    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+
+    data_is_freq_time = len(spec_freq_axis) == spec_data.shape[0] and len(spec_time_axis) == spec_data.shape[1]
+    if data_is_freq_time:
+        detrend_data = spec_data
+        display_data = spec_data.T
+    else:
+        detrend_data = spec_data.T
+        display_data = spec_data
+
+    try:
+        detrended_freq_time = detrend(detrend_data, axis=1, trend=detrend_type)
+        detrended_data = detrended_freq_time.T
+    except Exception as exc:
+        print(f"Detrending failed: {exc}, using original data")
+        detrended_data = display_data
+
+    toa_sample_idx = int((toa - spec_tstart) / header.tsamp)
+    snr, pulse_width, peak_idx, _ = calculate_frb_snr(
+        detrended_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
+    )
+
+    toa = spec_tstart + (peak_idx + 0.5) * header.tsamp
+
+    time_series = np.sum(detrended_data, axis=1)
+    ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
+
+    if toa is not None:
+        ax_spec_time.axvline(toa, color="blue", linestyle="--", linewidth=1, alpha=0.8, label=f"TOA: {toa:.3f}s")
+
+    info_text = f"SNR: {snr:.2f}" if snr is not None else "SNR: N/A"
+    if pulse_width is not None:
+        pulse_width_ms = pulse_width * header.tsamp * 1000 if pulse_width > 0 else -1
+        info_text += f"\nPulse Width: {pulse_width_ms:.2f} ms"
+    info_text += f"\nDetrend: {detrend_type} (per freq channel)"
+
+    ax_spec_time.text(
+        0.02,
+        0.96,
+        info_text,
+        transform=ax_spec_time.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8),
+    )
+
+    ax_spec_time.set_ylabel("Integrated Power\n(Detrended)")
+    ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.grid(True, alpha=0.3)
+    if toa is not None:
+        ax_spec_time.legend(fontsize=9, loc="upper right")
+
+    freq_series = np.sum(detrended_data, axis=0)
+    ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
+    ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
+    ax_spec_freq.grid(True, alpha=0.3)
+    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power\n(Detrended)")
+
+    spec_vmin = np.percentile(detrended_data, specconfig.minpercentile)
+    spec_vmax = np.percentile(detrended_data, specconfig.maxpercentile)
+    if spec_vmin == 0:
+        non_zero_values = detrended_data[detrended_data > 0]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
+
+    extent = [spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]]
+    ax_spec.imshow(
+        detrended_data.T,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=extent,
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+    )
+
+    ax_spec.set_ylabel(
+        f"Frequency (MHz) - {detrend_type.title()} Detrended\n"
+        f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
+    )
+    ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
+    ax_spec.set_xlim(spec_tstart, spec_tend)
+
+    return ax_spec_time, ax_spec, ax_spec_freq
+
+
+def setup_subband_spectrum_plots(
+    fig,
+    gs,
+    spec_data,
+    spec_time_axis,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    toa=None,
+    dm=None,
+    pulse_width=None,
+    snr=None,
+):
+    """Setup spectrum subplot components with subband analysis for enhanced weak pulse visibility."""
+    ax_spec_time = fig.add_subplot(gs[0, 2])
+    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+
+    subtsamp = specconfig.subtsamp
+    time_bin_duration = (pulse_width / subtsamp) * header.tsamp if pulse_width else 4 * header.tsamp
+    time_bin_size = max(1, int(time_bin_duration / header.tsamp))
+
+    n_time_samples, n_freq_channels = spec_data.shape
+    n_freq_subbands = specconfig.subfreq
+    n_time_bins = max(1, n_time_samples // time_bin_size)
+    trimmed_time_len = n_time_bins * time_bin_size
+
+    freq_subband_size = max(1, n_freq_channels / n_freq_subbands)
+
+    spec_data_t = spec_data[:trimmed_time_len, :].reshape(
+        n_time_bins, time_bin_size, n_freq_channels
+    ).sum(axis=1)
+
+    subband_matrix, _ = downsample_freq_weighted_vec(spec_data_t, spec_freq_axis, n_freq_subbands)
+
+    if specconfig.dtrend:
+        subband_matrix = detrend(subband_matrix, axis=0, trend="linear")
+
+    if specconfig.norm:
+        for f_bin in range(n_freq_subbands):
+            freq_column = subband_matrix[:, f_bin]
+            col_min = np.min(freq_column)
+            col_max = np.max(freq_column)
+            denom = col_max - col_min
+            if np.isclose(denom, 0) or denom < 1e-10:
+                freq_column_norm = np.zeros_like(freq_column)
+            else:
+                freq_column_norm = (freq_column - col_min) / denom
+            subband_matrix[:, f_bin] = freq_column_norm
+
+    subband_time_axis = np.linspace(spec_tstart, spec_tend, n_time_bins + 1)
+    subband_freq_axis = np.linspace(spec_freq_axis[0], spec_freq_axis[-1], n_freq_subbands + 1)
+
+    subband_time_series = np.sum(subband_matrix, axis=1)
+    subband_time_centers = 0.5 * (subband_time_axis[:-1] + subband_time_axis[1:])
+    ax_spec_time.plot(subband_time_centers, subband_time_series, "-", color="black", linewidth=1, alpha=0.9)
+
+    ax_spec_time.text(
+        0.02,
+        0.96,
+        f"SNR: {snr:.2f} \n" f"pulse width: {pulse_width * header.tsamp * 1000:.2f} ms",
+        transform=ax_spec_time.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
+
+    if toa is not None:
+        ax_spec_time.axvline(toa, color="blue", linestyle="--", linewidth=1, alpha=0.8, label=f"TOA: {toa:.3f}s")
+
+    ax_spec_time.set_ylabel("Integrated Power")
+    ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.grid(True, alpha=0.3)
+    ax_spec_time.legend(fontsize=9, loc="upper right")
+
+    subband_freq_series = np.sum(subband_matrix, axis=0)
+
+    zero_band = np.all(np.isclose(subband_matrix, 0.0, atol=0), axis=0)
+    subband_freq_series[zero_band] = np.nan
+
+    finite_vals = np.asarray(subband_freq_series)[np.isfinite(subband_freq_series)]
+    low_bound, high_bound = np.min(finite_vals), np.max(finite_vals)
+
+    subband_freq_centers = 0.5 * (subband_freq_axis[:-1] + subband_freq_axis[1:])
+
+    ax_spec_freq.plot(subband_freq_series, subband_freq_centers, "-", color="black", linewidth=1, alpha=0.8)
+    ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
+    ax_spec_freq.grid(True, alpha=0.3)
+    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
+    ax_spec_freq.set_xlim(
+        low_bound - 0.1 * abs(high_bound - low_bound),
+        high_bound + 0.1 * abs(high_bound - low_bound),
+    )
+
+    extent_subband = [
+        subband_time_axis[0],
+        subband_time_axis[-1],
+        subband_freq_axis[0],
+        subband_freq_axis[-1],
+    ]
+
+    spec_vmin = np.percentile(subband_matrix, specconfig.minpercentile)
+    spec_vmax = np.percentile(subband_matrix, specconfig.maxpercentile)
+
+    ax_spec.imshow(
+        subband_matrix.T,
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",
+        extent=extent_subband,
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+        interpolation="nearest",
+    )
+
+    ax_spec.set_ylabel(
+        f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size:.2f} channels each)\n"
+        f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
+    )
+    ax_spec.set_xlabel(
+        f"Time (s) - {n_time_bins} Bins ({time_bin_duration * 1000:.3f} ms each)\n"
+        f"TSAMP={header.tsamp:.6e}s, Bin Size={time_bin_size} samples duration={n_time_bins * time_bin_duration * 1000:.1f} ms"
+    )
+    ax_spec.set_xlim(spec_tstart, spec_tend)
+
+    return ax_spec_time, ax_spec, ax_spec_freq
