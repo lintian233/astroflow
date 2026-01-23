@@ -2,11 +2,50 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.polynomial import Chebyshev
-from scipy.optimize import curve_fit
 
 
-def gaussian(x, amp, mu, sigma, baseline):
-    return amp * np.exp(-0.5 * ((x - mu) / sigma) ** 2) + baseline
+def _robust_mean_std(data, sigma=5.0, max_iter=3):
+    data = np.asarray(data)
+    data = data[np.isfinite(data)]
+    if data.size == 0:
+        return 0.0, 1.0
+
+    clipped = data
+    for _ in range(max_iter):
+        med = np.median(clipped)
+        mad = np.median(np.abs(clipped - med))
+        std = 1.4826 * mad if mad > 0 else np.std(clipped)
+        if std <= 0:
+            break
+        next_clipped = clipped[np.abs(clipped - med) <= sigma * std]
+        if next_clipped.size == clipped.size:
+            break
+        if next_clipped.size < max(10, int(0.2 * clipped.size)):
+            break
+        clipped = next_clipped
+
+    mean = np.mean(clipped) if clipped.size else np.mean(data)
+    std = np.std(clipped) if clipped.size else np.std(data)
+    if std <= 0:
+        std = np.std(data)
+    if std <= 0:
+        std = 1.0
+    return mean, std
+
+
+def _build_widths(max_width):
+    max_width = int(max_width)
+    if max_width <= 1:
+        return [1]
+    if max_width <= 32:
+        return list(range(1, max_width + 1))
+
+    small = list(range(1, 33))
+    logspace = np.unique(
+        np.round(np.logspace(np.log10(33), np.log10(max_width), num=12)).astype(int)
+    )
+    widths = small + [int(w) for w in logspace if 33 <= w <= max_width]
+    return widths
 
 
 def calculate_frb_snr(
@@ -17,244 +56,117 @@ def calculate_frb_snr(
     fitting_window_samples=None,
 ):
     """
-    Professional FRB SNR calculation with TOA-centered fitting and weighted baseline estimation.
+    Robust FRB SNR calculation with multi-scale boxcar search and off-pulse noise estimation.
 
     Args:
         spec: 2D spectrum array (time x frequency)
         noise_range: List of (start, end) tuples for noise regions, or None for auto-detection
         threshold_sigma: Threshold for outlier detection in baseline estimation
         toa_sample_idx: Expected TOA sample index for centered fitting
-        fitting_window_samples: Number of samples around TOA for fitting (default: auto)
+        fitting_window_samples: Max width for boxcar search (default: auto)
 
     Returns:
         tuple: (snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality))
     """
-    # Step 1: Frequency-integrated time series
-    # Use raw time series for statistics and final SNR calculation to ensure correctness
-    time_series_raw = np.sum(spec, axis=1)  # Sum over frequency axis
-
+    time_series_raw = np.sum(spec, axis=1)
     n_time = len(time_series_raw)
-    x = np.arange(n_time)
-
-    # Step 1.5: Refine Peak Position (Global or Local Search)
-    # First, estimate a rough baseline to ensure we are finding the signal peak, not just high baseline
-    global_median = np.median(time_series_raw)
-    time_series_detrended = time_series_raw - global_median
+    if n_time == 0:
+        return -1, 0, 0, (0.0, 1.0, {"fit_converged": False})
 
     if fitting_window_samples is None:
-        fitting_window_samples = max(50, int(0.2 * n_time))
+        max_width = max(8, min(n_time // 4, 512))
+    else:
+        max_width = max(4, min(int(fitting_window_samples), n_time // 2))
+    max_width = max(1, min(max_width, n_time))
 
-    # Determine search range for the peak
     if toa_sample_idx is not None:
-        # Search within a wider window around the provided TOA to correct for offsets
-        # Use 3x the fitting window size for search, or at least +/- 100 samples
-        search_radius = max(fitting_window_samples, 100)
+        search_radius = max(max_width, 100)
         search_start = max(0, toa_sample_idx - search_radius)
         search_end = min(n_time, toa_sample_idx + search_radius)
     else:
         search_start = 0
         search_end = n_time
 
-    # Find peak in the search region on DETRENDED data
-    search_region = slice(search_start, search_end)
-    if search_end > search_start:
-        local_peak_idx = np.argmax(time_series_detrended[search_region])
-        refined_peak_idx = search_start + local_peak_idx
+    if noise_range:
+        noise_data = np.concatenate([time_series_raw[slice(start, end)] for (start, end) in noise_range])
     else:
-        refined_peak_idx = toa_sample_idx if toa_sample_idx is not None else n_time // 2
+        noise_data = None
+        if toa_sample_idx is not None and (search_start > 0 or search_end < n_time):
+            noise_chunks = []
+            if search_start > 0:
+                noise_chunks.append(time_series_raw[:search_start])
+            if search_end < n_time:
+                noise_chunks.append(time_series_raw[search_end:])
+            if noise_chunks:
+                noise_data = np.concatenate(noise_chunks)
+        if noise_data is None or noise_data.size < 10:
+            noise_data = time_series_raw
 
-    # Step 2: Determine fitting region centered on REFINED peak
-    fit_start = max(0, refined_peak_idx - fitting_window_samples // 2)
-    fit_end = min(n_time, refined_peak_idx + fitting_window_samples // 2)
+    noise_mean, noise_std = _robust_mean_std(noise_data, sigma=threshold_sigma)
 
-    fitting_region = slice(fit_start, fit_end)
-    x_fit = x[fitting_region]
-    y_fit = time_series_raw[fitting_region]  # Use RAW for fitting
+    widths = _build_widths(max_width)
+    cumsum = np.cumsum(np.insert(time_series_raw, 0, 0.0))
 
-    # Step 3: Robust baseline estimation using RAW data
-    if noise_range is None:
-        # Define noise regions excluding the central fitting area
-        noise_margin = max(10, int(0.1 * n_time))
-        central_start = max(0, fit_start - noise_margin)
-        central_end = min(n_time, fit_end + noise_margin)
+    best_snr = -np.inf
+    best_width = 1
+    best_center = int(np.argmax(time_series_raw))
+    best_sum = None
 
-        noise_regions = []
-        if central_start > 0:
-            noise_regions.append(slice(0, central_start))
-        if central_end < n_time:
-            noise_regions.append(slice(central_end, n_time))
-    else:
-        noise_regions = [slice(start, end) for (start, end) in noise_range]
+    for width in widths:
+        if width >= n_time:
+            break
+        window_sums = cumsum[width:] - cumsum[:-width]
+        centers = np.arange(width // 2, width // 2 + window_sums.size)
 
-    if noise_regions:
-        noise_data = np.concatenate([time_series_raw[region] for region in noise_regions])
-    else:
-        # Fallback: use edge regions
-        edge_size = max(5, n_time // 10)
-        noise_data = np.concatenate([time_series_raw[:edge_size], time_series_raw[-edge_size:]])
-
-    # Robust baseline estimation using median and MAD on RAW data
-    noise_median = np.median(noise_data)
-    noise_mad = np.median(np.abs(noise_data - noise_median))
-    noise_std_robust = 1.4826 * noise_mad  # Convert MAD to std estimate
-
-    # Remove outliers for cleaner baseline
-    outlier_mask = np.abs(noise_data - noise_median) < threshold_sigma * noise_std_robust
-    if np.sum(outlier_mask) > len(noise_data) * 0.5:  # Keep at least 50% of data
-        clean_noise = noise_data[outlier_mask]
-        noise_mean = np.mean(clean_noise)
-        noise_std = np.std(clean_noise)
-    else:
-        noise_mean = noise_median
-        noise_std = noise_std_robust
-
-    # Step 4: Weighted Gaussian fitting on RAW data
-    # Subtract baseline from fitting data
-    y_fit_corrected = y_fit - noise_mean
-
-    # Initial parameter estimation
-    peak_idx_local = np.argmax(y_fit_corrected)
-    peak_idx_global = fit_start + peak_idx_local
-
-    amp0 = y_fit_corrected[peak_idx_local]
-    mu0 = x_fit[peak_idx_local]  # Peak position in global coordinates
-
-    # Estimate sigma from FWHM using moment analysis
-    try:
-        # Calculate second moment for width estimation
-        weights = np.maximum(0, y_fit_corrected)
-        if np.sum(weights) > 0:
-            weighted_mean = np.average(x_fit, weights=weights)
-            weighted_var = np.average((x_fit - weighted_mean) ** 2, weights=weights)
-            sigma0 = np.sqrt(weighted_var)
+        if toa_sample_idx is not None:
+            mask = (centers >= search_start) & (centers < search_end)
+            if not np.any(mask):
+                continue
+            sums = window_sums[mask]
+            centers_sel = centers[mask]
         else:
-            sigma0 = fitting_window_samples / 6  # Fallback
-    except Exception:
-        sigma0 = fitting_window_samples / 6
+            sums = window_sums
+            centers_sel = centers
 
-    # Ensure reasonable bounds for sigma
-    sigma0 = max(0.5, min(sigma0, fitting_window_samples / 3))  # Allow smaller sigma for narrow pulses
-    baseline0 = noise_mean
-
-    # Setup fitting parameters and bounds
-    p0 = [amp0, mu0, sigma0, baseline0]
-
-    # Conservative bounds to prevent overfitting
-    sigma_min = 0.1  # Allow very narrow pulses
-    sigma_max = min(fitting_window_samples / 2, n_time / 4)
-    mu_min = fit_start
-    mu_max = fit_end - 1
-
-    bounds = (
-        [0, mu_min, sigma_min, noise_mean - 3 * noise_std],  # lower bounds
-        [amp0 * 3, mu_max, sigma_max, noise_mean + 3 * noise_std],  # upper bounds
-    )
-
-    # Step 5: Perform weighted fitting with error estimation
-    try:
-        # Create weights based on signal strength and noise level
-        signal_weights = 1.0 / (noise_std**2 + 0.1 * np.abs(y_fit_corrected))
-        signal_weights = signal_weights / np.max(signal_weights)  # Normalize
-
-        # Fit Gaussian with weights
-        popt, _ = curve_fit(
-            gaussian,
-            x_fit,
-            y_fit,
-            p0=p0,
-            bounds=bounds,
-            sigma=1.0 / np.sqrt(signal_weights),
-            absolute_sigma=False,
-            maxfev=5000,
-        )
-
-        amp, mu, sigma, baseline = popt
-
-        # Calculate fitting quality metrics
-        y_pred = gaussian(x_fit, *popt)
-        residuals = y_fit - y_pred
-        chi_squared = np.sum((residuals**2) * signal_weights)
-        reduced_chi_squared = chi_squared / max(1, len(x_fit) - 4)
-
-        # Calculate R-squared
-        ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((y_fit - np.mean(y_fit)) ** 2)
-        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-
-        fit_quality = {
-            "reduced_chi_squared": reduced_chi_squared,
-            "r_squared": r_squared,
-            "fit_converged": True,
-        }
-
-        # Step 6: Calculate professional SNR using fitted parameters on RAW data
-        pulse_width_samples = 2.355 * sigma  # FWHM in samples
-
-        # Define integration region around fitted peak (+-1.177*sigma for FWHM)
-        integration_half_width = 1.177 * sigma
-        left_idx = int(np.round(mu - integration_half_width))
-        right_idx = int(np.round(mu + integration_half_width))
-
-        # Ensure indices are within bounds
-        left_idx = max(0, left_idx)
-        right_idx = min(n_time - 1, right_idx)
-
-        n_integration_samples = right_idx - left_idx + 1
-
-        if n_integration_samples > 0:
-            # Integrate RAW signal over FWHM region
-            signal_sum = np.sum(time_series_raw[left_idx : right_idx + 1])
-            expected_noise = noise_mean * n_integration_samples
-
-            # SNR calculation with proper error propagation
-            snr = (signal_sum - expected_noise) / (noise_std * np.sqrt(n_integration_samples))
+        if noise_std <= 0:
+            snr_series = np.full_like(sums, -np.inf, dtype=np.float64)
         else:
-            snr = -1
+            snr_series = (sums - noise_mean * width) / (noise_std * np.sqrt(width))
 
-        peak_idx_fit = int(np.round(mu))
+        local_idx = int(np.argmax(snr_series))
+        local_snr = float(snr_series[local_idx])
+        if local_snr > best_snr:
+            best_snr = local_snr
+            best_width = int(width)
+            best_center = int(centers_sel[local_idx])
+            best_sum = float(sums[local_idx])
 
-        return snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality)
+    if best_sum is None:
+        noise_mean, noise_std = _robust_mean_std(time_series_raw, sigma=threshold_sigma)
+        peak_idx = int(np.argmax(time_series_raw))
+        snr = (time_series_raw[peak_idx] - noise_mean) / noise_std if noise_std > 0 else -1
+        fit_quality = {"fit_converged": False, "method": "fallback"}
+        return snr, 1, peak_idx, (noise_mean, noise_std, fit_quality)
 
-    except Exception as exc:
-        print(f"Gaussian fitting failed: {exc}")
+    refine_left = max(0, best_center - 2 * best_width)
+    refine_right = min(n_time, best_center + 2 * best_width + 1)
+    noise_mask = np.ones(n_time, dtype=bool)
+    noise_mask[refine_left:refine_right] = False
+    refine_data = time_series_raw[noise_mask]
+    if refine_data.size >= max(10, int(0.1 * n_time)):
+        noise_mean, noise_std = _robust_mean_std(refine_data, sigma=threshold_sigma)
 
-        # Fallback: simple peak analysis
-        peak_idx_fit = peak_idx_global
+    snr = (best_sum - noise_mean * best_width) / (noise_std * np.sqrt(best_width)) if noise_std > 0 else -1
 
-        # Estimate width from half-maximum points on RAW data
-        half_max = (np.max(y_fit_corrected) + noise_mean) / 2
-        above_half_max = y_fit_corrected > (half_max - noise_mean)
+    fit_quality = {
+        "fit_converged": True,
+        "method": "boxcar",
+        "width_samples": best_width,
+        "search_start": int(search_start),
+        "search_end": int(search_end),
+    }
 
-        if np.any(above_half_max):
-            width_indices = np.where(above_half_max)[0]
-            pulse_width_samples = len(width_indices)
-
-            # Map back to global indices for integration
-            start_local = width_indices[0]
-            end_local = width_indices[-1]
-            left_idx = fit_start + start_local
-            right_idx = fit_start + end_local
-
-            n_integration_samples = right_idx - left_idx + 1
-
-            # Integrate RAW signal
-            signal_sum = np.sum(time_series_raw[left_idx : right_idx + 1])
-            expected_noise = noise_mean * n_integration_samples
-            snr = (signal_sum - expected_noise) / (noise_std * np.sqrt(n_integration_samples))
-
-        else:
-            pulse_width_samples = 1  # Minimum reasonable width for narrow pulse
-            # Fallback to peak SNR on RAW data
-            signal_peak = np.max(time_series_raw)
-            snr = (signal_peak - noise_mean) / noise_std if noise_std > 0 else -1
-
-        fit_quality = {
-            "reduced_chi_squared": -1,
-            "r_squared": -1,
-            "fit_converged": False,
-        }
-
-        return snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality)
+    return snr, best_width, best_center, (noise_mean, noise_std, fit_quality)
 
 
 def detrend_frequency(data: np.ndarray, poly_order: int = 6) -> np.ndarray:

@@ -8,6 +8,30 @@ import numpy as np
 from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
 
 
+def _normalize_channels_for_display(data, clip_sigma=6.0, eps=1e-6):
+    """Normalize each frequency channel for display to reduce stripe artifacts."""
+    med = np.nanmedian(data, axis=0)
+    mad = np.nanmedian(np.abs(data - med), axis=0)
+    scale = 1.4826 * mad
+    scale = np.where(scale < eps, 1.0, scale)
+    norm = (data - med) / scale
+    if clip_sigma is not None:
+        norm = np.clip(norm, -clip_sigma, clip_sigma)
+    flat = mad < eps
+    if np.any(flat):
+        norm[:, flat] = 0.0
+    return norm
+
+
+def _boxcar_max_samples(specconfig, header):
+    max_ms = specconfig.snr_boxcar_max_ms
+    if max_ms is None:
+        return None
+    if max_ms <= 0:
+        return None
+    return max(1, int(round((max_ms * 1e-3) / header.tsamp)))
+
+
 def prepare_dm_data(dmt):
     """Prepare DM-Time data for plotting."""
     dm_data = np.array(dmt.data, dtype=np.float32)
@@ -192,27 +216,27 @@ def setup_detrend_spectrum_plots(
     ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
     ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
 
-    data_is_freq_time = len(spec_freq_axis) == spec_data.shape[0] and len(spec_time_axis) == spec_data.shape[1]
-    if data_is_freq_time:
-        detrend_data = spec_data
-        display_data = spec_data.T
-    else:
-        detrend_data = spec_data.T
-        display_data = spec_data
+    detrend_data = spec_data.T
 
     try:
         detrended_freq_time = detrend(detrend_data, axis=1, trend=detrend_type)
         detrended_data = detrended_freq_time.T
     except Exception as exc:
         print(f"Detrending failed: {exc}, using original data")
-        detrended_data = display_data
+        detrended_data = spec_data
 
-    toa_sample_idx = int((toa - spec_tstart) / header.tsamp)
-    snr, pulse_width, peak_idx, _ = calculate_frb_snr(
-        detrended_data, noise_range=None, threshold_sigma=5, toa_sample_idx=toa_sample_idx
-    )
+    if snr is None or pulse_width is None or toa is None:
+        toa_sample_idx = None if toa is None else int((toa - spec_tstart) / header.tsamp)
+        snr, pulse_width, peak_idx, _ = calculate_frb_snr(
+            detrended_data,
+            noise_range=None,
+            threshold_sigma=5,
+            toa_sample_idx=toa_sample_idx,
+            fitting_window_samples=_boxcar_max_samples(specconfig, header),
+        )
+        toa = spec_tstart + (peak_idx + 0.5) * header.tsamp
 
-    toa = spec_tstart + (peak_idx + 0.5) * header.tsamp
+    display_data = _normalize_channels_for_display(detrended_data)
 
     time_series = np.sum(detrended_data, axis=1)
     ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
@@ -248,16 +272,16 @@ def setup_detrend_spectrum_plots(
     ax_spec_freq.grid(True, alpha=0.3)
     ax_spec_freq.set_xlabel("Frequency\nIntegrated Power\n(Detrended)")
 
-    spec_vmin = np.percentile(detrended_data, specconfig.minpercentile)
-    spec_vmax = np.percentile(detrended_data, specconfig.maxpercentile)
+    spec_vmin = np.percentile(display_data, specconfig.minpercentile)
+    spec_vmax = np.percentile(display_data, specconfig.maxpercentile)
     if spec_vmin == 0:
-        non_zero_values = detrended_data[detrended_data > 0]
+        non_zero_values = display_data[display_data > 0]
         if non_zero_values.size > 0:
             spec_vmin = non_zero_values.min()
 
     extent = [spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]]
     ax_spec.imshow(
-        detrended_data.T,
+        display_data.T,
         aspect="auto",
         origin="lower",
         cmap="viridis",
@@ -290,28 +314,40 @@ def setup_subband_spectrum_plots(
     dm=None,
     pulse_width=None,
     snr=None,
+    subband_matrix=None,
+    subband_freq_axis=None,
 ):
     """Setup spectrum subplot components with subband analysis for enhanced weak pulse visibility."""
     ax_spec_time = fig.add_subplot(gs[0, 2])
     ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
     ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
 
-    subtsamp = specconfig.subtsamp
-    time_bin_duration = (pulse_width / subtsamp) * header.tsamp if pulse_width else 4 * header.tsamp
-    time_bin_size = max(1, int(time_bin_duration / header.tsamp))
+    if subband_matrix is None:
+        n_freq_subbands = specconfig.subfreq
+        subband_matrix, _ = downsample_freq_weighted_vec(spec_data, spec_freq_axis, n_freq_subbands)
+        subband_freq_axis = np.linspace(spec_freq_axis[0], spec_freq_axis[-1], n_freq_subbands + 1)
+    elif subband_freq_axis is None:
+        raise ValueError("subband_freq_axis is required when subband_matrix is provided")
 
-    n_time_samples, n_freq_channels = spec_data.shape
-    n_freq_subbands = specconfig.subfreq
+    n_time_samples, n_freq_subbands = subband_matrix.shape
+    subtsamp = max(1, int(specconfig.subtsamp))
+    if pulse_width and pulse_width > 0:
+        time_bin_size = max(1, int(round(pulse_width / subtsamp)))
+    else:
+        time_bin_size = subtsamp
+    if time_bin_size > n_time_samples:
+        time_bin_size = n_time_samples
     n_time_bins = max(1, n_time_samples // time_bin_size)
     trimmed_time_len = n_time_bins * time_bin_size
+    time_bin_duration = time_bin_size * header.tsamp
+    freq_subband_size = max(1, len(spec_freq_axis) / n_freq_subbands)
 
-    freq_subband_size = max(1, n_freq_channels / n_freq_subbands)
-
-    spec_data_t = spec_data[:trimmed_time_len, :].reshape(
-        n_time_bins, time_bin_size, n_freq_channels
-    ).sum(axis=1)
-
-    subband_matrix, _ = downsample_freq_weighted_vec(spec_data_t, spec_freq_axis, n_freq_subbands)
+    if trimmed_time_len < n_time_samples:
+        subband_matrix = subband_matrix[:trimmed_time_len, :]
+    if time_bin_size > 1:
+        subband_matrix = subband_matrix.reshape(
+            n_time_bins, time_bin_size, n_freq_subbands
+        ).sum(axis=1)
 
     if specconfig.dtrend:
         subband_matrix = detrend(subband_matrix, axis=0, trend="linear")
@@ -329,7 +365,7 @@ def setup_subband_spectrum_plots(
             subband_matrix[:, f_bin] = freq_column_norm
 
     subband_time_axis = np.linspace(spec_tstart, spec_tend, n_time_bins + 1)
-    subband_freq_axis = np.linspace(spec_freq_axis[0], spec_freq_axis[-1], n_freq_subbands + 1)
+    subband_freq_axis = np.asarray(subband_freq_axis)
 
     subband_time_series = np.sum(subband_matrix, axis=1)
     subband_time_centers = 0.5 * (subband_time_axis[:-1] + subband_time_axis[1:])

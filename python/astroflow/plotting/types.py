@@ -53,6 +53,7 @@ class SpecPlotConfig:
     dtrend: bool = False
     norm: bool = True
     savetype: str = "png"
+    snr_boxcar_max_ms: float | None = None
 
 
 def ensure_candidate_info(candinfo: Any) -> CandidateInfo:
@@ -82,6 +83,8 @@ def ensure_spec_config(specconfig: Any) -> SpecPlotConfig:
     data = dict(specconfig)
     if "detrend" in data and "dtrend" not in data:
         data["dtrend"] = data["detrend"]
+    if "boxcar_max_ms" in data and "snr_boxcar_max_ms" not in data:
+        data["snr_boxcar_max_ms"] = data["boxcar_max_ms"]
     return SpecPlotConfig(**_filter_kwargs(SpecPlotConfig, data))
 
 
