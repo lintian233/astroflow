@@ -7,6 +7,7 @@ from .plotting.analysis import calculate_frb_snr
 from .plotting.pipeline import pack_background as _pack_background
 from .plotting.pipeline import pack_candidate as _pack_candidate
 from .plotting.pipeline import plot_candidate as _plot_candidate
+from .plotting.pipeline import plot_candidates_for_path as _plot_candidates_for_path
 from .plotting.types import (
     CandidateInfo,
     DmPlotConfig,
@@ -48,6 +49,12 @@ class PlotterManager:
             args=(dmt, candinfo, save_path, file_path, self.dmtconfig, self.specconfig),
         )
 
+    def plot_candidates_for_file(self, file_path, candidates, dpi=150):
+        self.pool.apply_async(
+            _plot_candidates_for_path,
+            args=(file_path, candidates, self.dmtconfig, self.specconfig, dpi),
+        )
+
     def close(self):
         self.pool.close()
         self.pool.join()
@@ -67,6 +74,16 @@ def plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, d
     return _plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, dpi)
 
 
+def plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi=150):
+    dmtconfig = ensure_dmt_config(dmtconfig)
+    specconfig = ensure_spec_config(specconfig)
+    return _plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi)
+
+
+def plot_candidates_for_file(file_path, candidates, dmtconfig, specconfig, dpi=150):
+    return plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi)
+
+
 __all__ = [
     "CandidateInfo",
     "DmPlotConfig",
@@ -76,5 +93,7 @@ __all__ = [
     "error_tracer",
     "pack_background",
     "pack_candidate",
+    "plot_candidates_for_file",
+    "plot_candidates_for_path",
     "plot_candidate",
 ]

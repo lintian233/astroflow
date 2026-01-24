@@ -67,8 +67,80 @@ def plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, d
     """
     Plot FRB candidate with DM-Time and spectrum analysis.
     """
+    origin_data = load_data_file(file_path)
+    try:
+        header = origin_data.header()
+        taskconfig = TaskConfig()
+        maskfile = _resolve_maskfile(taskconfig, file_path)
+        _plot_candidate_with_origin(
+            origin_data,
+            header,
+            taskconfig,
+            maskfile,
+            dmt,
+            candinfo,
+            save_path,
+            file_path,
+            dmtconfig,
+            specconfig,
+            dpi,
+        )
+    finally:
+        _close_origin_data(origin_data)
+        gc.collect()
+
+
+def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, specconfig, dpi=150):
+    """
+    Plot multiple candidates for the same file using a shared IO handle.
+    candidates: iterable of (dmt, candinfo, save_path)
+    """
+    header = origin_data.header()
+    taskconfig = TaskConfig()
+    maskfile = _resolve_maskfile(taskconfig, file_path)
+    for dmt, candinfo, save_path in candidates:
+        _plot_candidate_with_origin(
+            origin_data,
+            header,
+            taskconfig,
+            maskfile,
+            dmt,
+            candinfo,
+            save_path,
+            file_path,
+            dmtconfig,
+            specconfig,
+            dpi,
+        )
+    gc.collect()
+
+
+def plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi=150):
+    """
+    Plot multiple candidates for the same file by opening the file once in this process.
+    """
+    origin_data = load_data_file(file_path)
+    try:
+        plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, specconfig, dpi)
+    finally:
+        _close_origin_data(origin_data)
+        gc.collect()
+
+
+def _plot_candidate_with_origin(
+    origin_data,
+    header,
+    taskconfig,
+    maskfile,
+    dmt,
+    candinfo,
+    save_path,
+    file_path,
+    dmtconfig,
+    specconfig,
+    dpi,
+):
     cand = ensure_candidate_info(candinfo)
-    origin_data = None
     try:
         print(
             f"Plot cand: DM={cand.dm}, TOA={cand.toa}, "
@@ -92,9 +164,6 @@ def plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, d
         )
         setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, cand.dm, cand.toa)
 
-        origin_data = load_data_file(file_path)
-        header = origin_data.header()
-        taskconfig = TaskConfig()
         max_width_samples = _boxcar_max_samples(specconfig, header)
 
         try:
@@ -104,8 +173,6 @@ def plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, d
             initial_spec_tstart, initial_spec_tend = calculate_spectrum_time_window(
                 cand.toa, 0, header.tsamp, tband
             )
-
-            maskfile = _resolve_maskfile(taskconfig, file_path)
 
             initial_spectrum = dedisperse_spec_with_dm(
                 origin_data,
@@ -276,7 +343,6 @@ def plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, d
         raise
     finally:
         plt.close("all")
-        _close_origin_data(origin_data)
         gc.collect()
 
 

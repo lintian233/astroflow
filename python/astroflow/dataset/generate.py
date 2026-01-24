@@ -152,7 +152,8 @@ def muti_pulsar_search_detect(
     origin_dm = frbcandidate["dms"].values[0]
     
     detection_flag = 0
-    
+    plot_jobs = []
+
     for candinfo in candidates: #type: ignore
         dm, toa = candinfo[0], candinfo[1]
         ref_toa = get_freq_end_toa(
@@ -173,13 +174,16 @@ def muti_pulsar_search_detect(
 
         if _check_candidate_match(dm, toa, origin_dm, origin_toa, ref_toa):
             detection_flag = 1
-            plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, candidate_detect_dir, file)
+            plot_jobs.append((dmtimes[candinfo[4]], candinfo, candidate_detect_dir))
             plotter.pack_candidate(dmtimes[candinfo[4]], candinfo, output_dir, file)
         elif _check_dm_match(dm, origin_dm):
-            plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, detect_dir, file)
+            plot_jobs.append((dmtimes[candinfo[4]], candinfo, detect_dir))
         else:
-            plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, background_dir, file)
+            plot_jobs.append((dmtimes[candinfo[4]], candinfo, background_dir))
             plotter.pack_background(dmtimes[candinfo[4]], candinfo, background_dir, file)
+
+    if plot_jobs:
+        plotter.plot_candidates_for_file(file, plot_jobs)
 
     return detection_flag
 
@@ -351,4 +355,3 @@ def count_frb_dataset(
     logger.info(f"Total candidates found: {current_candidates}/{total_candidates}")
     logger.info(f"Missed candidates: {len(missed_candiates)}")
     print("Missed candidate files:\n " + "\n ".join(missed_candiates))
-

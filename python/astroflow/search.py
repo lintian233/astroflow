@@ -312,6 +312,7 @@ def single_pulsar_search(
     config: Config,
     detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
     plotter: PlotterManager,
+    plot_jobs: Optional[List[Tuple[object, object, str]]] = None,
 ) -> List:
     """
     Perform single pulsar search on a file.
@@ -379,11 +380,17 @@ def single_pulsar_search(
     os.makedirs(detect_dir, exist_ok=True)
 
     candidates = []
+    local_jobs = []
     for idx, data in enumerate(dmtimes):
         candidate = detector.detect(data)
         for i, candinfo in enumerate(candidate):
-            plotter.plot_candidate(data, candinfo, detect_dir, file)
+            local_jobs.append((data, candinfo, detect_dir))
             candidates.extend(candidate)
+    if local_jobs:
+        if plot_jobs is None:
+            plotter.plot_candidates_for_file(file, local_jobs)
+        else:
+            plot_jobs.extend(local_jobs)
     
     # del origin_data
     return candidates
@@ -396,6 +403,7 @@ def muti_pulsar_search(
     config: Config,
     detector: Union[CenterNetFrbDetector, Yolo11nFrbDetector],
     plotter: PlotterManager,
+    plot_jobs: Optional[List[Tuple[object, object, str]]] = None,
 ) -> List:
     """
     Perform multi pulsar search on a file.
@@ -474,8 +482,14 @@ def muti_pulsar_search(
     if candidates is None:
         candidates = []
         
+    local_jobs = []
     for i, candinfo in enumerate(candidates):
-        plotter.plot_candidate(dmtimes[candinfo[4]], candinfo, detect_dir, file)
+        local_jobs.append((dmtimes[candinfo[4]], candinfo, detect_dir))
+    if local_jobs:
+        if plot_jobs is None:
+            plotter.plot_candidates_for_file(file, local_jobs)
+        else:
+            plot_jobs.extend(local_jobs)
     
     # del origin_data
     return candidates
@@ -529,6 +543,7 @@ def _process_single_file_search(
         return
 
     origin_data = None
+    plot_jobs = []
     try:
         origin_data = _load_spectrum_data(str(file_path_p))
 
@@ -541,6 +556,7 @@ def _process_single_file_search(
                         config,
                         detector,
                         plotter,
+                        plot_jobs,
                     )
                 else:
                     single_pulsar_search(
@@ -549,6 +565,7 @@ def _process_single_file_search(
                         config,
                         detector,
                         plotter,
+                        plot_jobs,
                     )
 
                 file_dir.mkdir(parents=True, exist_ok=True)
@@ -557,6 +574,8 @@ def _process_single_file_search(
                 logger.exception(
                     f"Error processing {file_path} with config {config}"
                 )
+        if plot_jobs:
+            plotter.plot_candidates_for_file(str(file_path_p), plot_jobs)
 
     except Exception:
         logger.exception(f"Error loading or processing {file_path}")
@@ -624,10 +643,7 @@ def single_pulsar_search_dir(task_config: TaskConfig) -> None:
         logger.warning(f"No supported files found in {files_dir}")
         return
 
-    # Initialize detector and plotter
     detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
-
-    
     for file in tqdm(all_files):
         file_path = os.path.join(files_dir, file)
         logger.info(f"Processing {file_path}")
@@ -692,10 +708,9 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
         raise FileNotFoundError(f"File not found: {file_path}")
     
     logger.info(f"Processing file: {file_path}")
-    
-    # Initialize detector and plotter
     detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
     origin_data = None
+    plot_jobs = []
     try:
         origin_data = _load_spectrum_data(file_path)
         for dm_item in task_config.dmrange:
@@ -721,28 +736,30 @@ def single_pulsar_search_file(task_config: TaskConfig) -> None:
                         f"Freq Range: {config.freq_start}-{config.freq_end}, "
                         f"TSample: {config.t_sample}"
                     )
-                    
+
                     try:
                         if mutidetect:
                             muti_pulsar_search(
-                                # file_path,
                                 origin_data,
                                 task_config.output,
                                 config,
                                 detector,
                                 plotter,
+                                plot_jobs,
                             )
                         else:
                             single_pulsar_search(
-                                # file_path,
                                 origin_data,
                                 task_config.output,
                                 config,
                                 detector,
                                 plotter,
+                                plot_jobs,
                             )
                     except Exception as e:
                         logger.error(f"Error processing {file_path} with config: {e}")
+        if plot_jobs:
+            plotter.plot_candidates_for_file(file_path, plot_jobs)
     finally:
         del origin_data
         plotter.close()
@@ -911,7 +928,7 @@ def monitor_directory_for_pulsar_search(
     if stop_file:
         logger.info(f"Stop file: {stop_file}")
     logger.info("Press Ctrl+C to stop monitoring")
-    
+
     # Initialize detector and plotter
     detector, plotter, mutidetect = _create_detector_and_plotter(task_config)
     
@@ -971,4 +988,3 @@ def monitor_directory_for_pulsar_search(
         logger.info("Stopping directory monitoring...")
         plotter.close()
         logger.info("Directory monitoring stopped")
-
