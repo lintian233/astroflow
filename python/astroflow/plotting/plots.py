@@ -233,6 +233,7 @@ def setup_detrend_spectrum_plots(
             threshold_sigma=5,
             toa_sample_idx=toa_sample_idx,
             fitting_window_samples=_boxcar_max_samples(specconfig, header),
+            tsamp=header.tsamp,
         )
         toa = spec_tstart + (peak_idx + 0.5) * header.tsamp
 

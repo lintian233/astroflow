@@ -201,6 +201,7 @@ def _plot_candidate_with_origin(
                 threshold_sigma=5,
                 toa_sample_idx=toa_sample_idx,
                 fitting_window_samples=max_width_samples,
+                tsamp=header.tsamp,
             )
 
             peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp

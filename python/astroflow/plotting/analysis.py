@@ -37,14 +37,14 @@ def _build_widths(max_width):
     max_width = int(max_width)
     if max_width <= 1:
         return [1]
-    if max_width <= 32:
+    if max_width <= 16:
         return list(range(1, max_width + 1))
 
-    small = list(range(1, 33))
+    small = list(range(1, 17))
     logspace = np.unique(
-        np.round(np.logspace(np.log10(33), np.log10(max_width), num=12)).astype(int)
+        np.round(np.logspace(np.log10(17), np.log10(max_width), num=10)).astype(int)
     )
-    widths = small + [int(w) for w in logspace if 33 <= w <= max_width]
+    widths = small + [int(w) for w in logspace if 17 <= w <= max_width]
     return widths
 
 
@@ -54,6 +54,8 @@ def calculate_frb_snr(
     threshold_sigma=5.0,
     toa_sample_idx=None,
     fitting_window_samples=None,
+    tsamp=None,
+    target_time_us=256.0,
 ):
     """
     Robust FRB SNR calculation with multi-scale boxcar search and off-pulse noise estimation.
@@ -64,31 +66,63 @@ def calculate_frb_snr(
         threshold_sigma: Threshold for outlier detection in baseline estimation
         toa_sample_idx: Expected TOA sample index for centered fitting
         fitting_window_samples: Max width for boxcar search (default: auto)
+        tsamp: Time resolution in seconds (for downsampling)
+        target_time_us: Target time resolution in microseconds for SNR downsampling
 
     Returns:
         tuple: (snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality))
     """
-    time_series_raw = np.sum(spec, axis=1)
+    time_series_raw = np.sum(spec, axis=1, dtype=np.float32)
+    n_time_orig = len(time_series_raw)
+    if n_time_orig == 0:
+        return -1, 0, 0, (0.0, 1.0, {"fit_converged": False})
+
+    downsample = 1
+    if tsamp is not None and target_time_us is not None:
+        target_sec = target_time_us * 1e-6
+        if tsamp > 0:
+            downsample = int(round(target_sec / tsamp))
+        if downsample < 1:
+            downsample = 1
+    if downsample > 1:
+        trimmed = (n_time_orig // downsample) * downsample
+        if trimmed >= downsample:
+            time_series_raw = time_series_raw[:trimmed].reshape(-1, downsample).sum(axis=1)
+        else:
+            downsample = 1
+
     n_time = len(time_series_raw)
     if n_time == 0:
         return -1, 0, 0, (0.0, 1.0, {"fit_converged": False})
 
     if fitting_window_samples is None:
-        max_width = max(8, min(n_time // 4, 512))
+        max_width = max(8, min((n_time * downsample) // 4, 512))
     else:
-        max_width = max(4, min(int(fitting_window_samples), n_time // 2))
-    max_width = max(1, min(max_width, n_time))
+        max_width = max(4, min(int(fitting_window_samples), (n_time * downsample) // 2))
+    max_width = max(1, min(max_width, n_time * downsample))
+    max_width_ds = max(1, int(np.ceil(max_width / downsample)))
+    max_width_ds = min(max_width_ds, n_time)
 
     if toa_sample_idx is not None:
-        search_radius = max(max_width, 100)
-        search_start = max(0, toa_sample_idx - search_radius)
-        search_end = min(n_time, toa_sample_idx + search_radius)
+        search_radius = max(max_width_ds, int(np.ceil(100 / downsample)))
+        toa_idx = int(toa_sample_idx // downsample)
+        search_start = max(0, toa_idx - search_radius)
+        search_end = min(n_time, toa_idx + search_radius)
     else:
         search_start = 0
         search_end = n_time
 
     if noise_range:
-        noise_data = np.concatenate([time_series_raw[slice(start, end)] for (start, end) in noise_range])
+        ds_ranges = []
+        for start, end in noise_range:
+            ds_start = int(max(0, start // downsample))
+            ds_end = int(min(n_time, int(np.ceil(end / downsample))))
+            if ds_end > ds_start:
+                ds_ranges.append(slice(ds_start, ds_end))
+        if ds_ranges:
+            noise_data = np.concatenate([time_series_raw[r] for r in ds_ranges])
+        else:
+            noise_data = time_series_raw
     else:
         noise_data = None
         if toa_sample_idx is not None and (search_start > 0 or search_end < n_time):
@@ -104,7 +138,7 @@ def calculate_frb_snr(
 
     noise_mean, noise_std = _robust_mean_std(noise_data, sigma=threshold_sigma)
 
-    widths = _build_widths(max_width)
+    widths = _build_widths(max_width_ds)
     cumsum = np.cumsum(np.insert(time_series_raw, 0, 0.0))
 
     best_snr = -np.inf
@@ -146,7 +180,8 @@ def calculate_frb_snr(
         peak_idx = int(np.argmax(time_series_raw))
         snr = (time_series_raw[peak_idx] - noise_mean) / noise_std if noise_std > 0 else -1
         fit_quality = {"fit_converged": False, "method": "fallback"}
-        return snr, 1, peak_idx, (noise_mean, noise_std, fit_quality)
+        peak_idx_orig = min(n_time_orig - 1, peak_idx * downsample + downsample // 2)
+        return snr, max(1, downsample), peak_idx_orig, (noise_mean, noise_std, fit_quality)
 
     refine_left = max(0, best_center - 2 * best_width)
     refine_right = min(n_time, best_center + 2 * best_width + 1)
@@ -161,12 +196,15 @@ def calculate_frb_snr(
     fit_quality = {
         "fit_converged": True,
         "method": "boxcar",
-        "width_samples": best_width,
+        "width_samples": best_width * downsample,
         "search_start": int(search_start),
         "search_end": int(search_end),
+        "downsample": downsample,
     }
 
-    return snr, best_width, best_center, (noise_mean, noise_std, fit_quality)
+    best_center_orig = min(n_time_orig - 1, best_center * downsample + downsample // 2)
+    best_width_orig = max(1, best_width * downsample)
+    return snr, best_width_orig, best_center_orig, (noise_mean, noise_std, fit_quality)
 
 
 
