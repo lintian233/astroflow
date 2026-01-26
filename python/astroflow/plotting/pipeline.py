@@ -11,7 +11,7 @@ from matplotlib.gridspec import GridSpec
 from ..config.taskconfig import TaskConfig
 from ..dedispered import dedisperse_spec_with_dm
 from ..utils import get_freq_end_toa
-from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec, estimate_peak_width
+from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
 from .io import load_data_file, save_candidate_info
 from .plots import (
     calculate_spectrum_time_window,
@@ -188,15 +188,24 @@ def _plot_candidate_with_origin(
             toa_sample_idx = int((cand.toa - initial_spec_tstart) / header.tsamp)
             toa_sample_idx = max(0, min(toa_sample_idx, initial_spectrum.ntimes - 1))
 
-            initial_time_series = np.sum(initial_spec_data, axis=1, dtype=np.float32)
-            search_radius = max_width_samples if max_width_samples is not None else 100
-            initial_peak_idx, initial_pulse_width = estimate_peak_width(
-                initial_time_series, toa_sample_idx=toa_sample_idx, search_radius=search_radius
+            initial_spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, initial_spectrum.nchans)
+            initial_subfreq = _resolve_subfreq(specconfig, initial_spec_data.shape[1])
+            initial_subband_matrix, _ = downsample_freq_weighted_vec(
+                initial_spec_data, initial_spec_freq_axis, initial_subfreq
+            )
+            initial_snr_input = _snr_input_from_subband(mode, specconfig, initial_subband_matrix)
+
+            snr, pulse_width, peak_idx, _ = calculate_frb_snr(
+                initial_snr_input,
+                noise_range=None,
+                threshold_sigma=5,
+                toa_sample_idx=toa_sample_idx,
+                fitting_window_samples=max_width_samples,
             )
 
-            peak_time = initial_spec_tstart + (initial_peak_idx + 0.5) * header.tsamp
+            peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
             spec_tstart, spec_tend = calculate_spectrum_time_window(
-                peak_time, initial_pulse_width, header.tsamp, tband, 35
+                peak_time, pulse_width, header.tsamp, tband, 35
             )
 
             spectrum = dedisperse_spec_with_dm(
@@ -213,25 +222,15 @@ def _plot_candidate_with_origin(
             spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
             spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, spectrum.nchans)
 
-            subfreq = _resolve_subfreq(specconfig, spec_data.shape[1])
-            subband_matrix, _ = downsample_freq_weighted_vec(
-                spec_data, spec_freq_axis, subfreq
-            )
-            snr_input = _snr_input_from_subband(mode, specconfig, subband_matrix)
-            snr, pulse_width, peak_idx, _ = calculate_frb_snr(
-                snr_input,
-                noise_range=None,
-                threshold_sigma=5,
-                toa_sample_idx=None,
-                fitting_window_samples=max_width_samples,
-            )
-
             if snr < taskconfig.snrhold:
                 return
 
-            peak_time = spec_tstart + (peak_idx + 0.5) * header.tsamp
             pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1
             if mode == "subband":
+                subfreq = _resolve_subfreq(specconfig, spec_data.shape[1])
+                subband_matrix, _ = downsample_freq_weighted_vec(
+                    spec_data, spec_freq_axis, subfreq
+                )
                 subband_freq_axis = np.linspace(
                     spec_freq_axis[0], spec_freq_axis[-1], subfreq + 1
                 )
