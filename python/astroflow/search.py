@@ -386,11 +386,13 @@ def single_pulsar_search(
         for i, candinfo in enumerate(candidate):
             local_jobs.append((data, candinfo, detect_dir))
             candidates.extend(candidate)
+        dmtimes[idx] = None
     if local_jobs:
         if plot_jobs is None:
             plotter.plot_candidates_for_file(file, local_jobs)
         else:
             plot_jobs.extend(local_jobs)
+    del dmtimes
     
     # del origin_data
     return candidates
@@ -485,6 +487,7 @@ def muti_pulsar_search(
     local_jobs = []
     for i, candinfo in enumerate(candidates):
         local_jobs.append((dmtimes[candinfo[4]], candinfo, detect_dir))
+    del dmtimes
     if local_jobs:
         if plot_jobs is None:
             plotter.plot_candidates_for_file(file, local_jobs)

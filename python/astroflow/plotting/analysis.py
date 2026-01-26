@@ -169,6 +169,53 @@ def calculate_frb_snr(
     return snr, best_width, best_center, (noise_mean, noise_std, fit_quality)
 
 
+def estimate_peak_width(time_series, toa_sample_idx=None, search_radius=100):
+    """
+    Fast peak and width estimate for window selection.
+
+    Returns (peak_idx, width_samples). width_samples can be 0 when no clear peak.
+    """
+    ts = np.asarray(time_series)
+    n_time = ts.size
+    if n_time == 0:
+        return 0, 0
+
+    if toa_sample_idx is not None:
+        radius = int(max(1, search_radius))
+        search_start = max(0, int(toa_sample_idx) - radius)
+        search_end = min(n_time, int(toa_sample_idx) + radius)
+        if search_end <= search_start:
+            search_start, search_end = 0, n_time
+    else:
+        search_start, search_end = 0, n_time
+
+    segment = ts[search_start:search_end]
+    if segment.size == 0:
+        return 0, 0
+
+    peak_local = int(np.nanargmax(segment))
+    peak_idx = search_start + peak_local
+    peak_val = ts[peak_idx]
+
+    if not np.isfinite(peak_val):
+        return int(n_time // 2), 0
+
+    baseline = np.median(ts[np.isfinite(ts)]) if np.isfinite(ts).any() else 0.0
+    if peak_val <= baseline:
+        return peak_idx, 0
+
+    half_max = (peak_val + baseline) * 0.5
+    left = peak_idx
+    while left > 0 and ts[left] >= half_max:
+        left -= 1
+    right = peak_idx
+    while right < n_time - 1 and ts[right] >= half_max:
+        right += 1
+
+    width = max(1, right - left - 1)
+    return peak_idx, width
+
+
 def detrend_frequency(data: np.ndarray, poly_order: int = 6) -> np.ndarray:
     """
     Remove bandpass shape along frequency axis for each time sample using Chebyshev fit.

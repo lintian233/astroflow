@@ -183,7 +183,10 @@ def muti_pulsar_search_detect(
             plotter.pack_background(dmtimes[candinfo[4]], candinfo, background_dir, file)
 
     if plot_jobs:
+        del dmtimes
         plotter.plot_candidates_for_file(file, plot_jobs)
+    else:
+        del dmtimes
 
     return detection_flag
 
