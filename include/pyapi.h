@@ -50,4 +50,9 @@ template <typename T> void bind_spectrum(py::module &m, const char *class_name);
 
 void bind_header(py::module &m);
 
+py::tuple calculate_frb_snr_cpp(py::array spec, py::object noise_range,
+                                double threshold_sigma, py::object toa_sample_idx,
+                                py::object fitting_window_samples, py::object tsamp,
+                                py::object target_time_us);
+
 #endif

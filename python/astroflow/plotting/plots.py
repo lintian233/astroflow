@@ -7,6 +7,11 @@ import numpy as np
 
 from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
 
+AXIS_LABEL_FONTSIZE = 15
+AXIS_TICK_FONTSIZE = 13
+INFO_FONTSIZE = 10
+LEGEND_FONTSIZE = 11
+
 
 def _normalize_channels_for_display(data, clip_sigma=6.0, eps=1e-6):
     """Normalize each frequency channel for display to reduce stripe artifacts."""
@@ -72,8 +77,10 @@ def setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, t
         vmax=dm_vmax,
         extent=[time_axis[0], time_axis[-1], dm_axis[0], dm_axis[-1]],
     )
-    ax_main.set_xlabel("Time (s)", fontsize=12, labelpad=10)
-    ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=12, labelpad=10)
+    ax_main.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=10)
+    ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=10)
+    ax_main.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+    ax_main.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
 
     # Add dashed ellipse around the candidate region.
     time_range = time_axis[-1] - time_axis[0]
@@ -110,7 +117,7 @@ def setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, t
         0.95,
         f"DM: {dm:.2f} pc $cm^{{-3}}$ \n TOA: {toa:.3f}s",
         transform=ax_time.transAxes,
-        fontsize=10,
+        fontsize=INFO_FONTSIZE,
         verticalalignment="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
     )
@@ -127,15 +134,16 @@ def setup_spectrum_plots(
     spec_tend,
     specconfig,
     header,
+    col_base=2,
     toa=None,
     dm=None,
     pulse_width=None,
     snr=None,
 ):
     """Setup standard spectrum subplot components without subband analysis."""
-    ax_spec_time = fig.add_subplot(gs[0, 2])
-    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
-    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+    ax_spec_time = fig.add_subplot(gs[0, col_base])
+    ax_spec = fig.add_subplot(gs[1, col_base], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, col_base + 1], sharey=ax_spec)
 
     time_series = np.sum(spec_data, axis=1)
     ax_spec_time.plot(spec_time_axis, time_series, "-", color="black", linewidth=1)
@@ -150,16 +158,17 @@ def setup_spectrum_plots(
             0.96,
             f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms",
             transform=ax_spec_time.transAxes,
-            fontsize=10,
+            fontsize=INFO_FONTSIZE,
             verticalalignment="top",
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
         )
 
-    ax_spec_time.set_ylabel("Integrated Power")
+    ax_spec_time.set_ylabel("Integrated Power", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec_time.grid(True, alpha=0.3)
     if toa is not None:
-        ax_spec_time.legend(fontsize=9, loc="upper right")
+        ax_spec_time.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
 
     freq_series = np.sum(spec_data, axis=0)
     vmin = freq_series[freq_series > 0].min()
@@ -167,8 +176,22 @@ def setup_spectrum_plots(
     ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
-    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
+    ax_spec_freq.set_xlabel("")
+    ax_spec_freq.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
     ax_spec_freq.set_xlim(vmin, vmax * 1.01)
+
+    ax_info = fig.add_subplot(gs[0, col_base + 1])
+    ax_info.axis("off")
+    ax_info.text(
+        0.98,
+        0.98,
+        f"FCH1={header.fch1:.3f} MHz\nFOFF={header.foff:.3f} MHz\nTSAMP={header.tsamp:.6e}s",
+        transform=ax_info.transAxes,
+        fontsize=INFO_FONTSIZE,
+        ha="right",
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
 
     spec_vmin = np.percentile(spec_data, specconfig.minpercentile)
     spec_vmax = np.percentile(spec_data, specconfig.maxpercentile)
@@ -188,9 +211,10 @@ def setup_spectrum_plots(
         vmax=spec_vmax,
     )
 
-    ax_spec.set_ylabel(f"Frequency (MHz)\nFCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz")
-    ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
+    ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec.set_xlim(spec_tstart, spec_tend)
+    ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
 
     return ax_spec_time, ax_spec, ax_spec_freq
 
@@ -205,6 +229,7 @@ def setup_detrend_spectrum_plots(
     spec_tend,
     specconfig,
     header,
+    col_base=2,
     toa=None,
     dm=None,
     pulse_width=None,
@@ -212,9 +237,9 @@ def setup_detrend_spectrum_plots(
     detrend_type="linear",
 ):
     """Setup spectrum subplot components with detrending applied for better signal visibility."""
-    ax_spec_time = fig.add_subplot(gs[0, 2])
-    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
-    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+    ax_spec_time = fig.add_subplot(gs[0, col_base])
+    ax_spec = fig.add_subplot(gs[1, col_base], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, col_base + 1], sharey=ax_spec)
 
     detrend_data = spec_data.T
 
@@ -256,22 +281,37 @@ def setup_detrend_spectrum_plots(
         0.96,
         info_text,
         transform=ax_spec_time.transAxes,
-        fontsize=10,
+        fontsize=INFO_FONTSIZE,
         verticalalignment="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8),
     )
 
-    ax_spec_time.set_ylabel("Integrated Power\n(Detrended)")
+    ax_spec_time.set_ylabel("Integrated Power\n(Detrended)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec_time.grid(True, alpha=0.3)
     if toa is not None:
-        ax_spec_time.legend(fontsize=9, loc="upper right")
+        ax_spec_time.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
 
     freq_series = np.sum(detrended_data, axis=0)
     ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
-    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power\n(Detrended)")
+    ax_spec_freq.set_xlabel("")
+    ax_spec_freq.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+
+    ax_info = fig.add_subplot(gs[0, col_base + 1])
+    ax_info.axis("off")
+    ax_info.text(
+        0.98,
+        0.98,
+        f"Detrend: {detrend_type.title()}\nFCH1={header.fch1:.3f} MHz\nFOFF={header.foff:.3f} MHz\nTSAMP={header.tsamp:.6e}s",
+        transform=ax_info.transAxes,
+        fontsize=INFO_FONTSIZE,
+        ha="right",
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
 
     spec_vmin = np.percentile(display_data, specconfig.minpercentile)
     spec_vmax = np.percentile(display_data, specconfig.maxpercentile)
@@ -291,12 +331,10 @@ def setup_detrend_spectrum_plots(
         vmax=spec_vmax,
     )
 
-    ax_spec.set_ylabel(
-        f"Frequency (MHz) - {detrend_type.title()} Detrended\n"
-        f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
-    )
-    ax_spec.set_xlabel(f"Time (s)\nTSAMP={header.tsamp:.6e}s")
+    ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec.set_xlim(spec_tstart, spec_tend)
+    ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
 
     return ax_spec_time, ax_spec, ax_spec_freq
 
@@ -311,6 +349,7 @@ def setup_subband_spectrum_plots(
     spec_tend,
     specconfig,
     header,
+    col_base=2,
     toa=None,
     dm=None,
     pulse_width=None,
@@ -319,9 +358,9 @@ def setup_subband_spectrum_plots(
     subband_freq_axis=None,
 ):
     """Setup spectrum subplot components with subband analysis for enhanced weak pulse visibility."""
-    ax_spec_time = fig.add_subplot(gs[0, 2])
-    ax_spec = fig.add_subplot(gs[1, 2], sharex=ax_spec_time)
-    ax_spec_freq = fig.add_subplot(gs[1, 3], sharey=ax_spec)
+    ax_spec_time = fig.add_subplot(gs[0, col_base])
+    ax_spec = fig.add_subplot(gs[1, col_base], sharex=ax_spec_time)
+    ax_spec_freq = fig.add_subplot(gs[1, col_base + 1], sharey=ax_spec)
 
     if subband_matrix is None:
         n_freq_subbands = specconfig.subfreq
@@ -377,7 +416,7 @@ def setup_subband_spectrum_plots(
         0.96,
         f"SNR: {snr:.2f} \n" f"pulse width: {pulse_width * header.tsamp * 1000:.2f} ms",
         transform=ax_spec_time.transAxes,
-        fontsize=10,
+        fontsize=INFO_FONTSIZE,
         verticalalignment="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
     )
@@ -385,10 +424,11 @@ def setup_subband_spectrum_plots(
     if toa is not None:
         ax_spec_time.axvline(toa, color="blue", linestyle="--", linewidth=1, alpha=0.8, label=f"TOA: {toa:.3f}s")
 
-    ax_spec_time.set_ylabel("Integrated Power")
+    ax_spec_time.set_ylabel("Integrated Power", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+    ax_spec_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec_time.grid(True, alpha=0.3)
-    ax_spec_time.legend(fontsize=9, loc="upper right")
+    ax_spec_time.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
 
     subband_freq_series = np.sum(subband_matrix, axis=0)
 
@@ -403,10 +443,27 @@ def setup_subband_spectrum_plots(
     ax_spec_freq.plot(subband_freq_series, subband_freq_centers, "-", color="black", linewidth=1, alpha=0.8)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
-    ax_spec_freq.set_xlabel("Frequency\nIntegrated Power")
+    ax_spec_freq.set_xlabel("")
+    ax_spec_freq.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
     ax_spec_freq.set_xlim(
         low_bound - 0.1 * abs(high_bound - low_bound),
         high_bound + 0.1 * abs(high_bound - low_bound),
+    )
+
+    ax_info = fig.add_subplot(gs[0, col_base + 1])
+    ax_info.axis("off")
+    ax_info.text(
+        0.98,
+        0.98,
+        f"Subbands: {n_freq_subbands} ({freq_subband_size:.2f} chans)\n"
+        f"Bins: {n_time_bins} ({time_bin_duration * 1000:.3f} ms)\n"
+        f"FCH1={header.fch1:.3f} MHz\nFOFF={header.foff:.3f} MHz\n"
+        f"TSAMP={header.tsamp:.6e}s",
+        transform=ax_info.transAxes,
+        fontsize=INFO_FONTSIZE,
+        ha="right",
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
     )
 
     extent_subband = [
@@ -430,14 +487,9 @@ def setup_subband_spectrum_plots(
         interpolation="nearest",
     )
 
-    ax_spec.set_ylabel(
-        f"Frequency (MHz) - {n_freq_subbands} Subbands ({freq_subband_size:.2f} channels each)\n"
-        f"FCH1={header.fch1:.3f} MHz, FOFF={header.foff:.3f} MHz"
-    )
-    ax_spec.set_xlabel(
-        f"Time (s) - {n_time_bins} Bins ({time_bin_duration * 1000:.3f} ms each)\n"
-        f"TSAMP={header.tsamp:.6e}s, Bin Size={time_bin_size} samples duration={n_time_bins * time_bin_duration * 1000:.1f} ms"
-    )
+    ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec.set_xlim(spec_tstart, spec_tend)
+    ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
 
     return ax_spec_time, ax_spec, ax_spec_freq

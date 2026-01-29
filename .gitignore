@@ -35,3 +35,6 @@ ql/*
 *.csv
 *.yaml
 **/*png
+astroflow_pulse/*
+frb180417/*
+scripts/*

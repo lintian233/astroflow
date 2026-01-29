@@ -147,12 +147,12 @@ def _plot_candidate_with_origin(
             f"Freq={cand.freq_start}-{cand.freq_end} MHz, DMT Index={cand.dmt_idx}"
         )
 
-        fig = plt.figure(figsize=(20, 10), dpi=dpi)
+        fig = plt.figure(figsize=(22, 10), dpi=dpi)
         gs = GridSpec(
             2,
-            4,
+            5,
             figure=fig,
-            width_ratios=[3, 1, 3, 1],
+            width_ratios=[3, 1, 0.3, 3, 1],
             height_ratios=[1, 3],
             wspace=0.04,
             hspace=0.04,
@@ -245,6 +245,7 @@ def _plot_candidate_with_origin(
                     spec_tend,
                     specconfig,
                     header,
+                    col_base=3,
                     toa=peak_time,
                     dm=cand.dm,
                     pulse_width=pulse_width,
@@ -263,6 +264,7 @@ def _plot_candidate_with_origin(
                     spec_tend,
                     specconfig,
                     header,
+                    col_base=3,
                     toa=peak_time,
                     dm=cand.dm,
                     pulse_width=pulse_width,
@@ -279,6 +281,7 @@ def _plot_candidate_with_origin(
                     spec_tend,
                     specconfig,
                     header,
+                    col_base=3,
                     toa=peak_time,
                     dm=cand.dm,
                     pulse_width=pulse_width,
@@ -294,8 +297,8 @@ def _plot_candidate_with_origin(
         fig.suptitle(
             f"FILE: {basename} - DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
             f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
-            fontsize=16,
-            y=0.96,
+            fontsize=22,
+            y=0.94,
         )
 
         savetype = specconfig.savetype

@@ -3,6 +3,11 @@ from __future__ import annotations
 import numpy as np
 from numpy.polynomial import Chebyshev
 
+try:
+    from .. import _astroflow_core as _astro_core  # type: ignore
+except Exception:
+    _astro_core = None
+
 
 def _robust_mean_std(data, sigma=5.0, max_iter=3):
     data = np.asarray(data)
@@ -42,7 +47,7 @@ def _build_widths(max_width):
 
     small = list(range(1, 17))
     logspace = np.unique(
-        np.round(np.logspace(np.log10(17), np.log10(max_width), num=10)).astype(int)
+        np.round(np.logspace(np.log10(17), np.log10(max_width), num=32)).astype(int)
     )
     widths = small + [int(w) for w in logspace if 17 <= w <= max_width]
     return widths
@@ -72,6 +77,21 @@ def calculate_frb_snr(
     Returns:
         tuple: (snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality))
     """
+    if _astro_core is not None and hasattr(_astro_core, "_calculate_frb_snr"):
+        try:
+            return _astro_core._calculate_frb_snr(
+                spec,
+                noise_range,
+                threshold_sigma,
+                toa_sample_idx,
+                fitting_window_samples,
+                tsamp,
+                target_time_us,
+            )
+        except Exception:
+            pass
+    
+    print("warning: using pure-python SNR calculation fallback")
     time_series_raw = np.sum(spec, axis=1, dtype=np.float32)
     n_time_orig = len(time_series_raw)
     if n_time_orig == 0:

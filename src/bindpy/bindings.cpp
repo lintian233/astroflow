@@ -65,4 +65,10 @@ PYBIND11_MODULE(_astroflow_core, m) {
   m.def("_dedisperse_spec_with_dm", &dedisperse_spec_with_dm_py<uint32_t>,
         py::arg("data"), py::arg("header"), py::arg("tstart"), py::arg("dm"),
         py::arg("tend"), py::arg("freq_start"), py::arg("freq_end"), py::arg("maskfile"), py::arg("rficfg"));
+
+  m.def("_calculate_frb_snr", &calculate_frb_snr_cpp, py::arg("spec"),
+        py::arg("noise_range") = py::none(), py::arg("threshold_sigma") = 5.0,
+        py::arg("toa_sample_idx") = py::none(),
+        py::arg("fitting_window_samples") = py::none(),
+        py::arg("tsamp") = py::none(), py::arg("target_time_us") = 256.0);
 }
