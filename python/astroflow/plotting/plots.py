@@ -4,13 +4,14 @@ import cv2
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
 
 AXIS_LABEL_FONTSIZE = 15
 AXIS_TICK_FONTSIZE = 13
 INFO_FONTSIZE = 10
-LEGEND_FONTSIZE = 11
+LEGEND_FONTSIZE = 12
 
 
 def _normalize_channels_for_display(data, clip_sigma=6.0, eps=1e-6):
@@ -35,6 +36,8 @@ def _boxcar_max_samples(specconfig, header):
     if max_ms <= 0:
         return None
     return max(1, int(round((max_ms * 1e-3) / header.tsamp)))
+
+
 
 
 def prepare_dm_data(dmt):
@@ -81,6 +84,7 @@ def setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, t
     ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=10)
     ax_main.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
     ax_main.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
+    ax_main.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
 
     # Add dashed ellipse around the candidate region.
     time_range = time_axis[-1] - time_axis[0]
@@ -104,13 +108,17 @@ def setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, t
     # DM marginal plot
     dm_sum = np.max(dm_data, axis=1)
     ax_dm.plot(dm_sum, dm_axis, lw=1.5, color="darkblue")
-    ax_dm.tick_params(axis="y", labelleft=False)
+    ax_dm.tick_params(axis="y", labelleft=False, labelsize=AXIS_TICK_FONTSIZE)
+    ax_dm.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+    ax_dm.set_title("DM Int.", fontsize=AXIS_LABEL_FONTSIZE, pad=6)
     ax_dm.grid(alpha=0.3)
 
     # Time marginal plot
     time_sum = np.max(dm_data, axis=0)
     ax_time.plot(time_axis, time_sum, lw=1.5, color="darkred")
-    ax_time.tick_params(axis="x", labelbottom=False)
+    ax_time.tick_params(axis="x", labelbottom=False, labelsize=AXIS_TICK_FONTSIZE)
+    ax_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
+    ax_time.set_ylabel("T Int.", fontsize=AXIS_LABEL_FONTSIZE, labelpad=6)
     ax_time.grid(alpha=0.3)
     ax_time.text(
         0.02,
@@ -137,6 +145,7 @@ def setup_spectrum_plots(
     col_base=2,
     toa=None,
     dm=None,
+    ref_toa=None,
     pulse_width=None,
     snr=None,
 ):
@@ -163,7 +172,7 @@ def setup_spectrum_plots(
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
         )
 
-    ax_spec_time.set_ylabel("Integrated Power", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec_time.set_ylabel("Int. Power", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
     ax_spec_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec_time.grid(True, alpha=0.3)
@@ -176,22 +185,34 @@ def setup_spectrum_plots(
     ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
-    ax_spec_freq.set_xlabel("")
-    ax_spec_freq.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+    ax_spec_freq.set_title("Freq. Int. Power", fontsize=AXIS_LABEL_FONTSIZE, pad=6)
     ax_spec_freq.set_xlim(vmin, vmax * 1.01)
+    x_min, x_max = ax_spec_freq.get_xlim()
+    ax_spec_freq.set_xticks([x_min, x_max])
+    ax_spec_freq.set_xticklabels(["0", "1"], fontsize=AXIS_TICK_FONTSIZE)
+    ax_spec_freq.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=True)
 
     ax_info = fig.add_subplot(gs[0, col_base + 1])
     ax_info.axis("off")
-    ax_info.text(
-        0.98,
-        0.98,
-        f"FCH1={header.fch1:.3f} MHz\nFOFF={header.foff:.3f} MHz\nTSAMP={header.tsamp:.6e}s",
-        transform=ax_info.transAxes,
-        fontsize=INFO_FONTSIZE,
-        ha="right",
-        va="top",
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
-    )
+    info_lines = [
+        f"FCH1={header.fch1:.3f} MHz",
+        f"FOFF={header.foff:.3f} MHz",
+        f"TSAMP={header.tsamp:.6e}s",
+    ]
+    if dm is not None:
+        info_lines.append(f"DM={dm:.2f}")
+    if ref_toa is not None:
+        info_lines.append(f"ref TOA={ref_toa:.3f}s")
+    # ax_info.text(
+    #     0.98,
+    #     0.98,
+    #     "\n".join(info_lines),
+    #     transform=ax_info.transAxes,
+    #     fontsize=INFO_FONTSIZE+1,
+    #     ha="right",
+    #     va="top",
+    #     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    # )
 
     spec_vmin = np.percentile(spec_data, specconfig.minpercentile)
     spec_vmax = np.percentile(spec_data, specconfig.maxpercentile)
@@ -215,6 +236,8 @@ def setup_spectrum_plots(
     ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec.set_xlim(spec_tstart, spec_tend)
     ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+    ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
+    ax_spec.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
 
     return ax_spec_time, ax_spec, ax_spec_freq
 
@@ -232,6 +255,7 @@ def setup_detrend_spectrum_plots(
     col_base=2,
     toa=None,
     dm=None,
+    ref_toa=None,
     pulse_width=None,
     snr=None,
     detrend_type="linear",
@@ -286,7 +310,7 @@ def setup_detrend_spectrum_plots(
         bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8),
     )
 
-    ax_spec_time.set_ylabel("Integrated Power\n(Detrended)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec_time.set_ylabel("Int. Power\n(Detrend)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
     ax_spec_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec_time.grid(True, alpha=0.3)
@@ -297,15 +321,28 @@ def setup_detrend_spectrum_plots(
     ax_spec_freq.plot(freq_series, spec_freq_axis, "-", color="darkblue", linewidth=1)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
-    ax_spec_freq.set_xlabel("")
-    ax_spec_freq.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+    ax_spec_freq.set_title("Freq. Int. Power", fontsize=AXIS_LABEL_FONTSIZE, pad=6)
+    x_min, x_max = ax_spec_freq.get_xlim()
+    ax_spec_freq.set_xticks([x_min, x_max])
+    ax_spec_freq.set_xticklabels(["0", "1"], fontsize=AXIS_TICK_FONTSIZE)
+    ax_spec_freq.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=True)
 
     ax_info = fig.add_subplot(gs[0, col_base + 1])
     ax_info.axis("off")
+    info_lines = [
+        f"Detrend: {detrend_type.title()}",
+        f"FCH1={header.fch1:.3f} MHz",
+        f"FOFF={header.foff:.3f} MHz",
+        f"TSAMP={header.tsamp:.6e}s",
+    ]
+    if dm is not None:
+        info_lines.append(f"DM={dm:.2f}")
+    if ref_toa is not None:
+        info_lines.append(f"ref TOA={ref_toa:.3f}s")
     ax_info.text(
         0.98,
         0.98,
-        f"Detrend: {detrend_type.title()}\nFCH1={header.fch1:.3f} MHz\nFOFF={header.foff:.3f} MHz\nTSAMP={header.tsamp:.6e}s",
+        "\n".join(info_lines),
         transform=ax_info.transAxes,
         fontsize=INFO_FONTSIZE,
         ha="right",
@@ -335,6 +372,8 @@ def setup_detrend_spectrum_plots(
     ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec.set_xlim(spec_tstart, spec_tend)
     ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+    ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
+    ax_spec.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
 
     return ax_spec_time, ax_spec, ax_spec_freq
 
@@ -352,6 +391,7 @@ def setup_subband_spectrum_plots(
     col_base=2,
     toa=None,
     dm=None,
+    ref_toa=None,
     pulse_width=None,
     snr=None,
     subband_matrix=None,
@@ -424,7 +464,7 @@ def setup_subband_spectrum_plots(
     if toa is not None:
         ax_spec_time.axvline(toa, color="blue", linestyle="--", linewidth=1, alpha=0.8, label=f"TOA: {toa:.3f}s")
 
-    ax_spec_time.set_ylabel("Integrated Power", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec_time.set_ylabel("Int. Power", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec_time.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
     ax_spec_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec_time.grid(True, alpha=0.3)
@@ -443,24 +483,35 @@ def setup_subband_spectrum_plots(
     ax_spec_freq.plot(subband_freq_series, subband_freq_centers, "-", color="black", linewidth=1, alpha=0.8)
     ax_spec_freq.tick_params(axis="y", which="both", left=False, labelleft=False)
     ax_spec_freq.grid(True, alpha=0.3)
-    ax_spec_freq.set_xlabel("")
-    ax_spec_freq.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+    ax_spec_freq.set_title("Freq. Int. Power", fontsize=AXIS_LABEL_FONTSIZE, pad=6)
     ax_spec_freq.set_xlim(
         low_bound - 0.1 * abs(high_bound - low_bound),
         high_bound + 0.1 * abs(high_bound - low_bound),
     )
+    x_min, x_max = ax_spec_freq.get_xlim()
+    ax_spec_freq.set_xticks([x_min, x_max])
+    ax_spec_freq.set_xticklabels(["0", "1"], fontsize=AXIS_TICK_FONTSIZE)
+    ax_spec_freq.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=True)
 
     ax_info = fig.add_subplot(gs[0, col_base + 1])
     ax_info.axis("off")
-    ax_info.text(
-        0.98,
-        0.98,
-        f"Subbands: {n_freq_subbands} ({freq_subband_size:.2f} chans)\n"
-        f"Bins: {n_time_bins} ({time_bin_duration * 1000:.3f} ms)\n"
-        f"FCH1={header.fch1:.3f} MHz\nFOFF={header.foff:.3f} MHz\n"
+    info_lines = [
+        f"Subbands: {n_freq_subbands} ({freq_subband_size:.2f} chans)",
+        f"Bins: {n_time_bins} ({time_bin_duration * 1000:.3f} ms)",
+        f"FCH1={header.fch1:.3f} MHz",
+        f"FOFF={header.foff:.3f} MHz",
         f"TSAMP={header.tsamp:.6e}s",
+    ]
+    if dm is not None:
+        info_lines.append(f"DM={dm:.2f}")
+    if ref_toa is not None:
+        info_lines.append(f"ref TOA={ref_toa:.3f}s")
+    ax_info.text(
+        1.02,
+        0.98,
+        "\n".join(info_lines),
         transform=ax_info.transAxes,
-        fontsize=INFO_FONTSIZE,
+        fontsize=INFO_FONTSIZE+0.3,
         ha="right",
         va="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
@@ -491,5 +542,7 @@ def setup_subband_spectrum_plots(
     ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
     ax_spec.set_xlim(spec_tstart, spec_tend)
     ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+    ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
+    ax_spec.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
 
     return ax_spec_time, ax_spec, ax_spec_freq

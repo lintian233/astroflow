@@ -54,6 +54,7 @@ class SpecPlotConfig:
     norm: bool = True
     savetype: str = "png"
     snr_boxcar_max_ms: float | None = None
+    onlyspec: bool = False
 
 
 def ensure_candidate_info(candinfo: Any) -> CandidateInfo:

@@ -16,6 +16,10 @@ from astroflow.dedispered import dedisperse_spec_with_dm
 from astroflow.io.filterbank import Filterbank
 from astroflow.io.psrfits import PsrFits
 
+AXIS_LABEL_FONTSIZE = 17
+AXIS_TICK_FONTSIZE = 15
+TITLE_FONTSIZE = 18
+
 
 # ========== Logging ==========
 logging.basicConfig(
@@ -316,8 +320,10 @@ def plot_dedispersed_spectrum(
             vmax=vmax,
             extent=extent,
         )
-        ax_spec.set_ylabel("Frequency (MHz)")
-        ax_spec.set_xlabel("Time (s)")
+        ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+        ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
     else:
         fig, axes = plt.subplots(
@@ -325,7 +331,7 @@ def plot_dedispersed_spectrum(
             gridspec_kw={"height_ratios": [3, 1], "width_ratios": [1, 1]}
         )
         ((ax_spec_raw, ax_spec), (ax_time, ax_bp)) = axes
-        fig.suptitle(f"{basename} | t={tstart:.3f}-{tend:.3f}s | DM={dm:.3f}", fontsize=16)
+        fig.suptitle(f"{basename} | t={tstart:.3f}-{tend:.3f}s | DM={dm:.3f}", fontsize=TITLE_FONTSIZE)
 
         im_raw = ax_spec_raw.imshow(
             data_raw.T,
@@ -335,9 +341,10 @@ def plot_dedispersed_spectrum(
             vmax=np.percentile(data_raw[data_raw != 0], 99),
             extent=extent,
         )
-        ax_spec_raw.set_ylabel("Frequency (MHz)")
-        ax_spec_raw.set_title("Raw Spectrum")
-        ax_spec_raw.tick_params(axis="x", labelbottom=False)
+        ax_spec_raw.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_spec_raw.set_title("Raw Spectrum", fontsize=TITLE_FONTSIZE)
+        ax_spec_raw.tick_params(axis="x", labelbottom=False, labelsize=AXIS_TICK_FONTSIZE)
+        ax_spec_raw.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
 
         ax_spec.imshow(
             data.T,
@@ -347,25 +354,28 @@ def plot_dedispersed_spectrum(
             vmax=vmax,
             extent=extent,
         )
-        ax_spec.set_title("Detrended Spectrum")
-        ax_spec.tick_params(axis="y", labelleft=False)
-        ax_spec.tick_params(axis="x", labelbottom=False)
+        ax_spec.set_title("Detrended Spectrum", fontsize=TITLE_FONTSIZE)
+        ax_spec.tick_params(axis="y", labelleft=False, labelsize=AXIS_TICK_FONTSIZE)
+        ax_spec.tick_params(axis="x", labelbottom=False, labelsize=AXIS_TICK_FONTSIZE)
 
         time_series = data.sum(axis=1)
         ax_time.plot(time_axis, time_series, "k-", lw=0.8, alpha=0.8)
-        ax_time.set_ylabel("Integrated Power")
-        ax_time.set_xlabel("Time (s)")
+        ax_time.set_ylabel("Integrated Power", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_time.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_time.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
+        ax_time.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
         ax_time.grid(True, alpha=0.3)
         ax_time.set_xlim(extent[0], extent[1])
 
         # ax_bp.plot(freq_axis, bandpass_raw, "r", lw=1.5, label="Raw", alpha=0.7)
         ax_bp.plot(freq_axis, bandpass_flat, "b", lw=1.5, label="Detrended", alpha=0.7)
-        ax_bp.set_xlabel("Frequency (MHz)")
-        ax_bp.set_ylabel("Mean Amplitude")
-        ax_bp.legend()
+        ax_bp.set_xlabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_bp.set_ylabel("Mean Amplitude", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_bp.legend(fontsize=AXIS_TICK_FONTSIZE)
         ax_bp.grid(True, alpha=0.3)
         ax_bp.set_xlim(freq_axis[0], freq_axis[-1])
-        ax_bp.tick_params(axis="y", labelleft=False, labelright=True, right=True)
+        ax_bp.tick_params(axis="y", labelleft=False, labelright=True, right=True, labelsize=AXIS_TICK_FONTSIZE)
+        ax_bp.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
         ax_bp.yaxis.set_label_position("right")
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])

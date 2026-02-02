@@ -42,7 +42,7 @@ class TaskConfig:
             "batchsize": 128,
             "plotworker": 1,
             "dmtconfig": {"minpercentile": 0, "maxpercentile": 100},
-            "specconfig": {"minpercentile": 0, "maxpercentile": 100},
+            "specconfig": {"minpercentile": 0, "maxpercentile": 100, "onlyspec": False},
             "tsample": [
                 {"name": "default", "t": 0.5}
             ],

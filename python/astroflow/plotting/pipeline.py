@@ -148,21 +148,39 @@ def _plot_candidate_with_origin(
         )
 
         fig = plt.figure(figsize=(22, 10), dpi=dpi)
-        gs = GridSpec(
-            2,
-            5,
-            figure=fig,
-            width_ratios=[3, 1, 0.3, 3, 1],
-            height_ratios=[1, 3],
-            wspace=0.04,
-            hspace=0.04,
-        )
+        onlyspec = bool(getattr(specconfig, "onlyspec", False))
+        if onlyspec:
+            fig = plt.figure(figsize=(10, 10), dpi=dpi)
+            gs = GridSpec(
+                2,
+                2,
+                figure=fig,
+                width_ratios=[3, 1],
+                height_ratios=[1, 3],
+                wspace=0.07,
+                hspace=0.04,
+            )
+            spec_col_base = 0
+        else:
+            gs = GridSpec(
+                2,
+                5,
+                figure=fig,
+                width_ratios=[3, 1, 0.29, 3, 1],
+                height_ratios=[1, 3],
+                wspace=0.06,
+                hspace=0.04,
+            )
+            spec_col_base = 3
 
-        dm_data, time_axis, dm_axis = prepare_dm_data(dmt)
-        dm_vmin, dm_vmax = np.percentile(
-            dm_data, [dmtconfig.minpercentile, dmtconfig.maxpercentile]
-        )
-        setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, cand.dm, cand.toa)
+        if not onlyspec:
+            dm_data, time_axis, dm_axis = prepare_dm_data(dmt)
+            dm_vmin, dm_vmax = np.percentile(
+                dm_data, [dmtconfig.minpercentile, dmtconfig.maxpercentile]
+            )
+            setup_dm_plots(
+                fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, cand.dm, cand.toa
+            )
 
         max_width_samples = _boxcar_max_samples(specconfig, header)
 
@@ -245,9 +263,10 @@ def _plot_candidate_with_origin(
                     spec_tend,
                     specconfig,
                     header,
-                    col_base=3,
+                    col_base=spec_col_base,
                     toa=peak_time,
                     dm=cand.dm,
+                    ref_toa=ref_toa,
                     pulse_width=pulse_width,
                     snr=snr,
                     subband_matrix=subband_matrix,
@@ -264,9 +283,10 @@ def _plot_candidate_with_origin(
                     spec_tend,
                     specconfig,
                     header,
-                    col_base=3,
+                    col_base=spec_col_base,
                     toa=peak_time,
                     dm=cand.dm,
+                    ref_toa=ref_toa,
                     pulse_width=pulse_width,
                     snr=snr,
                 )
@@ -281,9 +301,10 @@ def _plot_candidate_with_origin(
                     spec_tend,
                     specconfig,
                     header,
-                    col_base=3,
+                    col_base=spec_col_base,
                     toa=peak_time,
                     dm=cand.dm,
+                    ref_toa=ref_toa,
                     pulse_width=pulse_width,
                     snr=snr,
                 )
@@ -294,12 +315,12 @@ def _plot_candidate_with_origin(
             snr, pulse_width_ms, peak_time, ref_toa = -1, -1, cand.toa, cand.ref_toa
 
         basename = os.path.basename(file_path).split(".")[0]
-        fig.suptitle(
-            f"FILE: {basename} - DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
-            f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
-            fontsize=22,
-            y=0.94,
-        )
+        # fig.suptitle(
+        #     f"FILE: {basename} - DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
+        #     f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
+        #     fontsize=22,
+        #     y=0.94,
+        # )
 
         savetype = specconfig.savetype
         if savetype == "jpg":
