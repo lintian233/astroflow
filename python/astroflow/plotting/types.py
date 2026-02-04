@@ -38,14 +38,14 @@ class CandidateInfo:
 
 @dataclass(frozen=True)
 class DmPlotConfig:
-    minpercentile: float = 5.0
-    maxpercentile: float = 99.9
+    minpercentile: float = 0.1
+    maxpercentile: float = 99.99
 
 
 @dataclass(frozen=True)
 class SpecPlotConfig:
-    minpercentile: float = 5.0
-    maxpercentile: float = 99.0
+    minpercentile: float = 0.1
+    maxpercentile: float = 99.99
     tband: float = 50.0
     mode: str = "subband"
     subtsamp: int = 4
@@ -53,7 +53,7 @@ class SpecPlotConfig:
     dtrend: bool = False
     norm: bool = True
     savetype: str = "png"
-    snr_boxcar_max_ms: float | None = None
+    snr_boxcar_max_ms: float | None = 20.0
     onlyspec: bool = False
 
 

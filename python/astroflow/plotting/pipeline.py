@@ -150,6 +150,16 @@ def _plot_candidate_with_origin(
         fig = plt.figure(figsize=(22, 10), dpi=dpi)
         onlyspec = bool(getattr(specconfig, "onlyspec", False))
         if onlyspec:
+            dm_fig = plt.figure(figsize=(10, 10), dpi=dpi)
+            dm_gs = GridSpec(
+                2,
+                2,
+                figure=dm_fig,
+                width_ratios=[3, 1],
+                height_ratios=[1, 3],
+                wspace=0.07,
+                hspace=0.04,
+            )
             fig = plt.figure(figsize=(10, 10), dpi=dpi)
             gs = GridSpec(
                 2,
@@ -162,6 +172,8 @@ def _plot_candidate_with_origin(
             )
             spec_col_base = 0
         else:
+            dm_fig = None
+            dm_gs = None
             gs = GridSpec(
                 2,
                 5,
@@ -173,11 +185,23 @@ def _plot_candidate_with_origin(
             )
             spec_col_base = 3
 
-        if not onlyspec:
-            dm_data, time_axis, dm_axis = prepare_dm_data(dmt)
-            dm_vmin, dm_vmax = np.percentile(
-                dm_data, [dmtconfig.minpercentile, dmtconfig.maxpercentile]
+        dm_data, time_axis, dm_axis = prepare_dm_data(dmt)
+        dm_vmin, dm_vmax = np.percentile(
+            dm_data, [dmtconfig.minpercentile, dmtconfig.maxpercentile]
+        )
+        if onlyspec:
+            setup_dm_plots(
+                dm_fig,
+                dm_gs,
+                dm_data,
+                time_axis,
+                dm_axis,
+                dm_vmin,
+                dm_vmax,
+                cand.dm,
+                cand.toa,
             )
+        else:
             setup_dm_plots(
                 fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, cand.dm, cand.toa
             )
@@ -315,26 +339,45 @@ def _plot_candidate_with_origin(
             snr, pulse_width_ms, peak_time, ref_toa = -1, -1, cand.toa, cand.ref_toa
 
         basename = os.path.basename(file_path).split(".")[0]
-        # fig.suptitle(
-        #     f"FILE: {basename} - DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
-        #     f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
-        #     fontsize=22,
-        #     y=0.94,
-        # )
+        fig.suptitle(
+            f"FILE: {basename} - DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
+            f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
+            fontsize=22,
+            y=0.94,
+        )
 
         savetype = specconfig.savetype
+        base_name = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}"
         if savetype == "jpg":
-            imgname = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}.jpg"
-            output_filename = f"{save_path}/{imgname}"
-            print(f"Saving: {os.path.basename(output_filename)}")
-
-            plt.savefig(output_filename, dpi=100, format="jpg", bbox_inches="tight")
+            if onlyspec:
+                imgname = f"{base_name}_spec.jpg"
+                output_filename = f"{save_path}/{imgname}"
+                print(f"Saving: {os.path.basename(output_filename)}")
+                fig.savefig(output_filename, dpi=100, format="jpg", bbox_inches="tight")
+                dm_imgname = f"{base_name}_dmtime.jpg"
+                dm_output_filename = f"{save_path}/{dm_imgname}"
+                print(f"Saving: {os.path.basename(dm_output_filename)}")
+                dm_fig.savefig(dm_output_filename, dpi=100, format="jpg", bbox_inches="tight")
+            else:
+                imgname = f"{base_name}.jpg"
+                output_filename = f"{save_path}/{imgname}"
+                print(f"Saving: {os.path.basename(output_filename)}")
+                fig.savefig(output_filename, dpi=100, format="jpg", bbox_inches="tight")
         else:
-            imgname = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}.png"
-            output_filename = f"{save_path}/{imgname}"
-            print(f"Saving: {os.path.basename(output_filename)}")
-
-            plt.savefig(output_filename, dpi=dpi, format="png", bbox_inches="tight")
+            if onlyspec:
+                imgname = f"{base_name}_spec.png"
+                output_filename = f"{save_path}/{imgname}"
+                print(f"Saving: {os.path.basename(output_filename)}")
+                fig.savefig(output_filename, dpi=dpi, format="png", bbox_inches="tight")
+                dm_imgname = f"{base_name}_dmtime.png"
+                dm_output_filename = f"{save_path}/{dm_imgname}"
+                print(f"Saving: {os.path.basename(dm_output_filename)}")
+                dm_fig.savefig(dm_output_filename, dpi=dpi, format="png", bbox_inches="tight")
+            else:
+                imgname = f"{base_name}.png"
+                output_filename = f"{save_path}/{imgname}"
+                print(f"Saving: {os.path.basename(output_filename)}")
+                fig.savefig(output_filename, dpi=dpi, format="png", bbox_inches="tight")
 
         if taskconfig.gencand:
             cand_info = {
@@ -383,7 +426,7 @@ def _close_origin_data(origin_data) -> None:
 def _boxcar_max_samples(specconfig, header):
     max_ms = specconfig.snr_boxcar_max_ms
     if max_ms is None:
-        return None
+        return 20
     if max_ms <= 0:
         return None
     return max(1, int(round((max_ms * 1e-3) / header.tsamp)))

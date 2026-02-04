@@ -8,10 +8,10 @@ from matplotlib.ticker import MaxNLocator
 
 from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
 
-AXIS_LABEL_FONTSIZE = 15
-AXIS_TICK_FONTSIZE = 13
-INFO_FONTSIZE = 10
-LEGEND_FONTSIZE = 12
+AXIS_LABEL_FONTSIZE = 17
+AXIS_TICK_FONTSIZE = 15
+INFO_FONTSIZE = 10.3
+LEGEND_FONTSIZE = 13
 
 
 def _normalize_channels_for_display(data, clip_sigma=6.0, eps=1e-6):
@@ -80,7 +80,7 @@ def setup_dm_plots(fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, dm, t
         vmax=dm_vmax,
         extent=[time_axis[0], time_axis[-1], dm_axis[0], dm_axis[-1]],
     )
-    ax_main.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=10)
+    ax_main.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=8)
     ax_main.set_ylabel("DM (pc cm$^{-3}$)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=10)
     ax_main.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
     ax_main.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
@@ -203,16 +203,16 @@ def setup_spectrum_plots(
         info_lines.append(f"DM={dm:.2f}")
     if ref_toa is not None:
         info_lines.append(f"ref TOA={ref_toa:.3f}s")
-    # ax_info.text(
-    #     0.98,
-    #     0.98,
-    #     "\n".join(info_lines),
-    #     transform=ax_info.transAxes,
-    #     fontsize=INFO_FONTSIZE+1,
-    #     ha="right",
-    #     va="top",
-    #     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
-    # )
+    ax_info.text(
+        0.98,
+        0.98,
+        "\n".join(info_lines),
+        transform=ax_info.transAxes,
+        fontsize=INFO_FONTSIZE+2,
+        ha="right",
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+    )
 
     spec_vmin = np.percentile(spec_data, specconfig.minpercentile)
     spec_vmax = np.percentile(spec_data, specconfig.maxpercentile)
@@ -233,7 +233,7 @@ def setup_spectrum_plots(
     )
 
     ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
-    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=8)
     ax_spec.set_xlim(spec_tstart, spec_tend)
     ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
@@ -369,7 +369,7 @@ def setup_detrend_spectrum_plots(
     )
 
     ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
-    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=8)
     ax_spec.set_xlim(spec_tstart, spec_tend)
     ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
@@ -539,7 +539,7 @@ def setup_subband_spectrum_plots(
     )
 
     ax_spec.set_ylabel("Frequency (MHz)", fontsize=AXIS_LABEL_FONTSIZE)
-    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE)
+    ax_spec.set_xlabel("Time (s)", fontsize=AXIS_LABEL_FONTSIZE, labelpad=8)
     ax_spec.set_xlim(spec_tstart, spec_tend)
     ax_spec.tick_params(axis="x", labelsize=AXIS_TICK_FONTSIZE)
     ax_spec.tick_params(axis="y", labelsize=AXIS_TICK_FONTSIZE)
