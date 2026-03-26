@@ -91,7 +91,7 @@ If you use **AstroFlow** in your research, please cite:
 
 > [!NOTE]
 > **ASTROFLOW: A Real-Time End-to-End Pipeline for Radio Single-Pulse Searches**  
-> https://arxiv.org/abs/2511.02328
+> https://doi.org/10.3847/1538-4365/ae4a26
 
 
 <!-- See [Contribution Guide](./docs/CONTRIBUTING.md) for how to get involved. -->
