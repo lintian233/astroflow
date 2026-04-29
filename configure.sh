@@ -14,7 +14,7 @@ fi
 
 echo "Detected conda installation: $(which conda)"
 
-ENV_NAME="dev-astroflow-ml"
+ENV_NAME="astroflow-new"
 
 # Check if the conda environment exists
 if conda env list | grep -q "^$ENV_NAME\s"; then

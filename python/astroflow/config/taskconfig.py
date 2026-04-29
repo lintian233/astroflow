@@ -52,7 +52,7 @@ class TaskConfig:
             "rfi": {
                 "use_mask": False,
                 "use_zero_dm": False,
-                "use_iqrm": True,
+                "use_iqrm": False,
             },
             "iqrm": {
                 "mode": 1,
