@@ -122,18 +122,19 @@ If you use **AstroFlow** in your research, please cite:
 
 <h2 id="known-issues">Known Issues</h2>
 
-⚠️ **Observation Duration and File Size Constraints:**
+<details>
+  <summary>⚠️ Observation Duration and File Size Constraints</summary>
 
-For optimal performance and to minimize IO overhead, it is recommended to keep:
-- **Observation duration**: < 300 seconds (5 minutes)
-- **File size**: < 5 GB per input file
+For optimal performance, keep observation < 300s and file size < 5GB per input. Larger files may cause significant IO slowdown and memory pressure. Consider splitting into smaller chunks.
 
-Longer observation times or larger files may result in:
-- Significant IO consumption and processing slowdown
-- Increased memory pressure on GPU/CPU
-- Potential performance degradation in real-time mode
+</details>
 
-If you need to process longer observations, consider splitting them into smaller chunks before processing.
+<details>
+  <summary>⚠️ Candidate Object Construction Bottleneck</summary>
+
+When candidates exceed 50 perfile: Python candidate object construction becomes slower than GPU detection, causing plotting queue accumulation and memory pressure.
+
+</details>
 
 <h2 id="todo">TODO</h2>
 
