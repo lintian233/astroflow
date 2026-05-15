@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+
 echo "this script will configure the all env for the astroflow dev"
 
 if ! command -v conda >/dev/null 2>&1; then
@@ -18,8 +20,7 @@ ENV_NAME="dev-astroflow-ml"
 
 # Check if the conda environment exists
 if conda env list | grep -q "^$ENV_NAME\s"; then
-    echo "The '$ENV_NAME' environment exists. Activating it..."
-    conda activate "$ENV_NAME"
+    echo "The '$ENV_NAME' environment exists."
 else
     # Create the environment automatically if AUTO_CREATE is set or in non-interactive mode
     echo "The '$ENV_NAME' environment does not exist."
@@ -40,60 +41,22 @@ else
         echo "Creating the '$ENV_NAME' environment with Python 3.12, numpy, and matplotlib..."
         conda create -n "$ENV_NAME" \
             --override-channels \
-            --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge \
-            --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-            python=3.12 conan numpy matplotlib gcc gxx cuda-toolkit -y
-        echo "Environment created. Activating it..."
-        conda activate "$ENV_NAME"
+            python=3.12 conan numpy matplotlib \
+            conda-forge::gcc==11.4.0 conda-forge::gxx==11.4.0 \
+            nvidia::cuda-toolkit==12.6.0 -y
+        echo "Environment created successfully."
     else
         echo "Environment creation canceled. Exiting..."
         exit 1
     fi
 fi
 
-PYTHON_BIN_DIR=$CONDA_PREFIX/bin
-echo "PYTHON_BIN_DIR: $PYTHON_BIN_DIR"
-export PATH="$PYTHON_BIN_DIR:$PATH"
-export CC=$(which gcc)
-export CXX=$(which g++)
-
-echo "Verifying Conan configuration:"
-conan --version
-
-if ! conan profile list | grep -q "default"; then
-    echo "Initializing Conan profile for first-time use..."
-    if ! conan profile detect --force; then
-        echo "Error: Failed to initialize Conan profile" >&2
-        exit 1
-    fi
-fi
-
-echo "Current Conan profiles:"
-conan profile show
-
-build_dir="build"
-if [ -d "$build_dir" ]; then
-    if [ ! -w "$build_dir" ]; then
-        echo "Error: Build directory $build_dir exists but is not writable" >&2
-        exit 1
-    fi
-else
-    if ! mkdir -p "$build_dir"; then
-        echo "Error: Failed to create build directory $build_dir" >&2
-        exit 1
-    fi
-fi
-
-cd "$build_dir" && \
-
-conan install .. \
-    --output-folder=. \
-    --build=missing \
-    -s build_type=Release \
-    -c tools.system.package_manager:mode=install \
-    -c tools.system.package_manager:sudo=True && \
-
-source conanbuild.sh && \
-cmake .. -DCMAKE_BUILD_TYPE=Release && \
-make -j 16 && \
-cd ..
+echo ""
+echo "=========================================="
+echo "Environment setup complete!"
+echo "=========================================="
+echo ""
+echo "To activate the environment and build, run:"
+echo "  conda activate $ENV_NAME"
+echo "  bash build.sh"
+echo ""

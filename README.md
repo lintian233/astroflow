@@ -66,18 +66,32 @@ Feedback: use [Issues](https://github.com/lintian233/astroflow/issues) or [Discu
 
 <details>
   <summary>source code</summary>
-1. cudatoolkit>=12.0 glibc>=2.27 gcc/gxx>=11.0 ubutnu18.04+.
+1. **Requirements**: 
+   - CUDA Toolkit >= 12.6.0 with NVIDIA GPU support
+   - GCC/G++ 11.4.0 (conda-forge recommended)
+   - CMake >= 3.18
+   - Conan >= 2.0
+   - Python 3.10–3.12
+   - Ubuntu 18.04+ or similar Linux distribution
 
-2. git clone 
-    ```bash
-    git clone https://github.com/lintian233/astroflow 
-    cd astroflow
-    ```
-3. build from soure
+2. **Clone repository**:
    ```bash
-   source configure.sh
+   git clone https://github.com/lintian233/astroflow 
+   cd astroflow
    ```
-4. pip install
+
+3. **Setup conda environment** (one-time):
+   ```bash
+   bash configure.sh
+   ```
+
+4. **Build from source**:
+   ```bash
+   conda activate dev-astroflow-ml
+   bash build.sh
+   ```
+
+5. **Install Python package**:
    ```bash
    pip install -e .
    ```
@@ -105,6 +119,21 @@ If you use **AstroFlow** in your research, please cite:
 
 <!-- > [!NOTE]
 > Roadmap and milestones are tracked in [Projects](https://github.com/lintian233/astroflow/projects). -->
+
+<h2 id="known-issues">Known Issues</h2>
+
+⚠️ **Observation Duration and File Size Constraints:**
+
+For optimal performance and to minimize IO overhead, it is recommended to keep:
+- **Observation duration**: < 300 seconds (5 minutes)
+- **File size**: < 5 GB per input file
+
+Longer observation times or larger files may result in:
+- Significant IO consumption and processing slowdown
+- Increased memory pressure on GPU/CPU
+- Potential performance degradation in real-time mode
+
+If you need to process longer observations, consider splitting them into smaller chunks before processing.
 
 <h2 id="todo">TODO</h2>
 
