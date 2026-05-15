@@ -23,9 +23,12 @@
 #include <variant>
 #include <omp.h>
 #include <chrono>
+#include <sys/mman.h>
+#include <fcntl.h>
 using namespace std;
 
 #define _CHAR_SWAP_SIZE 256
+#define _IO_BUFFER_SIZE (64 * 1024 * 1024) // 64MB buffer for efficient IO
 
 Filterbank::Filterbank() {
   header_size = 0;
@@ -96,7 +99,15 @@ Filterbank::Filterbank(const string fname) {
   fptr = NULL;
   read_header();
   read_data();
-  reverse_channanl_data();
+  // 反序已在 read_data_impl 中处理，不再需要额外调用
+  // 但需要更新频率表和 foff
+  if (foff < 0) {
+    std::reverse(frequency_table, frequency_table + nchans);
+    if (!use_frequence_table) {
+      fch1 = frequency_table[0];
+      foff = std::abs(foff);
+    }
+  }
   const int nbits = this->nbits;
   data_owner = std::shared_ptr<void>(data, [nbits](void *p) {
     switch (nbits) {
@@ -155,20 +166,24 @@ Filterbank::Filterbank(const Filterbank &fil) {
   ndata = fil.ndata;
 
   if (fil.data != NULL) {
+    const size_t data_size = (size_t)ndata * (size_t)nifs * (size_t)nchans;
     switch (nbits) {
     case 8: {
-      data = new unsigned char[ndata * nifs * nchans];
-      memcpy(data, fil.data, sizeof(unsigned char) * ndata * nifs * nchans);
+      data = new unsigned char[data_size];
+      std::copy_n(static_cast<const unsigned char*>(fil.data), data_size, 
+                  static_cast<unsigned char*>(data));
       break;
     }
     case 16: {
-      data = new short[ndata * nifs * nchans];
-      memcpy(data, fil.data, sizeof(short) * ndata * nifs * nchans);
+      data = new short[data_size];
+      std::copy_n(static_cast<const short*>(fil.data), data_size, 
+                  static_cast<short*>(data));
       break;
     }
     case 32: {
-      data = new float[ndata * nifs * nchans];
-      memcpy(data, fil.data, sizeof(float) * ndata * nifs * nchans);
+      data = new float[data_size];
+      std::copy_n(static_cast<const float*>(fil.data), data_size, 
+                  static_cast<float*>(data));
       break;
     }
     default:
@@ -242,20 +257,24 @@ Filterbank &Filterbank::operator=(const Filterbank &fil) {
   if (fil.data != NULL) {
     if (data != NULL)
       delete[] data;
+    const size_t data_size = (size_t)ndata * (size_t)nifs * (size_t)nchans;
     switch (nbits) {
     case 8: {
-      data = new unsigned char[ndata * nifs * nchans];
-      memcpy(data, fil.data, sizeof(unsigned char) * ndata * nifs * nchans);
+      data = new unsigned char[data_size];
+      std::copy_n(static_cast<const unsigned char*>(fil.data), data_size, 
+                  static_cast<unsigned char*>(data));
       break;
     }
     case 16: {
-      data = new short[ndata * nifs * nchans];
-      memcpy(data, fil.data, sizeof(short) * ndata * nifs * nchans);
+      data = new short[data_size];
+      std::copy_n(static_cast<const short*>(fil.data), data_size, 
+                  static_cast<short*>(data));
       break;
     }
     case 32: {
-      data = new float[ndata * nifs * nchans];
-      memcpy(data, fil.data, sizeof(float) * ndata * nifs * nchans);
+      data = new float[data_size];
+      std::copy_n(static_cast<const float*>(fil.data), data_size, 
+                  static_cast<float*>(data));
       break;
     }
     default:
@@ -454,20 +473,67 @@ bool Filterbank::read_header() {
 template <typename T> bool Filterbank::read_data_impl() {
   auto start = std::chrono::high_resolution_clock::now();
   const size_t nchr = static_cast<size_t>(nsamples) * (size_t)nifs * (size_t)nchans;
+  
+  // 分配数据缓冲区
   data = new T[nchr];
-  const size_t readcnt = fread(data, sizeof(T), nchr, fptr);
-  if (readcnt != nchr) {
-    std::cerr << "Data ends unexpected read to EOF\n";
-    return false;
+  T* data_ptr = static_cast<T*>(data);
+  
+  // 使用缓冲的读取策略，避免一次性读入大量数据导致的内存压力
+  const size_t buffer_size = std::min((size_t)_IO_BUFFER_SIZE / sizeof(T), nchr);
+  std::vector<T> io_buffer(buffer_size);
+  
+  // 检查是否需要在读取时反序
+  bool need_reverse = (foff < 0 && nifs == 1);
+  if (need_reverse) {
+    printf("[TIMER] Reading with on-the-fly channel reversal\n");
   }
-  nsamples = (long int)(readcnt / (size_t)nifs / (size_t)nchans);
+  
+  size_t total_read = 0;
+  size_t samples_read = 0;
+  
+  while (total_read < nchr) {
+    size_t to_read = std::min(buffer_size, nchr - total_read);
+    size_t readcnt = fread(io_buffer.data(), sizeof(T), to_read, fptr);
+    
+    if (readcnt == 0) {
+      std::cerr << "Data ends unexpected at offset " << total_read << "\n";
+      return false;
+    }
+    
+    // 在写入目标缓冲区时，如果需要反序则直接处理
+    if (need_reverse) {
+      // 计算本次读取涉及的样本数
+      size_t samples_in_buffer = readcnt / nchans;
+      
+      // 并行处理每一行数据的反序
+      #pragma omp parallel for schedule(dynamic, 256)
+      for (size_t i = 0; i < samples_in_buffer; ++i) {
+        T* row_src = io_buffer.data() + i * nchans;
+        T* row_dst = data_ptr + (samples_read + i) * nchans;
+        
+        // 直接反序写入目标位置
+        for (int c = 0; c < nchans; ++c) {
+          row_dst[c] = row_src[nchans - 1 - c];
+        }
+      }
+      samples_read += samples_in_buffer;
+    } else {
+      // 正常复制
+      std::memcpy(data_ptr + total_read, io_buffer.data(), readcnt * sizeof(T));
+    }
+    
+    total_read += readcnt;
+  }
+  
+  nsamples = (long int)(total_read / (size_t)nifs / (size_t)nchans);
   ndata = nsamples;
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
-  size_t total_bytes = nchr * sizeof(T);
-  printf("[TIMER] IO : %.3f seconds, %.3f MB/s\n", diff.count(),
-         (double)total_bytes / 1024.0 / 1024.0 / diff.count());
+  size_t total_bytes = total_read * sizeof(T);
+  printf("[TIMER] IO Read : %.3f seconds, %.3f MB/s (buffer_size=%.1fMB)\n", diff.count(),
+         (double)total_bytes / 1024.0 / 1024.0 / diff.count(),
+         (double)buffer_size * sizeof(T) / 1024.0 / 1024.0);
   return true;
 }
 
@@ -497,29 +563,28 @@ bool Filterbank::set_data(unsigned char *dat, long int ns, int nif, int nchan) {
   case 8: {
     nifs = nif;
     nchans = nchan;
-    long int nchr = ns * nifs * nchans * nbits / 8;
+    const size_t nchr = (size_t)ns * (size_t)nifs * (size_t)nchans;
     if (ns > ndata) {
       if (data != NULL)
         delete[] (unsigned char *)data;
       data = new unsigned char[nchr];
     }
-    for (long int i = 0; i < nchr; i++) {
-      ((unsigned char *)data)[i] = dat[i];
-    }
+    // 使用 std::copy_n 替代逐元素复制，编译器可更好优化
+    std::copy_n(dat, nchr, static_cast<unsigned char*>(data));
     ndata = ns;
   }; break;
   case 16: {
     nifs = nif;
     nchans = nchan;
-    long int nchr = ns * nifs * nchans;
+    const size_t nchr = (size_t)ns * (size_t)nifs * (size_t)nchans;
     if (ns > ndata) {
       if (data != NULL)
         delete[] (short *)data;
       data = new short[nchr];
     }
-    for (long int i = 0; i < nchr; i++) {
-      ((short *)data)[i] = ((short *)dat)[i];
-    }
+    // 使用 std::copy_n 替代逐元素复制
+    std::copy_n(reinterpret_cast<const short*>(dat), nchr, 
+                static_cast<short*>(data));
     ndata = ns;
   }; break;
   default: {
@@ -601,23 +666,73 @@ bool Filterbank::write_header() {
 }
 
 bool Filterbank::write_data() {
+  auto start = std::chrono::high_resolution_clock::now();
+  
   switch (nbits) {
   case 8: {
-    long int nchr = ndata * nifs * nchans * nbits / 8;
-    fwrite(data, 1, nchr, fptr);
-  }; break;
+    const size_t nchr = (size_t)ndata * (size_t)nifs * (size_t)nchans;
+    const unsigned char* data_ptr = static_cast<const unsigned char*>(data);
+    
+    // 使用缓冲的写入策略
+    const size_t buffer_size = std::min((size_t)_IO_BUFFER_SIZE, nchr);
+    size_t written = 0;
+    while (written < nchr) {
+      size_t to_write = std::min(buffer_size, nchr - written);
+      size_t wrt = fwrite(data_ptr + written, 1, to_write, fptr);
+      if (wrt != to_write) {
+        std::cerr << "Write error at offset " << written << "\n";
+        return false;
+      }
+      written += wrt;
+    }
+    break;
+  };
   case 16: {
-    long int nchr = ndata * nifs * nchans * nbits / 8;
-    fwrite(data, 2, nchr, fptr);
-  }; break;
+    const size_t nchr = (size_t)ndata * (size_t)nifs * (size_t)nchans;
+    const short* data_ptr = static_cast<const short*>(data);
+    
+    const size_t buffer_size = std::min((size_t)_IO_BUFFER_SIZE / sizeof(short), nchr);
+    size_t written = 0;
+    while (written < nchr) {
+      size_t to_write = std::min(buffer_size, nchr - written);
+      size_t wrt = fwrite(data_ptr + written, sizeof(short), to_write, fptr);
+      if (wrt != to_write) {
+        std::cerr << "Write error at offset " << written << "\n";
+        return false;
+      }
+      written += wrt;
+    }
+    break;
+  };
   case 32: {
-    long int nchr = ndata * nifs * nchans;
-    fwrite(data, 4, nchr, fptr);
-  }; break;
+    const size_t nchr = (size_t)ndata * (size_t)nifs * (size_t)nchans;
+    const float* data_ptr = static_cast<const float*>(data);
+    
+    const size_t buffer_size = std::min((size_t)_IO_BUFFER_SIZE / sizeof(float), nchr);
+    size_t written = 0;
+    while (written < nchr) {
+      size_t to_write = std::min(buffer_size, nchr - written);
+      size_t wrt = fwrite(data_ptr + written, sizeof(float), to_write, fptr);
+      if (wrt != to_write) {
+        std::cerr << "Write error at offset " << written << "\n";
+        return false;
+      }
+      written += wrt;
+    }
+    break;
+  };
   default:
     cerr << "Error: data type is not supported" << endl;
+    return false;
   }
-
+  
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff = end - start;
+  size_t total_elements = (size_t)ndata * (size_t)nifs * (size_t)nchans;
+  size_t total_bytes = total_elements * (nbits / 8);
+  printf("[TIMER] IO Write : %.3f seconds, %.3f MB/s\n", diff.count(),
+         (double)total_bytes / 1024.0 / 1024.0 / diff.count());
+  
   return true;
 }
 
@@ -791,53 +906,20 @@ void Filterbank::info() const {
 }
 
 void Filterbank::reverse_channanl_data() {
+  // 注意：数据反序已在 read_data_impl 中处理
+  // 此函数现在仅用于更新元数据（如果需要）
   if (foff >= 0) return;
-  if (data == nullptr) return;
-
   if (nifs != 1) {
     throw std::runtime_error("Only supports nifs == 1 in reverse_channanl_data");
   }
 
-  // Reverse frequency table
-  std::reverse(frequency_table, frequency_table + nchans);
-
-  // Update header parameters if not using explicit frequency table
-  if (!use_frequence_table) {
-    fch1 = frequency_table[0];
-    foff = std::abs(foff);
-  }
-
-  omp_set_num_threads(32);
-  switch (nbits) {
-  case 8: {
-    uint8_t* ptr = static_cast<uint8_t*>(data);
-    #pragma omp parallel for
-    for (long i = 0; i < ndata; ++i) {
-      auto* start = ptr + i * nchans;
-      std::reverse(start, start + nchans);
+  // Reverse frequency table（如果还没反序过）
+  if (use_frequence_table || (fch1 != frequency_table[0])) {
+    std::reverse(frequency_table, frequency_table + nchans);
+    if (!use_frequence_table) {
+      fch1 = frequency_table[0];
+      foff = std::abs(foff);
     }
-    break;
-  }
-  case 16: {
-    uint16_t* ptr = static_cast<uint16_t*>(data);
-    #pragma omp parallel for
-    for (long i = 0; i < ndata; ++i) {
-      auto* start = ptr + i * nchans;
-      std::reverse(start, start + nchans);
-    }
-    break;
-  }
-  case 32: {
-    uint32_t* ptr = static_cast<uint32_t*>(data);
-    #pragma omp parallel for
-    for (long i = 0; i < ndata; ++i) {
-      auto* start = ptr + i * nchans;
-      std::reverse(start, start + nchans);
-    }
-    break;
-  }
-  default:
-    throw std::runtime_error("Unsupported nbits value in reverse_channanl_data");
   }
 }
 

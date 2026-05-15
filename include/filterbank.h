@@ -48,6 +48,7 @@ private:
                           int nifs, int nchans);
   static long long sizeof_file(const char name[]);
   void reverse_channanl_data();
+  template <typename T> void reverse_row_inplace(T* row, int nchans);
 
 public:
   string filename;
