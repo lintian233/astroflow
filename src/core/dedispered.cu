@@ -1500,4 +1500,283 @@ dedisperse_spec<uint32_t>(uint32_t *data, Header header, float dm_low,
                           float dm_step, int ref_freq, int time_downsample,
                           float t_sample, int target_id, std::string mask_file, rficonfig rficfg);
 
+// ==================== dedisperse_spec_with_dm GPU implementation ====================
+
+/**
+ * @brief 单DM解色散kernel - 优化版本（适合单个DM值）
+ * 并行策略: blockIdx.x -> 时间点, threadIdx.x -> 频道
+ */
+template <typename T>
+__global__ void dedisperse_single_dm_kernel(
+    T* __restrict__ output,
+    const T* __restrict__ input,
+    const int* __restrict__ dm_delays,
+    size_t t_start_idx,
+    size_t ntimes,
+    size_t nchans,
+    size_t chan_start,
+    size_t chan_end_excl,
+    int delay_max_idx)
+{
+    const size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
+    if (ti >= ntimes) return;
+
+    const size_t sel_nch = chan_end_excl - chan_start;
+    const size_t output_offset = ti * sel_nch;
+    const size_t src_base_idx = t_start_idx + ti;
+
+    for (size_t ch = threadIdx.y; ch < sel_nch; ch += blockDim.y) {
+        const int delay = dm_delays[ch];
+        const size_t src_idx = src_base_idx + delay;
+        output[output_offset + ch] = input[src_idx * nchans + chan_start + ch];
+    }
+}
+
+/**
+ * @brief 高效解色散kernel - 使用共享内存缓存（适合大频道数）
+ */
+template <typename T>
+__global__ void dedisperse_single_dm_kernel_smem(
+    T* __restrict__ output,
+    const T* __restrict__ input,
+    const int* __restrict__ dm_delays,
+    size_t t_start_idx,
+    size_t ntimes,
+    size_t nchans,
+    size_t chan_start,
+    size_t sel_nch,
+    int delay_max_idx)
+{
+    const size_t ti = blockIdx.x;
+    if (ti >= ntimes) return;
+
+    extern __shared__ char smem[];
+    T* smem_data = reinterpret_cast<T*>(smem);
+    const int* smem_delays = (const int*)(smem_data + blockDim.x * blockDim.y * sizeof(T));
+
+    // 共享内存中缓存延迟表
+    for (size_t ch = threadIdx.x; ch < sel_nch; ch += blockDim.x) {
+        ((int*)smem_delays)[ch] = dm_delays[ch];
+    }
+    __syncthreads();
+
+    const size_t src_base_idx = t_start_idx + ti;
+    const size_t output_offset = ti * sel_nch;
+
+    // 并行读取所有频道
+    for (size_t ch = threadIdx.x; ch < sel_nch; ch += blockDim.x) {
+        const int delay = ((int*)smem_delays)[ch];
+        const size_t src_idx = src_base_idx + delay;
+        output[output_offset + ch] = input[src_idx * nchans + chan_start + ch];
+    }
+}
+
+template <typename T>
+Spectrum<T> dedisperse_spec_with_dm_gpu(
+    T* spec, Header header, float dm,
+    float tstart, float tend,
+    float freq_start, float freq_end,
+    std::string maskfile, rficonfig rficfg)
+{
+    // ---- 设置GPU设备 ----
+    int device_id = 0;
+    cudaGetDevice(&device_id);
+    cudaDeviceProp device_prop;
+    CHECK_CUDA(cudaGetDeviceProperties(&device_prop, device_id));
+
+    omp_set_num_threads(32);
+
+    // ---- 时间窗口检验 ----
+    if (tend <= tstart) {
+        throw std::invalid_argument("tend must be > tstart");
+    }
+    size_t t_start_idx = static_cast<size_t>(tstart / header.tsamp);
+    size_t t_end_idx   = static_cast<size_t>(tend   / header.tsamp);
+    size_t t_len_req   = (t_end_idx > t_start_idx) ? (t_end_idx - t_start_idx) : 0;
+    if (t_len_req == 0 || t_start_idx >= header.ndata) {
+        throw std::invalid_argument("Invalid time window for this file.");
+    }
+
+    // ---- 参数检验 ----
+    if (freq_start >= freq_end) {
+        throw std::invalid_argument("freq_end must be > freq_start");
+    }
+    if (dm < 0.0f) {
+        throw std::invalid_argument("dm must be >= 0");
+    }
+    if (header.foff < 0) {
+        throw std::invalid_argument("frequency channels are in descending order, not yet supported.");
+    }
+
+    // ---- 构造频率表 ----
+    std::vector<float> frequency_table(header.nchans);
+    for (size_t i = 0; i < header.nchans; i++) {
+        frequency_table[i] = header.fch1 + i * header.foff;
+    }
+    float f0   = frequency_table.front();
+    float fN   = frequency_table.back();
+    float fmin = std::min(f0, fN);
+    float fmax = std::max(f0, fN);
+
+    if (freq_start < fmin || freq_end > fmax || freq_end <= freq_start) {
+        char buf[256];
+        snprintf(buf, sizeof(buf),
+                 "Frequency range [%.3f, %.3f] MHz out of file range [%.3f, %.3f] MHz",
+                 freq_start, freq_end, fmin, fmax);
+        throw std::invalid_argument(buf);
+    }
+
+    // ---- 频道索引计算 ----
+    auto freq_to_index = [&](float f)->size_t {
+        double pos = (f - f0) / (double)(fN - f0);
+        double raw = pos * (double)(header.nchans - 1);
+        if (raw < 0.0) raw = 0.0;
+        if (raw > (double)(header.nchans - 1)) raw = (double)(header.nchans - 1);
+        return static_cast<size_t>(std::floor(raw + 1e-9));
+    };
+
+    size_t chan_start    = freq_to_index(freq_start);
+    size_t chan_end_incl = freq_to_index(freq_end);
+    if (chan_end_incl < chan_start) std::swap(chan_start, chan_end_incl);
+    size_t chan_end_excl = std::min(chan_end_incl + 1, static_cast<size_t>(header.nchans));
+
+    size_t sel_nch = (chan_end_excl > chan_start) ? (chan_end_excl - chan_start) : 0;
+    if (sel_nch == 0) {
+        throw std::invalid_argument("Empty channel selection.");
+    }
+
+    // ---- 计算延迟表（在CPU上） ----
+    const float f_high = std::max(frequency_table[chan_start],
+                                  frequency_table[chan_end_excl - 1]);
+    std::unique_ptr<int[]> h_dm_delays(new int[sel_nch]);
+    int delay_max_idx = 0;
+
+    for (ptrdiff_t ch = (ptrdiff_t)chan_start; ch < (ptrdiff_t)chan_end_excl; ++ch) {
+        float fch   = frequency_table[ch];
+        float delay = 4148.808f * dm * (1.0f/(fch*fch) - 1.0f/(f_high*f_high));
+        int d_idx   = (int)std::lround(delay / header.tsamp);
+        h_dm_delays[ch - chan_start] = d_idx;
+        delay_max_idx = std::max(delay_max_idx, d_idx);
+    }
+
+    // ---- 计算有效时间长度 ----
+    size_t t_len_cap = (header.ndata > t_start_idx)
+                       ? (header.ndata - t_start_idx)
+                       : 0;
+    size_t t_len_eff = 0;
+    if (t_len_cap > (size_t)delay_max_idx) {
+        t_len_eff = std::min(t_len_req, t_len_cap - (size_t)delay_max_idx);
+    }
+    if (t_len_eff == 0) {
+        throw std::invalid_argument("Time window too short for this DM and band.");
+    }
+
+    // ---- RFI处理（在GPU扩展窗口中） ----
+    size_t rfi_t_start_idx = (t_start_idx > (size_t)delay_max_idx) ? (t_start_idx - delay_max_idx) : 0;
+    size_t rfi_offset_from_t_start = t_start_idx - rfi_t_start_idx;
+    T* slice_ptr_for_rfi = spec + rfi_t_start_idx * header.nchans;
+    size_t slice_len_for_rfi = std::min(t_len_eff + rfi_offset_from_t_start + 2 * delay_max_idx, 
+                                        header.ndata - rfi_t_start_idx);
+
+    // 只上传所需的数据切片（包括RFI处理和解色散所需的范围）
+    T* d_spec = nullptr;
+    CHECK_CUDA(cudaMalloc(&d_spec, slice_len_for_rfi * header.nchans * sizeof(T)));
+    CHECK_CUDA(cudaMemcpy(d_spec, slice_ptr_for_rfi,
+                         slice_len_for_rfi * header.nchans * sizeof(T),
+                         cudaMemcpyHostToDevice));
+
+    // RFI标记（在GPU上执行）
+    if (rficfg.use_iqrm) {
+        auto win_masks = iqrm_cuda::rfi_iqrm_gpu<T>(
+            d_spec,
+            chan_start, chan_end_excl,
+            slice_len_for_rfi,
+            header.nchans,
+            header.tsamp, rficfg);
+
+        RfiMarker<T> rfi_marker(maskfile);
+        rfi_marker.mask(d_spec, header.nchans, slice_len_for_rfi, win_masks);
+    }
+    if (rficfg.use_mask) {
+        RfiMarker<T> rfi_marker(maskfile);
+        rfi_marker.mark_rfi(d_spec, header.nchans, slice_len_for_rfi);
+    }
+
+    // ---- 准备解色散 ----
+    // 上传延迟表到GPU
+    int* d_dm_delays = nullptr;
+    CHECK_CUDA(cudaMalloc(&d_dm_delays, sel_nch * sizeof(int)));
+    CHECK_CUDA(cudaMemcpy(d_dm_delays, h_dm_delays.get(),
+                         sel_nch * sizeof(int), cudaMemcpyHostToDevice));
+
+    // 分配输出缓冲区
+    T* d_output = nullptr;
+    CHECK_CUDA(cudaMalloc(&d_output, t_len_eff * sel_nch * sizeof(T)));
+
+    // 运行kernel
+    const int TPB_X = 256;
+    const int TPB_Y = 1;
+    const size_t nblks = (t_len_eff + TPB_X - 1) / TPB_X;
+    dim3 threads(TPB_X, TPB_Y);
+    dim3 blocks(nblks, 1);
+
+    dedisperse_single_dm_kernel<T><<<blocks, threads>>>(
+        d_output, d_spec,
+        d_dm_delays,
+        rfi_offset_from_t_start,  // 相对于上传数据切片的起点
+        t_len_eff,
+        header.nchans,
+        chan_start,
+        chan_end_excl,
+        delay_max_idx);
+    CHECK_CUDA(cudaGetLastError());
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    // ---- 构造输出结构 ----
+    Spectrum<T> result;
+    result.nbits      = header.nbits;
+    result.ntimes     = t_len_eff;
+    result.tstart     = tstart;
+    result.tend       = tstart + (float)t_len_eff * header.tsamp;
+    result.dm         = dm;
+    result.nchans     = sel_nch;
+    result.freq_start = std::min(frequency_table[chan_start],
+                                 frequency_table[chan_end_excl - 1]);
+    result.freq_end   = std::max(frequency_table[chan_start],
+                                 frequency_table[chan_end_excl - 1]);
+    result.data       = std::shared_ptr<T[]>(new T[result.ntimes * result.nchans](),
+                                             [](T* p){ delete[] p; });
+
+    // ---- 将结果从GPU复制到CPU ----
+    CHECK_CUDA(cudaMemcpy(result.data.get(), d_output,
+                         t_len_eff * sel_nch * sizeof(T),
+                         cudaMemcpyDeviceToHost));
+
+    // ---- 清理GPU内存 ----
+    CHECK_CUDA(cudaFree(d_spec));
+    CHECK_CUDA(cudaFree(d_output));
+    CHECK_CUDA(cudaFree(d_dm_delays));
+
+    return result;
+}
+
+// ==================== 显式实例化 ====================
+template Spectrum<uint8_t> dedisperse_spec_with_dm_gpu<uint8_t>(
+    uint8_t* spec, Header header, float dm,
+    float tstart, float tend,
+    float freq_start, float freq_end,
+    std::string maskfile, rficonfig rficfg);
+
+template Spectrum<uint16_t> dedisperse_spec_with_dm_gpu<uint16_t>(
+    uint16_t* spec, Header header, float dm,
+    float tstart, float tend,
+    float freq_start, float freq_end,
+    std::string maskfile, rficonfig rficfg);
+
+template Spectrum<uint32_t> dedisperse_spec_with_dm_gpu<uint32_t>(
+    uint32_t* spec, Header header, float dm,
+    float tstart, float tend,
+    float freq_start, float freq_end,
+    std::string maskfile, rficonfig rficfg);
+
 } // namespace gpucal

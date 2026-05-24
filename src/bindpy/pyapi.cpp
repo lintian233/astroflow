@@ -364,3 +364,44 @@ template Spectrum<uint32_t>
 dedisperse_spec_with_dm_py<uint32_t>(py::array_t<uint32_t, py::array::c_style> data, Header header,
                                      float dm, float tstart, float tend,
                                      float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
+
+// ==================== GPU版本的Python绑定 ====================
+
+template <typename T>
+Spectrum<T> dedisperse_spec_with_dm_gpu_py(py::array_t<T, py::array::c_style> data, Header header,
+                                           float tstart, float tend, float dm,
+                                           float freq_start, float freq_end, std::string maskfile, rficonfig rficfg) {
+  auto data_ptr = data.request();
+  T *data_ptr_ptr = static_cast<T *>(data_ptr.ptr);
+
+  if (data_ptr.ndim == 1) {
+    // 一维数组，直接使用
+  } else if (data_ptr.ndim == 2) {
+    // 二维数组 (ntime, nchans)，直接使用
+  } else if (data_ptr.ndim == 3) {
+    // 三维数组 (dim1, dim2, nchans)，前两个维度是时间维度
+    // 在 C++ 端将其视为 (dim1*dim2, nchans) 的二维数组
+    // 由于使用 c_style，内存是连续的，可以直接当作一维数组处理
+  } else {
+    throw std::runtime_error("data must be 1D, 2D, or 3D");
+  }
+
+  // 调用GPU版本
+  return gpucal::dedisperse_spec_with_dm_gpu<T>(data_ptr_ptr, header, dm, tstart,
+                                                tend, freq_start, freq_end, maskfile, rficfg);
+}
+
+template Spectrum<uint8_t>
+dedisperse_spec_with_dm_gpu_py<uint8_t>(py::array_t<uint8_t, py::array::c_style> data, Header header,
+                                        float dm, float tstart, float tend,
+                                        float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
+
+template Spectrum<uint16_t>
+dedisperse_spec_with_dm_gpu_py<uint16_t>(py::array_t<uint16_t, py::array::c_style> data, Header header,
+                                         float dm, float tstart, float tend,
+                                         float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);
+
+template Spectrum<uint32_t>
+dedisperse_spec_with_dm_gpu_py<uint32_t>(py::array_t<uint32_t, py::array::c_style> data, Header header,
+                                         float dm, float tstart, float tend,
+                                         float freq_start, float freq_end, std::string maskfile, rficonfig rficfg);

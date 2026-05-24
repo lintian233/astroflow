@@ -77,21 +77,21 @@ def calculate_frb_snr(
     Returns:
         tuple: (snr, pulse_width_samples, peak_idx_fit, (noise_mean, noise_std, fit_quality))
     """
-    if _astro_core is not None and hasattr(_astro_core, "_calculate_frb_snr"):
-        try:
-            return _astro_core._calculate_frb_snr(
-                spec,
-                noise_range,
-                threshold_sigma,
-                toa_sample_idx,
-                fitting_window_samples,
-                tsamp,
-                target_time_us,
-            )
-        except Exception:
-            pass
+    # if _astro_core is not None and hasattr(_astro_core, "_calculate_frb_snr"):
+    #     try:
+    #         return _astro_core._calculate_frb_snr(
+    #             spec,
+    #             noise_range,
+    #             threshold_sigma,
+    #             toa_sample_idx,
+    #             fitting_window_samples,
+    #             tsamp,
+    #             target_time_us,
+    #         )
+    #     except Exception:
+    #         pass
     
-    print("warning: using pure-python SNR calculation fallback")
+    # print("warning: using pure-python SNR calculation fallback")
     time_series_raw = np.sum(spec, axis=1, dtype=np.float32)
     n_time_orig = len(time_series_raw)
     if n_time_orig == 0:

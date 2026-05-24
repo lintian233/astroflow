@@ -35,6 +35,17 @@ Spectrum<T> dedisperse_spec_with_dm_py(py::array_t<T, py::array::c_style> data, 
                                        float freq_start, float freq_end, 
                                        std::string maskfile, rficonfig rficfg);
 
+/**
+ * @brief dedisperse_spec_with_dm 的GPU版本Python包装器
+ *
+ * 调用GPU优化的单DM解色散函数
+ */
+template <typename T>
+Spectrum<T> dedisperse_spec_with_dm_gpu_py(py::array_t<T, py::array::c_style> data, Header header,
+                                           float dm, float tstart, float tend,
+                                           float freq_start, float freq_end,
+                                           std::string maskfile, rficonfig rficfg);
+
 template <typename T>
 void bind_dedispersed_data(py::module &m, const char *class_name);
 
