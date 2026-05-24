@@ -38,3 +38,6 @@ ql/*
 astroflow_pulse/*
 frb180417/*
 scripts/*
+docs/_build/*
+test*
+astroflow_tests/*
