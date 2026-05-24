@@ -4,6 +4,7 @@ import multiprocessing
 
 from .dmtime import DmTime
 from .plotting.analysis import calculate_frb_snr
+from .plotting.pipeline import close_plot_sessions as _close_plot_sessions
 from .plotting.pipeline import pack_background as _pack_background
 from .plotting.pipeline import pack_candidate as _pack_candidate
 from .plotting.pipeline import plot_candidate as _plot_candidate
@@ -84,12 +85,17 @@ def plot_candidates_for_file(file_path, candidates, dmtconfig, specconfig, dpi=1
     return plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi)
 
 
+def close_plot_sessions():
+    return _close_plot_sessions()
+
+
 __all__ = [
     "CandidateInfo",
     "DmPlotConfig",
     "SpecPlotConfig",
     "PlotterManager",
     "calculate_frb_snr",
+    "close_plot_sessions",
     "error_tracer",
     "pack_background",
     "pack_candidate",

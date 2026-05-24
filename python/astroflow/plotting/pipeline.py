@@ -4,28 +4,27 @@ import gc
 import os
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 
 import matplotlib
 matplotlib.use('Agg')  # 使用非 GUI 后端，更快
-
-from matplotlib.gridspec import GridSpec
 
 from ..config.taskconfig import TaskConfig
 from ..dedispered import dedisperse_spec_with_dm
 from ..utils import get_freq_end_toa
 from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
 from .io import load_data_file, save_candidate_info
-from .plots import (
-    calculate_spectrum_time_window,
-    prepare_dm_data,
-    setup_detrend_spectrum_plots,
-    setup_dm_plots,
-    setup_spectrum_plots,
-    setup_subband_spectrum_plots,
+from .plots import _normalize_channels_for_display, calculate_spectrum_time_window, prepare_dm_data
+from .session import (
+    CandidatePlotPayload,
+    CandidatePlotSession,
+    DmPlotPayload,
+    SpectrumPlotPayload,
 )
 from .types import CandidateInfo, ensure_candidate_info
+
+_PLOTTED_FILE_COUNT = 0
+_PLOT_SESSION_CACHE: dict[tuple[int, bool], CandidatePlotSession] = {}
 
 
 def pack_candidate(dmt, candinfo, save_path, file_path):
@@ -73,25 +72,17 @@ def plot_candidate(dmt, candinfo, save_path, file_path, dmtconfig, specconfig, d
     """
     origin_data = load_data_file(file_path)
     try:
-        header = origin_data.header()
-        taskconfig = TaskConfig()
-        maskfile = _resolve_maskfile(taskconfig, file_path)
-        _plot_candidate_with_origin(
+        plot_candidates_for_file(
             origin_data,
-            header,
-            taskconfig,
-            maskfile,
-            dmt,
-            candinfo,
-            save_path,
             file_path,
+            [(dmt, candinfo, save_path)],
             dmtconfig,
             specconfig,
             dpi,
         )
     finally:
         _close_origin_data(origin_data)
-        gc.collect()
+        _collect_file_gc(specconfig)
 
 
 def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, specconfig, dpi=150):
@@ -102,8 +93,9 @@ def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, spec
     header = origin_data.header()
     taskconfig = TaskConfig()
     maskfile = _resolve_maskfile(taskconfig, file_path)
+    session = _get_plot_session(dpi, bool(getattr(specconfig, "onlyspec", False)))
     for dmt, candinfo, save_path in candidates:
-        _plot_candidate_with_origin(
+        payload = _prepare_candidate_plot_payload(
             origin_data,
             header,
             taskconfig,
@@ -114,8 +106,12 @@ def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, spec
             file_path,
             dmtconfig,
             specconfig,
-            dpi,
         )
+        if payload is None:
+            continue
+        session.render(payload)
+        _save_candidate_figures(session, payload, dpi)
+        _save_candidate_metadata(taskconfig, header, file_path, payload, ensure_candidate_info(candinfo))
 
 
 def plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi=150):
@@ -127,10 +123,10 @@ def plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi=1
         plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, specconfig, dpi)
     finally:
         _close_origin_data(origin_data)
-        gc.collect()
+        _collect_file_gc(specconfig)
 
 
-def _plot_candidate_with_origin(
+def _prepare_candidate_plot_payload(
     origin_data,
     header,
     taskconfig,
@@ -141,270 +137,506 @@ def _plot_candidate_with_origin(
     file_path,
     dmtconfig,
     specconfig,
-    dpi,
-):
+) -> CandidatePlotPayload | None:
     cand = ensure_candidate_info(candinfo)
+    print(
+        f"Plot cand: DM={cand.dm}, TOA={cand.toa}, "
+        f"Freq={cand.freq_start}-{cand.freq_end} MHz, DMT Index={cand.dmt_idx}"
+    )
+
+    dm_payload = _prepare_dm_payload(dmt, dmtconfig, cand)
+    mode = _normalize_mode(specconfig.mode)
+    ref_toa = cand.ref_toa
+    peak_time = cand.toa
+    snr = -1
+    pulse_width = -1
+    pulse_width_ms = -1
+    spectrum_payload = None
+
     try:
-        print(
-            f"Plot cand: DM={cand.dm}, TOA={cand.toa}, "
-            f"Freq={cand.freq_start}-{cand.freq_end} MHz, DMT Index={cand.dmt_idx}"
+        ref_toa = get_freq_end_toa(header, cand.freq_end, cand.toa, cand.dm)
+        tband = specconfig.tband if specconfig.tband is not None else 0.5
+        initial_spec_tstart, initial_spec_tend = calculate_spectrum_time_window(
+            cand.toa, 0, header.tsamp, tband
         )
-
-        fig = plt.figure(figsize=(22, 10), dpi=dpi)
-        onlyspec = bool(getattr(specconfig, "onlyspec", False))
-        if onlyspec:
-            dm_fig = plt.figure(figsize=(10, 10), dpi=dpi)
-            dm_gs = GridSpec(
-                2,
-                2,
-                figure=dm_fig,
-                width_ratios=[3, 1],
-                height_ratios=[1, 3],
-                wspace=0.07,
-                hspace=0.04,
-            )
-            fig = plt.figure(figsize=(10, 10), dpi=dpi)
-            gs = GridSpec(
-                2,
-                2,
-                figure=fig,
-                width_ratios=[3, 1],
-                height_ratios=[1, 3],
-                wspace=0.07,
-                hspace=0.04,
-            )
-            spec_col_base = 0
-        else:
-            dm_fig = None
-            dm_gs = None
-            gs = GridSpec(
-                2,
-                5,
-                figure=fig,
-                width_ratios=[3, 1, 0.29, 3, 1],
-                height_ratios=[1, 3],
-                wspace=0.06,
-                hspace=0.04,
-            )
-            spec_col_base = 3
-
-        dm_data, time_axis, dm_axis = prepare_dm_data(dmt)
-        dm_vmin, dm_vmax = np.percentile(
-            dm_data, [dmtconfig.minpercentile, dmtconfig.maxpercentile]
+        initial_spectrum = dedisperse_spec_with_dm(
+            origin_data,
+            initial_spec_tstart,
+            initial_spec_tend,
+            cand.dm,
+            cand.freq_start,
+            cand.freq_end,
+            maskfile,
         )
-        if onlyspec:
-            setup_dm_plots(
-                dm_fig,
-                dm_gs,
-                dm_data,
-                time_axis,
-                dm_axis,
-                dm_vmin,
-                dm_vmax,
-                cand.dm,
-                cand.toa,
-            )
-        else:
-            setup_dm_plots(
-                fig, gs, dm_data, time_axis, dm_axis, dm_vmin, dm_vmax, cand.dm, cand.toa
-            )
+        initial_spec_data = initial_spectrum.data
+        toa_sample_idx = int((cand.toa - initial_spec_tstart) / header.tsamp)
+        toa_sample_idx = max(0, min(toa_sample_idx, initial_spectrum.ntimes - 1))
 
-        max_width_samples = _boxcar_max_samples(specconfig, header)
-
-        try:
-            mode = _normalize_mode(specconfig.mode)
-            ref_toa = get_freq_end_toa(header, cand.freq_end, cand.toa, cand.dm)
-            tband = specconfig.tband if specconfig.tband is not None else 0.5
-            initial_spec_tstart, initial_spec_tend = calculate_spectrum_time_window(
-                cand.toa, 0, header.tsamp, tband
-            )
-
-            initial_spectrum = dedisperse_spec_with_dm(
-                origin_data,
-                initial_spec_tstart,
-                initial_spec_tend,
-                cand.dm,
-                cand.freq_start,
-                cand.freq_end,
-                maskfile,
-            )
-            initial_spec_data = initial_spectrum.data
-
-            toa_sample_idx = int((cand.toa - initial_spec_tstart) / header.tsamp)
-            toa_sample_idx = max(0, min(toa_sample_idx, initial_spectrum.ntimes - 1))
-
-            initial_spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, initial_spectrum.nchans)
-            initial_subfreq = _resolve_subfreq(specconfig, initial_spec_data.shape[1])
-            initial_subband_matrix, _ = downsample_freq_weighted_vec(
-                initial_spec_data, initial_spec_freq_axis, initial_subfreq
-            )
-            initial_snr_input = _snr_input_from_subband(mode, specconfig, initial_subband_matrix)
-
-            snr, pulse_width, peak_idx, _ = calculate_frb_snr(
-                initial_snr_input,
-                noise_range=None,
-                threshold_sigma=5,
-                toa_sample_idx=toa_sample_idx,
-                fitting_window_samples=max_width_samples,
-                tsamp=header.tsamp,
-            )
-
-            peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
-            spec_tstart, spec_tend = calculate_spectrum_time_window(
-                peak_time, pulse_width, header.tsamp, tband, 35
-            )
-
-            spectrum = dedisperse_spec_with_dm(
-                origin_data,
-                spec_tstart,
-                spec_tend,
-                cand.dm,
-                cand.freq_start,
-                cand.freq_end,
-                maskfile,
-            )
-
-            spec_data = spectrum.data
-            spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
-            spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, spectrum.nchans)
-
-            if snr < taskconfig.snrhold:
-                return
-
-            pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1
-            if mode == "subband":
-                subfreq = _resolve_subfreq(specconfig, spec_data.shape[1])
-                subband_matrix, _ = downsample_freq_weighted_vec(
-                    spec_data, spec_freq_axis, subfreq
-                )
-                subband_freq_axis = np.linspace(
-                    spec_freq_axis[0], spec_freq_axis[-1], subfreq + 1
-                )
-                setup_subband_spectrum_plots(
-                    fig,
-                    gs,
-                    spec_data,
-                    spec_time_axis,
-                    spec_freq_axis,
-                    spec_tstart,
-                    spec_tend,
-                    specconfig,
-                    header,
-                    col_base=spec_col_base,
-                    toa=peak_time,
-                    dm=cand.dm,
-                    ref_toa=ref_toa,
-                    pulse_width=pulse_width,
-                    snr=snr,
-                    subband_matrix=subband_matrix,
-                    subband_freq_axis=subband_freq_axis,
-                )
-            elif mode in ("standard", None, "std"):
-                setup_spectrum_plots(
-                    fig,
-                    gs,
-                    spec_data,
-                    spec_time_axis,
-                    spec_freq_axis,
-                    spec_tstart,
-                    spec_tend,
-                    specconfig,
-                    header,
-                    col_base=spec_col_base,
-                    toa=peak_time,
-                    dm=cand.dm,
-                    ref_toa=ref_toa,
-                    pulse_width=pulse_width,
-                    snr=snr,
-                )
-            elif mode == "detrend":
-                setup_detrend_spectrum_plots(
-                    fig,
-                    gs,
-                    spec_data,
-                    spec_time_axis,
-                    spec_freq_axis,
-                    spec_tstart,
-                    spec_tend,
-                    specconfig,
-                    header,
-                    col_base=spec_col_base,
-                    toa=peak_time,
-                    dm=cand.dm,
-                    ref_toa=ref_toa,
-                    pulse_width=pulse_width,
-                    snr=snr,
-                )
-            else:
-                raise ValueError(f"Unsupported spectrum mode: {mode}")
-        except Exception as exc:
-            print(f"Warning: Failed to process spectrum data: {exc}")
-            snr, pulse_width_ms, peak_time, ref_toa = -1, -1, cand.toa, cand.ref_toa
-
-        basename = os.path.basename(file_path).split(".")[0]
-        fig.suptitle(
-            f"FILE: {basename} - DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
-            f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s",
-            fontsize=22,
-            y=0.94,
+        initial_spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, initial_spectrum.nchans)
+        initial_subfreq = _resolve_subfreq(specconfig, initial_spec_data.shape[1])
+        initial_subband_matrix, _ = downsample_freq_weighted_vec(
+            initial_spec_data, initial_spec_freq_axis, initial_subfreq
         )
+        initial_snr_input = _snr_input_from_subband(mode, specconfig, initial_subband_matrix)
+        snr, pulse_width, peak_idx, _ = calculate_frb_snr(
+            initial_snr_input,
+            noise_range=None,
+            threshold_sigma=5,
+            toa_sample_idx=toa_sample_idx,
+            fitting_window_samples=_boxcar_max_samples(specconfig, header),
+            tsamp=header.tsamp,
+        )
+        if snr < taskconfig.snrhold:
+            return None
 
-        savetype = specconfig.savetype
-        base_name = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}"
-        
-        if savetype == "jpg":
-            if onlyspec:
-                imgname = f"{base_name}_spec.jpg"
-                output_filename = f"{save_path}/{imgname}"
-                print(f"Saving: {os.path.basename(output_filename)}")
-                _save_figure_with_opencv(fig, output_filename, "jpg")
-                dm_imgname = f"{base_name}_dmtime.jpg"
-                dm_output_filename = f"{save_path}/{dm_imgname}"
-                print(f"Saving: {os.path.basename(dm_output_filename)}")
-                _save_figure_with_opencv(dm_fig, dm_output_filename, "jpg")
-            else:
-                imgname = f"{base_name}.jpg"
-                output_filename = f"{save_path}/{imgname}"
-                print(f"Saving: {os.path.basename(output_filename)}")
-                _save_figure_with_opencv(fig, output_filename, "jpg")
-        else:
-            if onlyspec:
-                imgname = f"{base_name}_spec.png"
-                output_filename = f"{save_path}/{imgname}"
-                print(f"Saving: {os.path.basename(output_filename)}")
-                _save_figure_with_opencv(fig, output_filename, "png")
-                dm_imgname = f"{base_name}_dmtime.png"
-                dm_output_filename = f"{save_path}/{dm_imgname}"
-                print(f"Saving: {os.path.basename(dm_output_filename)}")
-                _save_figure_with_opencv(dm_fig, dm_output_filename, "png")
-            else:
-                imgname = f"{base_name}.png"
-                output_filename = f"{save_path}/{imgname}"
-                print(f"Saving: {os.path.basename(output_filename)}")
-                _save_figure_with_opencv(fig, output_filename, "png")
-
-        if taskconfig.gencand:
-            cand_info = {
-                "file": os.path.basename(file_path),
-                "mjd": header.mjd + (round(ref_toa, 3) / 86400.0),
-                "dms": cand.dm,
-                "toa": round(ref_toa, 3),
-                "toa_ref_freq_end": cand.toa,
-                "snr": round(snr, 2),
-                "pulse_width_ms": round(pulse_width_ms, 2),
-                "freq_start": cand.freq_start,
-                "freq_end": cand.freq_end,
-                "file_path": file_path,
-                "plot_path": imgname,
-            }
-            candsinfopath = f"{save_path}/astroflow_cands.csv"
-            save_candidate_info(candsinfopath, cand_info)
-
+        peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
+        spec_tstart, spec_tend = calculate_spectrum_time_window(
+            peak_time, pulse_width, header.tsamp, tband, 70
+        )
+        spectrum = dedisperse_spec_with_dm(
+            origin_data,
+            spec_tstart,
+            spec_tend,
+            cand.dm,
+            cand.freq_start,
+            cand.freq_end,
+            maskfile,
+        )
+        spec_data = spectrum.data
+        spec_time_axis = np.linspace(spec_tstart, spec_tend, spectrum.ntimes)
+        spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, spectrum.nchans)
+        pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1
+        spectrum_payload = _prepare_spectrum_payload(
+            mode,
+            spec_data,
+            spec_time_axis,
+            spec_freq_axis,
+            spec_tstart,
+            spec_tend,
+            specconfig,
+            header,
+            cand.dm,
+            ref_toa,
+            pulse_width,
+            pulse_width_ms,
+            snr,
+            peak_time,
+        )
     except Exception as exc:
-        print(f"Error in plot_candidate: {exc}")
-        raise
-    finally:
-        plt.close("all")
+        print(f"Warning: Failed to process spectrum data: {exc}")
+
+    basename = os.path.basename(file_path).split(".")[0]
+    title, title_y = _candidate_title(basename, cand, ref_toa, snr, pulse_width_ms, peak_time)
+    savetype = specconfig.savetype
+    suffix = "jpg" if savetype == "jpg" else "png"
+    base_name = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}"
+    if bool(getattr(specconfig, "onlyspec", False)):
+        imgname = f"{base_name}_spec.{suffix}"
+        dm_imgname = f"{base_name}_dmtime.{suffix}"
+    else:
+        imgname = f"{base_name}.{suffix}"
+        dm_imgname = None
+
+    return CandidatePlotPayload(
+        dm_plot=dm_payload,
+        spectrum_plot=spectrum_payload,
+        title=title,
+        title_y=title_y,
+        imgname=imgname,
+        dm_imgname=dm_imgname,
+        save_path=save_path,
+        savetype=savetype,
+        snr=snr,
+        pulse_width_ms=pulse_width_ms,
+        ref_toa=ref_toa,
+    )
+
+
+def _prepare_dm_payload(dmt, dmtconfig, cand: CandidateInfo) -> DmPlotPayload:
+    dm_data, time_axis, dm_axis = prepare_dm_data(dmt)
+    dm_vmin, dm_vmax = np.percentile(
+        dm_data, [dmtconfig.minpercentile, dmtconfig.maxpercentile]
+    )
+    return DmPlotPayload(
+        data=dm_data,
+        time_axis=time_axis,
+        dm_axis=dm_axis,
+        vmin=dm_vmin,
+        vmax=dm_vmax,
+        dm=cand.dm,
+        toa=cand.toa,
+    )
+
+
+def _prepare_spectrum_payload(
+    mode,
+    spec_data,
+    spec_time_axis,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    dm,
+    ref_toa,
+    pulse_width,
+    pulse_width_ms,
+    snr,
+    peak_time,
+) -> SpectrumPlotPayload:
+    if mode == "subband":
+        return _prepare_subband_payload(
+            spec_data,
+            spec_freq_axis,
+            spec_tstart,
+            spec_tend,
+            specconfig,
+            header,
+            dm,
+            ref_toa,
+            pulse_width,
+            pulse_width_ms,
+            snr,
+            peak_time,
+        )
+    if mode == "standard":
+        return _prepare_standard_payload(
+            spec_data,
+            spec_time_axis,
+            spec_freq_axis,
+            spec_tstart,
+            spec_tend,
+            specconfig,
+            header,
+            dm,
+            ref_toa,
+            pulse_width_ms,
+            snr,
+            peak_time,
+        )
+    if mode == "detrend":
+        return _prepare_detrend_payload(
+            spec_data,
+            spec_time_axis,
+            spec_freq_axis,
+            spec_tstart,
+            spec_tend,
+            specconfig,
+            header,
+            dm,
+            ref_toa,
+            pulse_width_ms,
+            snr,
+            peak_time,
+        )
+    raise ValueError(f"Unsupported spectrum mode: {mode}")
+
+
+def _prepare_standard_payload(
+    spec_data,
+    spec_time_axis,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    dm,
+    ref_toa,
+    pulse_width_ms,
+    snr,
+    peak_time,
+) -> SpectrumPlotPayload:
+    spec_vmin, spec_vmax = _image_percentiles(spec_data, specconfig)
+    if spec_vmin == 0:
+        non_zero_values = spec_data[spec_data > 1]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
+
+    freq_series = np.sum(spec_data, axis=0)
+    freq_xlim = _series_bounds(freq_series, positive_min=True)
+    return SpectrumPlotPayload(
+        image=spec_data,
+        extent=[spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]],
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+        xlim=(spec_tstart, spec_tend),
+        ylim=(spec_freq_axis[0], spec_freq_axis[-1]),
+        time_x=spec_time_axis,
+        time_y=np.sum(spec_data, axis=1),
+        freq_x=freq_series,
+        freq_y=spec_freq_axis,
+        freq_xlim=freq_xlim,
+        time_info=f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms",
+        info_text=_spectrum_info_text(header, dm, ref_toa),
+        toa=peak_time,
+        freq_color="darkblue",
+        interpolation="auto",
+    )
+
+
+def _prepare_detrend_payload(
+    spec_data,
+    spec_time_axis,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    dm,
+    ref_toa,
+    pulse_width_ms,
+    snr,
+    peak_time,
+) -> SpectrumPlotPayload:
+    try:
+        detrended_data = detrend(spec_data.T, axis=1, trend="linear").T
+    except Exception as exc:
+        print(f"Detrending failed: {exc}, using original data")
+        detrended_data = spec_data
+
+    display_data = _normalize_channels_for_display(detrended_data)
+    spec_vmin, spec_vmax = _image_percentiles(display_data, specconfig)
+    if spec_vmin == 0:
+        non_zero_values = display_data[display_data > 0]
+        if non_zero_values.size > 0:
+            spec_vmin = non_zero_values.min()
+
+    freq_series = np.sum(detrended_data, axis=0)
+    return SpectrumPlotPayload(
+        image=display_data,
+        extent=[spec_time_axis[0], spec_time_axis[-1], spec_freq_axis[0], spec_freq_axis[-1]],
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+        xlim=(spec_tstart, spec_tend),
+        ylim=(spec_freq_axis[0], spec_freq_axis[-1]),
+        time_x=spec_time_axis,
+        time_y=np.sum(detrended_data, axis=1),
+        freq_x=freq_series,
+        freq_y=spec_freq_axis,
+        freq_xlim=_series_bounds(freq_series),
+        time_info=f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms\nDetrend: linear (per freq channel)",
+        info_text=_spectrum_info_text(header, dm, ref_toa, prefix="Detrend: Linear"),
+        toa=peak_time,
+        time_ylabel="Int. Power\n(Detrend)",
+        freq_color="darkblue",
+        interpolation="auto",
+    )
+
+
+def _prepare_subband_payload(
+    spec_data,
+    spec_freq_axis,
+    spec_tstart,
+    spec_tend,
+    specconfig,
+    header,
+    dm,
+    ref_toa,
+    pulse_width,
+    pulse_width_ms,
+    snr,
+    peak_time,
+) -> SpectrumPlotPayload:
+    subfreq = _resolve_subfreq(specconfig, spec_data.shape[1])
+    subband_matrix, _ = downsample_freq_weighted_vec(spec_data, spec_freq_axis, subfreq)
+    subband_freq_axis = np.linspace(spec_freq_axis[0], spec_freq_axis[-1], subfreq + 1)
+
+    n_time_samples, n_freq_subbands = subband_matrix.shape
+    subtsamp = max(1, int(specconfig.subtsamp))
+    if pulse_width and pulse_width > 0:
+        time_bin_size = max(1, int(round(pulse_width / subtsamp)))
+    else:
+        time_bin_size = subtsamp
+    if time_bin_size > n_time_samples:
+        time_bin_size = n_time_samples
+    n_time_bins = max(1, n_time_samples // time_bin_size)
+    trimmed_time_len = n_time_bins * time_bin_size
+    time_bin_duration = time_bin_size * header.tsamp
+    freq_subband_size = max(1, len(spec_freq_axis) / n_freq_subbands)
+
+    if trimmed_time_len < n_time_samples:
+        subband_matrix = subband_matrix[:trimmed_time_len, :]
+    if time_bin_size > 1:
+        subband_matrix = subband_matrix.reshape(
+            n_time_bins, time_bin_size, n_freq_subbands
+        ).sum(axis=1)
+
+    if specconfig.dtrend:
+        subband_matrix = detrend(subband_matrix, axis=0, trend="linear")
+
+    if specconfig.norm:
+        col_min = np.min(subband_matrix, axis=0)
+        col_max = np.max(subband_matrix, axis=0)
+        denom = col_max - col_min
+        valid = (~np.isclose(denom, 0)) & (denom >= 1e-10)
+        normalized = np.zeros_like(subband_matrix)
+        normalized[:, valid] = (subband_matrix[:, valid] - col_min[valid]) / denom[valid]
+        subband_matrix = normalized
+
+    subband_time_axis = np.linspace(spec_tstart, spec_tend, n_time_bins + 1)
+    subband_freq_axis = np.asarray(subband_freq_axis)
+    subband_time_centers = 0.5 * (subband_time_axis[:-1] + subband_time_axis[1:])
+    subband_freq_centers = 0.5 * (subband_freq_axis[:-1] + subband_freq_axis[1:])
+    subband_freq_series = np.sum(subband_matrix, axis=0)
+    zero_band = np.all(np.isclose(subband_matrix, 0.0, atol=0), axis=0)
+    subband_freq_series[zero_band] = np.nan
+
+    spec_vmin, spec_vmax = _image_percentiles(subband_matrix, specconfig)
+    info_lines = [
+        f"Subbands: {n_freq_subbands} ({freq_subband_size:.2f} chans)",
+        f"Bins: {n_time_bins} ({time_bin_duration * 1000:.3f} ms)",
+        f"FCH1={header.fch1:.3f} MHz",
+        f"FOFF={header.foff:.3f} MHz",
+        f"TSAMP={header.tsamp:.6e}s",
+        f"DM={dm:.2f}",
+        f"ref TOA={ref_toa:.3f}s",
+    ]
+    return SpectrumPlotPayload(
+        image=subband_matrix,
+        extent=[subband_time_axis[0], subband_time_axis[-1], subband_freq_axis[0], subband_freq_axis[-1]],
+        vmin=spec_vmin,
+        vmax=spec_vmax,
+        xlim=(spec_tstart, spec_tend),
+        ylim=(subband_freq_axis[0], subband_freq_axis[-1]),
+        time_x=subband_time_centers,
+        time_y=np.sum(subband_matrix, axis=1),
+        freq_x=subband_freq_series,
+        freq_y=subband_freq_centers,
+        freq_xlim=_series_bounds(subband_freq_series),
+        time_info=f"SNR: {snr:.2f} \n" f"pulse width: {pulse_width_ms:.2f} ms",
+        info_text="\n".join(info_lines),
+        toa=peak_time,
+    )
+
+
+def _candidate_title(basename, cand: CandidateInfo, ref_toa, snr, pulse_width_ms, peak_time):
+    metrics_title = (
+        f"DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
+        f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s"
+    )
+    if len(basename) > 55:
+        return f"FILE: {basename}\n{metrics_title}", 0.985
+    return f"FILE: {basename} - {metrics_title}", 0.94
+
+
+def _spectrum_info_text(header, dm, ref_toa, prefix=None) -> str:
+    info_lines = []
+    if prefix:
+        info_lines.append(prefix)
+    info_lines.extend(
+        [
+            f"FCH1={header.fch1:.3f} MHz",
+            f"FOFF={header.foff:.3f} MHz",
+            f"TSAMP={header.tsamp:.6e}s",
+            f"DM={dm:.2f}",
+            f"ref TOA={ref_toa:.3f}s",
+        ]
+    )
+    return "\n".join(info_lines)
+
+
+def _image_percentiles(data, specconfig):
+    return np.percentile(data, [specconfig.minpercentile, specconfig.maxpercentile])
+
+
+def _series_bounds(values, positive_min=False) -> tuple[float, float]:
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if positive_min:
+        positive = arr[arr > 0]
+        if positive.size > 0:
+            low = float(np.min(positive))
+            high = float(np.max(arr)) if arr.size else low + 1
+            return _padded_bounds(low, high, lower_pad=0.0, upper_frac=0.01)
+    if arr.size == 0:
+        return (0.0, 1.0)
+    return _padded_bounds(float(np.min(arr)), float(np.max(arr)))
+
+
+def _padded_bounds(low, high, lower_pad=None, upper_frac=0.1) -> tuple[float, float]:
+    if not np.isfinite(low) or not np.isfinite(high):
+        return (0.0, 1.0)
+    if np.isclose(low, high):
+        pad = max(abs(high) * 0.05, 1.0)
+        return (low - pad, high + pad)
+    if lower_pad is not None:
+        return (low - lower_pad, high + upper_frac * abs(high))
+    pad = 0.1 * abs(high - low)
+    return (low - pad, high + pad)
+
+
+def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlotPayload, dpi: int) -> None:
+    output_filename = os.path.join(payload.save_path, payload.imgname)
+    print(f"Saving: {os.path.basename(output_filename)}")
+    if payload.savetype == "jpg":
+        session.fig.savefig(
+            output_filename,
+            format="jpg",
+            pil_kwargs={"quality": 95},
+            dpi=dpi,
+            bbox_inches="tight",
+            pad_inches=0.03,
+            facecolor="white",
+            edgecolor="none",
+        )
+        if session.onlyspec and payload.dm_imgname is not None:
+            dm_output_filename = os.path.join(payload.save_path, payload.dm_imgname)
+            print(f"Saving: {os.path.basename(dm_output_filename)}")
+            session.dm_fig.savefig(
+                dm_output_filename,
+                format="jpg",
+                pil_kwargs={"quality": 95},
+                dpi=dpi,
+                bbox_inches="tight",
+                pad_inches=0.03,
+                facecolor="white",
+                edgecolor="none",
+            )
+        return
+
+    session.fig.savefig(
+        output_filename,
+        format="png",
+        dpi=dpi,
+        bbox_inches="tight",
+        pad_inches=0.03,
+        facecolor="white",
+        edgecolor="none",
+        pil_kwargs={"compress_level": 3},
+    )
+    if session.onlyspec and payload.dm_imgname is not None:
+        dm_output_filename = os.path.join(payload.save_path, payload.dm_imgname)
+        print(f"Saving: {os.path.basename(dm_output_filename)}")
+        session.dm_fig.savefig(
+            dm_output_filename,
+            format="png",
+            dpi=dpi,
+            bbox_inches="tight",
+            pad_inches=0.03,
+            facecolor="white",
+            edgecolor="none",
+            pil_kwargs={"compress_level": 3},
+        )
+
+
+def _save_candidate_metadata(taskconfig, header, file_path, payload: CandidatePlotPayload, cand: CandidateInfo) -> None:
+    if not taskconfig.gencand:
+        return
+    cand_info = {
+        "file": os.path.basename(file_path),
+        "mjd": header.mjd + (round(payload.ref_toa, 3) / 86400.0),
+        "dms": cand.dm,
+        "toa": round(payload.ref_toa, 3),
+        "toa_ref_freq_end": cand.toa,
+        "snr": round(payload.snr, 2),
+        "pulse_width_ms": round(payload.pulse_width_ms, 2),
+        "freq_start": cand.freq_start,
+        "freq_end": cand.freq_end,
+        "file_path": file_path,
+        "plot_path": payload.imgname,
+    }
+    candsinfopath = os.path.join(payload.save_path, "astroflow_cands.csv")
+    save_candidate_info(candsinfopath, cand_info)
 
 
 def _resolve_maskfile(taskconfig: TaskConfig, file_path: str) -> str:
@@ -424,6 +656,29 @@ def _close_origin_data(origin_data) -> None:
             close_method()
         except Exception:
             pass
+
+
+def _get_plot_session(dpi: int, onlyspec: bool) -> CandidatePlotSession:
+    key = (int(dpi), bool(onlyspec))
+    session = _PLOT_SESSION_CACHE.get(key)
+    if session is None:
+        session = CandidatePlotSession(dpi=key[0], onlyspec=key[1])
+        _PLOT_SESSION_CACHE[key] = session
+    return session
+
+
+def close_plot_sessions() -> None:
+    for session in _PLOT_SESSION_CACHE.values():
+        session.close()
+    _PLOT_SESSION_CACHE.clear()
+
+
+def _collect_file_gc(specconfig) -> None:
+    global _PLOTTED_FILE_COUNT
+    _PLOTTED_FILE_COUNT += 1
+    every = int(getattr(specconfig, "gc_collect_every_files", 10) or 0)
+    if every > 0 and _PLOTTED_FILE_COUNT % every == 0:
+        gc.collect()
 
 
 def _boxcar_max_samples(specconfig, header):
@@ -454,34 +709,3 @@ def _resolve_subfreq(specconfig, nchan):
     if subfreq is None or subfreq <= 0:
         return nchan
     return max(1, min(int(subfreq), nchan))
-
-
-def _save_figure_with_opencv(fig, filepath: str, filetype: str):
-    """
-    Save matplotlib figure using OpenCV for better performance.
-    
-    Args:
-        fig: matplotlib figure object
-        filepath: output file path
-        filetype: "jpg" or "png"
-    """
-    # Render figure to RGBA array
-    fig.canvas.draw()
-    width, height = fig.canvas.get_width_height()
-    
-    # Use buffer_rgba() for newer matplotlib versions
-    rgba_buffer = fig.canvas.buffer_rgba()
-    img_array = np.frombuffer(rgba_buffer, dtype=np.uint8)
-    img_array = img_array.reshape((height, width, 4))
-    
-    # Convert RGBA to BGR for OpenCV (drop alpha channel and convert color space)
-    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
-    
-    # Determine encoding parameters
-    if filetype.lower() == "jpg":
-        encode_param = [cv2.IMWRITE_JPEG_QUALITY, 95]
-    else:  # png
-        encode_param = [cv2.IMWRITE_PNG_COMPRESSION, 9]
-    
-    # Save using OpenCV
-    cv2.imwrite(filepath, img_bgr, encode_param)

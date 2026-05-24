@@ -55,6 +55,7 @@ class SpecPlotConfig:
     savetype: str = "png"
     snr_boxcar_max_ms: float | None = 20.0
     onlyspec: bool = False
+    gc_collect_every_files: int = 10
 
 
 def ensure_candidate_info(candinfo: Any) -> CandidateInfo:

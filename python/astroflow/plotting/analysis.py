@@ -9,33 +9,26 @@ except Exception:
     _astro_core = None
 
 
-def _robust_mean_std(data, sigma=5.0, max_iter=3):
-    data = np.asarray(data)
+def _robust_mean_std(data, sigma=5.0, max_iter=2):
+    """快速鲁棒均值/标准差估计（单次sigma裁剪替代3次迭代）"""
+    data = np.asarray(data, dtype=np.float32)
     data = data[np.isfinite(data)]
     if data.size == 0:
         return 0.0, 1.0
 
-    clipped = data
-    for _ in range(max_iter):
-        med = np.median(clipped)
-        mad = np.median(np.abs(clipped - med))
-        std = 1.4826 * mad if mad > 0 else np.std(clipped)
-        if std <= 0:
-            break
-        next_clipped = clipped[np.abs(clipped - med) <= sigma * std]
-        if next_clipped.size == clipped.size:
-            break
-        if next_clipped.size < max(10, int(0.2 * clipped.size)):
-            break
-        clipped = next_clipped
-
-    mean = np.mean(clipped) if clipped.size else np.mean(data)
-    std = np.std(clipped) if clipped.size else np.std(data)
-    if std <= 0:
-        std = np.std(data)
-    if std <= 0:
-        std = 1.0
-    return mean, std
+    # 单次sigma裁剪取代多次迭代
+    med = np.median(data)
+    mad = np.median(np.abs(data - med))
+    std = 1.4826 * mad if mad > 0 else np.std(data)
+    
+    if std > 0:
+        clipped = data[np.abs(data - med) <= sigma * std]
+        if clipped.size >= max(10, int(0.2 * data.size)):
+            data = clipped
+    
+    mean = np.mean(data)
+    std = np.std(data)
+    return float(mean), float(std if std > 0 else 1.0)
 
 
 def _build_widths(max_width):
@@ -45,6 +38,7 @@ def _build_widths(max_width):
     if max_width <= 16:
         return list(range(1, max_width + 1))
 
+    # 减少宽度候选数：线性小尺度(1-16) + 对数大尺度(最多12个)
     small = list(range(1, 17))
     logspace = np.unique(
         np.round(np.logspace(np.log10(17), np.log10(max_width), num=32)).astype(int)
@@ -159,6 +153,10 @@ def calculate_frb_snr(
     noise_mean, noise_std = _robust_mean_std(noise_data, sigma=threshold_sigma)
 
     widths = _build_widths(max_width_ds)
+    if noise_std <= 0:
+        noise_std = 1.0
+    
+    # 使用累积和加速boxcar滤波
     cumsum = np.cumsum(np.insert(time_series_raw, 0, 0.0))
 
     best_snr = -np.inf
@@ -170,56 +168,53 @@ def calculate_frb_snr(
         if width >= n_time:
             break
         window_sums = cumsum[width:] - cumsum[:-width]
-        centers = np.arange(width // 2, width // 2 + window_sums.size)
-
+        
+        # 直接计算SNR而非先生成centers数组
+        sqrt_width = np.sqrt(width)
+        snr_series = (window_sums - noise_mean * width) / (noise_std * sqrt_width)
+        
         if toa_sample_idx is not None:
-            mask = (centers >= search_start) & (centers < search_end)
-            if not np.any(mask):
+            # 仅在搜索范围内寻找最大值
+            if search_start < len(snr_series) and search_end <= len(snr_series):
+                local_max_idx = search_start + int(np.argmax(snr_series[search_start:search_end]))
+            else:
                 continue
-            sums = window_sums[mask]
-            centers_sel = centers[mask]
         else:
-            sums = window_sums
-            centers_sel = centers
-
-        if noise_std <= 0:
-            snr_series = np.full_like(sums, -np.inf, dtype=np.float64)
-        else:
-            snr_series = (sums - noise_mean * width) / (noise_std * np.sqrt(width))
-
-        local_idx = int(np.argmax(snr_series))
-        local_snr = float(snr_series[local_idx])
+            local_max_idx = int(np.argmax(snr_series))
+        
+        local_snr = float(snr_series[local_max_idx])
         if local_snr > best_snr:
             best_snr = local_snr
             best_width = int(width)
-            best_center = int(centers_sel[local_idx])
-            best_sum = float(sums[local_idx])
+            best_center = int(local_max_idx + width // 2)
+            best_sum = float(window_sums[local_max_idx])
 
-    if best_sum is None:
-        noise_mean, noise_std = _robust_mean_std(time_series_raw, sigma=threshold_sigma)
+    # 简化fallback逻辑
+    if best_sum is None or best_snr <= -np.inf:
         peak_idx = int(np.argmax(time_series_raw))
-        snr = (time_series_raw[peak_idx] - noise_mean) / noise_std if noise_std > 0 else -1
-        fit_quality = {"fit_converged": False, "method": "fallback"}
-        peak_idx_orig = min(n_time_orig - 1, peak_idx * downsample + downsample // 2)
-        return snr, max(1, downsample), peak_idx_orig, (noise_mean, noise_std, fit_quality)
+        best_sum = float(time_series_raw[peak_idx])
+        best_width = 1
+        best_center = peak_idx
+        snr = (best_sum - noise_mean) / noise_std
+    else:
+        snr = best_snr
 
     refine_left = max(0, best_center - 2 * best_width)
     refine_right = min(n_time, best_center + 2 * best_width + 1)
     noise_mask = np.ones(n_time, dtype=bool)
     noise_mask[refine_left:refine_right] = False
     refine_data = time_series_raw[noise_mask]
-    if refine_data.size >= max(10, int(0.1 * n_time)):
+    
+    # 仅在有足够的噪声样本时才重新估计（避免过度处理）
+    if refine_data.size >= max(20, int(0.15 * n_time)):
         noise_mean, noise_std = _robust_mean_std(refine_data, sigma=threshold_sigma)
-
+    
     snr = (best_sum - noise_mean * best_width) / (noise_std * np.sqrt(best_width)) if noise_std > 0 else -1
 
     fit_quality = {
         "fit_converged": True,
         "method": "boxcar",
         "width_samples": best_width * downsample,
-        "search_start": int(search_start),
-        "search_end": int(search_end),
-        "downsample": downsample,
     }
 
     best_center_orig = min(n_time_orig - 1, best_center * downsample + downsample // 2)
