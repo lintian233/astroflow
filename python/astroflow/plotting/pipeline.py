@@ -6,6 +6,10 @@ import os
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+
+import matplotlib
+matplotlib.use('Agg')  # 使用非 GUI 后端，更快
+
 from matplotlib.gridspec import GridSpec
 
 from ..config.taskconfig import TaskConfig
@@ -112,7 +116,6 @@ def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, spec
             specconfig,
             dpi,
         )
-    gc.collect()
 
 
 def plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi=150):
@@ -348,36 +351,37 @@ def _plot_candidate_with_origin(
 
         savetype = specconfig.savetype
         base_name = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}"
+        
         if savetype == "jpg":
             if onlyspec:
                 imgname = f"{base_name}_spec.jpg"
                 output_filename = f"{save_path}/{imgname}"
                 print(f"Saving: {os.path.basename(output_filename)}")
-                fig.savefig(output_filename, dpi=100, format="jpg", bbox_inches="tight")
+                _save_figure_with_opencv(fig, output_filename, "jpg")
                 dm_imgname = f"{base_name}_dmtime.jpg"
                 dm_output_filename = f"{save_path}/{dm_imgname}"
                 print(f"Saving: {os.path.basename(dm_output_filename)}")
-                dm_fig.savefig(dm_output_filename, dpi=100, format="jpg", bbox_inches="tight")
+                _save_figure_with_opencv(dm_fig, dm_output_filename, "jpg")
             else:
                 imgname = f"{base_name}.jpg"
                 output_filename = f"{save_path}/{imgname}"
                 print(f"Saving: {os.path.basename(output_filename)}")
-                fig.savefig(output_filename, dpi=100, format="jpg", bbox_inches="tight")
+                _save_figure_with_opencv(fig, output_filename, "jpg")
         else:
             if onlyspec:
                 imgname = f"{base_name}_spec.png"
                 output_filename = f"{save_path}/{imgname}"
                 print(f"Saving: {os.path.basename(output_filename)}")
-                fig.savefig(output_filename, dpi=dpi, format="png", bbox_inches="tight")
+                _save_figure_with_opencv(fig, output_filename, "png")
                 dm_imgname = f"{base_name}_dmtime.png"
                 dm_output_filename = f"{save_path}/{dm_imgname}"
                 print(f"Saving: {os.path.basename(dm_output_filename)}")
-                dm_fig.savefig(dm_output_filename, dpi=dpi, format="png", bbox_inches="tight")
+                _save_figure_with_opencv(dm_fig, dm_output_filename, "png")
             else:
                 imgname = f"{base_name}.png"
                 output_filename = f"{save_path}/{imgname}"
                 print(f"Saving: {os.path.basename(output_filename)}")
-                fig.savefig(output_filename, dpi=dpi, format="png", bbox_inches="tight")
+                _save_figure_with_opencv(fig, output_filename, "png")
 
         if taskconfig.gencand:
             cand_info = {
@@ -401,7 +405,6 @@ def _plot_candidate_with_origin(
         raise
     finally:
         plt.close("all")
-        gc.collect()
 
 
 def _resolve_maskfile(taskconfig: TaskConfig, file_path: str) -> str:
@@ -451,3 +454,34 @@ def _resolve_subfreq(specconfig, nchan):
     if subfreq is None or subfreq <= 0:
         return nchan
     return max(1, min(int(subfreq), nchan))
+
+
+def _save_figure_with_opencv(fig, filepath: str, filetype: str):
+    """
+    Save matplotlib figure using OpenCV for better performance.
+    
+    Args:
+        fig: matplotlib figure object
+        filepath: output file path
+        filetype: "jpg" or "png"
+    """
+    # Render figure to RGBA array
+    fig.canvas.draw()
+    width, height = fig.canvas.get_width_height()
+    
+    # Use buffer_rgba() for newer matplotlib versions
+    rgba_buffer = fig.canvas.buffer_rgba()
+    img_array = np.frombuffer(rgba_buffer, dtype=np.uint8)
+    img_array = img_array.reshape((height, width, 4))
+    
+    # Convert RGBA to BGR for OpenCV (drop alpha channel and convert color space)
+    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
+    
+    # Determine encoding parameters
+    if filetype.lower() == "jpg":
+        encode_param = [cv2.IMWRITE_JPEG_QUALITY, 95]
+    else:  # png
+        encode_param = [cv2.IMWRITE_PNG_COMPRESSION, 9]
+    
+    # Save using OpenCV
+    cv2.imwrite(filepath, img_bgr, encode_param)
