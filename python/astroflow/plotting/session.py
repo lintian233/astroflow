@@ -60,6 +60,7 @@ class CandidatePlotPayload:
     snr: float
     pulse_width_ms: float
     ref_toa: float
+    peak_toa: float
 
 
 class CandidatePlotSession:

@@ -18,7 +18,7 @@ def load_data_file(file_path: str):
 
 def save_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None:
     """Atomically appends candidate information to a CSV-like file."""
-    header = "file,mjd,dms,toa,toa_ref_freq_end,snr,pulse_width_ms,freq_start,freq_end,file_path,plot_path"
+    header = "file,mjd,dms,toa,toa_ref_freq_end,snr,pulse_width_ms,freq_start,freq_end,file_path,plot_path,peak_toa"
 
     values = [
         cand_info.get("file", ""),
@@ -32,6 +32,7 @@ def save_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None
         cand_info.get("freq_end", ""),
         cand_info.get("file_path", ""),
         cand_info.get("plot_path", ""),
+        cand_info.get("peak_toa", ""),
     ]
     line = ",".join(map(str, values))
 

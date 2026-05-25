@@ -170,6 +170,7 @@ def muti_pulsar_search_detect(
                 continue
             else:
                 detection_flag = 1
+                plot_jobs.append((dmtimes[candinfo[4]], candinfo, candidate_detect_dir))
                 continue
 
         if _check_candidate_match(dm, toa, origin_dm, origin_toa, ref_toa):

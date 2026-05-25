@@ -90,6 +90,9 @@ def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, spec
     Plot multiple candidates for the same file using a shared IO handle.
     candidates: iterable of (dmt, candinfo, save_path)
     """
+    if TaskConfig().onlycand:
+        return save_candidate_metrics_for_file(origin_data, file_path, candidates, specconfig)
+
     header = origin_data.header()
     taskconfig = TaskConfig()
     maskfile = _resolve_maskfile(taskconfig, file_path)
@@ -124,6 +127,51 @@ def plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi=1
     finally:
         _close_origin_data(origin_data)
         _collect_file_gc(specconfig)
+
+
+def save_candidate_metrics_for_path(file_path, candidates, dmtconfig, specconfig):
+    origin_data = load_data_file(file_path)
+    try:
+        save_candidate_metrics_for_file(origin_data, file_path, candidates, specconfig)
+    finally:
+        _close_origin_data(origin_data)
+        _collect_file_gc(specconfig)
+
+
+def save_candidate_metrics_for_file(origin_data, file_path, candidates, specconfig):
+    header = origin_data.header()
+    taskconfig = TaskConfig()
+    maskfile = _resolve_maskfile(taskconfig, file_path)
+    for _dmt, candinfo, save_path in candidates:
+        cand = ensure_candidate_info(candinfo)
+        print(
+            f"Save cand metrics: DM={cand.dm}, TOA={cand.toa}, "
+            f"Freq={cand.freq_start}-{cand.freq_end} MHz, DMT Index={cand.dmt_idx}"
+        )
+        metrics = _calculate_candidate_metrics(
+            origin_data,
+            header,
+            maskfile,
+            cand,
+            specconfig,
+        )
+        cand_info = {
+            "file": os.path.basename(file_path),
+            "mjd": header.mjd + (round(metrics["ref_toa"], 3) / 86400.0),
+            "dms": cand.dm,
+            "toa": round(metrics["ref_toa"], 3),
+            "toa_ref_freq_end": cand.toa,
+            "snr": round(metrics["snr"], 2),
+            "pulse_width_ms": round(metrics["pulse_width_ms"], 2),
+            "freq_start": cand.freq_start,
+            "freq_end": cand.freq_end,
+            "file_path": file_path,
+            "plot_path": "",
+            "peak_toa": round(metrics["peak_toa"], 3),
+        }
+        candsinfopath = os.path.join(save_path, "astroflow_cands.csv")
+        os.makedirs(save_path, exist_ok=True)
+        save_candidate_info(candsinfopath, cand_info)
 
 
 def _prepare_candidate_plot_payload(
@@ -249,7 +297,60 @@ def _prepare_candidate_plot_payload(
         snr=snr,
         pulse_width_ms=pulse_width_ms,
         ref_toa=ref_toa,
+        peak_toa=peak_time,
     )
+
+
+def _calculate_candidate_metrics(origin_data, header, maskfile, cand: CandidateInfo, specconfig) -> dict[str, float]:
+    ref_toa = cand.ref_toa
+    peak_time = cand.toa
+    snr = -1.0
+    pulse_width_ms = -1.0
+    try:
+        mode = _normalize_mode(specconfig.mode)
+        ref_toa = get_freq_end_toa(header, cand.freq_end, cand.toa, cand.dm)
+        tband = specconfig.tband if specconfig.tband is not None else 0.5
+        initial_spec_tstart, initial_spec_tend = calculate_spectrum_time_window(
+            cand.toa, 0, header.tsamp, tband
+        )
+        initial_spectrum = dedisperse_spec_with_dm(
+            origin_data,
+            initial_spec_tstart,
+            initial_spec_tend,
+            cand.dm,
+            cand.freq_start,
+            cand.freq_end,
+            maskfile,
+        )
+        initial_spec_data = initial_spectrum.data
+        toa_sample_idx = int((cand.toa - initial_spec_tstart) / header.tsamp)
+        toa_sample_idx = max(0, min(toa_sample_idx, initial_spectrum.ntimes - 1))
+
+        initial_spec_freq_axis = np.linspace(cand.freq_start, cand.freq_end, initial_spectrum.nchans)
+        initial_subfreq = _resolve_subfreq(specconfig, initial_spec_data.shape[1])
+        initial_subband_matrix, _ = downsample_freq_weighted_vec(
+            initial_spec_data, initial_spec_freq_axis, initial_subfreq
+        )
+        initial_snr_input = _snr_input_from_subband(mode, specconfig, initial_subband_matrix)
+        snr, pulse_width, peak_idx, _ = calculate_frb_snr(
+            initial_snr_input,
+            noise_range=None,
+            threshold_sigma=5,
+            toa_sample_idx=toa_sample_idx,
+            fitting_window_samples=_boxcar_max_samples(specconfig, header),
+            tsamp=header.tsamp,
+        )
+        peak_time = initial_spec_tstart + (peak_idx + 0.5) * header.tsamp
+        pulse_width_ms = pulse_width * header.tsamp * 1e3 if pulse_width > 0 else -1
+    except Exception as exc:
+        print(f"Warning: Failed to calculate candidate metrics: {exc}")
+
+    return {
+        "ref_toa": float(ref_toa),
+        "snr": float(snr),
+        "pulse_width_ms": float(pulse_width_ms),
+        "peak_toa": float(peak_time),
+    }
 
 
 def _prepare_dm_payload(dmt, dmtconfig, cand: CandidateInfo) -> DmPlotPayload:
@@ -587,8 +688,7 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
                 format="jpg",
                 pil_kwargs={"quality": 85},
                 dpi=dpi,
-                breaks_inches=None,
-                # bbox_inches="tight",
+                bbox_inches=None,
                 # pad_inches=0.03,
                 facecolor="white",
                 edgecolor="none",
@@ -599,9 +699,8 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
         output_filename,
         format="png",
         dpi=dpi,
-        # bbox_inches="tight",
+        bbox_inches=None,
         # pad_inches=0.03,
-        breaks_inches=None,
         facecolor="white",
         edgecolor="none",
         pil_kwargs={"compress_level": 3},
@@ -613,9 +712,8 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
             dm_output_filename,
             format="png",
             dpi=dpi,
-            # bbox_inches="tight",
+            bbox_inches=None,
             # pad_inches=0.03,
-            breaks_inches=None,
             facecolor="white",
             edgecolor="none",
             pil_kwargs={"compress_level": 3},
@@ -637,6 +735,7 @@ def _save_candidate_metadata(taskconfig, header, file_path, payload: CandidatePl
         "freq_end": cand.freq_end,
         "file_path": file_path,
         "plot_path": payload.imgname,
+        "peak_toa": round(payload.peak_toa, 3),
     }
     candsinfopath = os.path.join(payload.save_path, "astroflow_cands.csv")
     save_candidate_info(candsinfopath, cand_info)
