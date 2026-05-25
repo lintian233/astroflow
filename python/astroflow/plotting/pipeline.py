@@ -572,10 +572,10 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
         session.fig.savefig(
             output_filename,
             format="jpg",
-            pil_kwargs={"quality": 95},
+            pil_kwargs={"quality": 85},
             dpi=dpi,
-            bbox_inches="tight",
-            pad_inches=0.03,
+            bbox_inches=None,
+            # pad_inches=0.03,
             facecolor="white",
             edgecolor="none",
         )
@@ -585,10 +585,11 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
             session.dm_fig.savefig(
                 dm_output_filename,
                 format="jpg",
-                pil_kwargs={"quality": 95},
+                pil_kwargs={"quality": 85},
                 dpi=dpi,
-                bbox_inches="tight",
-                pad_inches=0.03,
+                breaks_inches=None,
+                # bbox_inches="tight",
+                # pad_inches=0.03,
                 facecolor="white",
                 edgecolor="none",
             )
@@ -598,8 +599,9 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
         output_filename,
         format="png",
         dpi=dpi,
-        bbox_inches="tight",
-        pad_inches=0.03,
+        # bbox_inches="tight",
+        # pad_inches=0.03,
+        breaks_inches=None,
         facecolor="white",
         edgecolor="none",
         pil_kwargs={"compress_level": 3},
@@ -611,8 +613,9 @@ def _save_candidate_figures(session: CandidatePlotSession, payload: CandidatePlo
             dm_output_filename,
             format="png",
             dpi=dpi,
-            bbox_inches="tight",
-            pad_inches=0.03,
+            # bbox_inches="tight",
+            # pad_inches=0.03,
+            breaks_inches=None,
             facecolor="white",
             edgecolor="none",
             pil_kwargs={"compress_level": 3},
@@ -684,7 +687,7 @@ def _collect_file_gc(specconfig) -> None:
 def _boxcar_max_samples(specconfig, header):
     max_ms = specconfig.snr_boxcar_max_ms
     if max_ms is None:
-        return 20
+        return 30
     if max_ms <= 0:
         return None
     return max(1, int(round((max_ms * 1e-3) / header.tsamp)))

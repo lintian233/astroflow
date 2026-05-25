@@ -50,7 +50,7 @@ class PlotterManager:
             args=(dmt, candinfo, save_path, file_path, self.dmtconfig, self.specconfig),
         )
 
-    def plot_candidates_for_file(self, file_path, candidates, dpi=150):
+    def plot_candidates_for_file(self, file_path, candidates, dpi=100):
         self.pool.apply_async(
             _plot_candidates_for_path,
             args=(file_path, candidates, self.dmtconfig, self.specconfig, dpi),
