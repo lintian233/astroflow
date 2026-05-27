@@ -193,6 +193,7 @@ def save_candidate_metrics_for_file(origin_data, file_path, candidates, specconf
             "file_path": file_path,
             "plot_path": "",
             "peak_toa": round(metrics["peak_toa"], 3),
+            "confidence": "" if cand.confidence is None else cand.confidence,
         }
         candsinfopath = os.path.join(save_path, "astroflow_cands.csv")
         os.makedirs(save_path, exist_ok=True)
@@ -290,6 +291,7 @@ def _prepare_candidate_plot_payload(
             header,
             cand.dm,
             ref_toa,
+            cand.confidence,
             pulse_width,
             pulse_width_ms,
             snr,
@@ -405,6 +407,7 @@ def _prepare_spectrum_payload(
     header,
     dm,
     ref_toa,
+    confidence,
     pulse_width,
     pulse_width_ms,
     snr,
@@ -420,6 +423,7 @@ def _prepare_spectrum_payload(
             header,
             dm,
             ref_toa,
+            confidence,
             pulse_width,
             pulse_width_ms,
             snr,
@@ -436,6 +440,7 @@ def _prepare_spectrum_payload(
             header,
             dm,
             ref_toa,
+            confidence,
             pulse_width_ms,
             snr,
             peak_time,
@@ -451,6 +456,7 @@ def _prepare_spectrum_payload(
             header,
             dm,
             ref_toa,
+            confidence,
             pulse_width_ms,
             snr,
             peak_time,
@@ -468,6 +474,7 @@ def _prepare_standard_payload(
     header,
     dm,
     ref_toa,
+    confidence,
     pulse_width_ms,
     snr,
     peak_time,
@@ -492,7 +499,7 @@ def _prepare_standard_payload(
         freq_x=freq_series,
         freq_y=spec_freq_axis,
         freq_xlim=freq_xlim,
-        time_info=f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms",
+        time_info=_time_info_text(snr, pulse_width_ms, confidence),
         info_text=_spectrum_info_text(header, dm, ref_toa),
         toa=peak_time,
         freq_color="darkblue",
@@ -510,6 +517,7 @@ def _prepare_detrend_payload(
     header,
     dm,
     ref_toa,
+    confidence,
     pulse_width_ms,
     snr,
     peak_time,
@@ -540,7 +548,7 @@ def _prepare_detrend_payload(
         freq_x=freq_series,
         freq_y=spec_freq_axis,
         freq_xlim=_series_bounds(freq_series),
-        time_info=f"SNR: {snr:.2f}\nPulse Width: {pulse_width_ms:.2f} ms\nDetrend: linear (per freq channel)",
+        time_info=_time_info_text(snr, pulse_width_ms, confidence, "Detrend: linear (per freq channel)"),
         info_text=_spectrum_info_text(header, dm, ref_toa, prefix="Detrend: Linear"),
         toa=peak_time,
         time_ylabel="Int. Power\n(Detrend)",
@@ -558,6 +566,7 @@ def _prepare_subband_payload(
     header,
     dm,
     ref_toa,
+    confidence,
     pulse_width,
     pulse_width_ms,
     snr,
@@ -629,16 +638,19 @@ def _prepare_subband_payload(
         freq_x=subband_freq_series,
         freq_y=subband_freq_centers,
         freq_xlim=_series_bounds(subband_freq_series),
-        time_info=f"SNR: {snr:.2f} \n" f"pulse width: {pulse_width_ms:.2f} ms",
+        time_info=_time_info_text(snr, pulse_width_ms, confidence),
         info_text="\n".join(info_lines),
         toa=peak_time,
     )
 
 
 def _candidate_title(basename, cand: CandidateInfo, ref_toa, snr, pulse_width_ms, peak_time):
+    confidence_text = _confidence_text(cand.confidence)
+    confidence_title = f" - Confidence: {confidence_text}" if confidence_text else ""
     metrics_title = (
         f"DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
         f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s"
+        f"{confidence_title}"
     )
     if len(basename) > 55:
         return f"FILE: {basename}\n{metrics_title}", 0.985
@@ -659,6 +671,24 @@ def _spectrum_info_text(header, dm, ref_toa, prefix=None) -> str:
         ]
     )
     return "\n".join(info_lines)
+
+
+def _time_info_text(snr, pulse_width_ms, confidence, suffix=None) -> str:
+    lines = [f"SNR: {snr:.2f}", f"Pulse Width: {pulse_width_ms:.2f} ms"]
+    confidence_text = _confidence_text(confidence)
+    if confidence_text:
+        lines.append(f"Confidence: {confidence_text}")
+    if suffix:
+        lines.append(suffix)
+    return "\n".join(lines)
+
+
+def _confidence_text(confidence) -> str:
+    if confidence is None:
+        return ""
+    if isinstance(confidence, (int, float)):
+        return f"{confidence:.4f}"
+    return str(confidence)
 
 
 def _image_percentiles(data, specconfig):
@@ -761,6 +791,7 @@ def _save_candidate_metadata(taskconfig, header, file_path, payload: CandidatePl
         "file_path": file_path,
         "plot_path": payload.imgname,
         "peak_toa": round(payload.peak_toa, 3),
+        "confidence": "" if cand.confidence is None else cand.confidence,
     }
     candsinfopath = os.path.join(payload.save_path, "astroflow_cands.csv")
     save_candidate_info(candsinfopath, cand_info)
