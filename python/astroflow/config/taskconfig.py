@@ -393,7 +393,7 @@ class TaskConfig:
     def plotworker(self):
         plotworker = self._config_data.get("plotworker")
         if plotworker is None:
-            plotworker = 3
+            plotworker = 2
         if not isinstance(plotworker, int):
             raise ValueError("plotworker must be an integer.")
         return plotworker

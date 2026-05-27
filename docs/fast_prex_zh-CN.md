@@ -86,7 +86,7 @@ candpath: /path/to/fast_prex_candidate.csv # 候选体 CSV 文件的路径
 dedgpu: 0                 # 用于色散延迟消除的 GPU 设备 ID
 detgpu: 0                 # 用于 AI 检测的 GPU 设备 ID (在多 GPU 环境下可使用不同 ID)
 cputhread: 32             # 用于 I/O 和预处理的 CPU 线程数
-plotworker: 16            # 用于生成候选体绘图的并行进程数
+plotworker: 2            # 用于生成候选体绘图的并行进程数
 # onlycand: True          # 可选：禁用候选体绘图以进行基准测试（减少 I/O）(TestPypi 目前)
 
 # --- 检测参数 ---
