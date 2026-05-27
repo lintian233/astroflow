@@ -127,7 +127,8 @@ class Yolo11nFrbDetector(FrbDetector):
             if xywh is not None and len(xywh) > 0:
                 dmt = dmt_list[i]
                 dmt_index = start_index + i  
-                for box in xywh:
+                confidences = r.boxes.conf
+                for box, conf in zip(xywh, confidences):
                     x, y, w, h = box
                     # 直接使用x, y坐标，无需计算left, top, right, bottom
                     x_norm = np.round(x.cpu() / 512, 2)
@@ -145,7 +146,7 @@ class Yolo11nFrbDetector(FrbDetector):
                     dm = np.round(dm.item(), 3)
                     # print(f"DM: {dm}, TOA: {toa}")
                     if dm_flag:
-                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index, (x_norm, y_norm, w_norm, h_norm)])
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index, (x_norm, y_norm, w_norm, h_norm), {"confidence": round(conf.item(), 4)}])
     
     @override
     def detect(self, dmt: DmTime):
@@ -158,7 +159,8 @@ class Yolo11nFrbDetector(FrbDetector):
         for i, r in enumerate(results):
             xywh = r.boxes.xywh
             if xywh is not None and len(xywh) > 0:
-                for box in xywh:
+                confidences = r.boxes.conf
+                for box, conf in zip(xywh, confidences):
                     x, y, w, h = box
                     # 直接使用x, y坐标，无需计算left, top, right, bottom
                     t_len = dmt.tend - dmt.tstart
@@ -171,7 +173,7 @@ class Yolo11nFrbDetector(FrbDetector):
                     toa = np.round(toa, 3)
                     dm = np.round(dm, 3)
                     if dm_flag:
-                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end])
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, {"confidence": round(conf.item(), 4)}])
         return candidate
 
 
@@ -311,7 +313,7 @@ class CenterNetFrbDetector(FrbDetector):
             top_conf, top_boxes = get_res(hm, wh, offset, confidence=self.confidence)
             if top_boxes is None:
                 return result
-            for box in top_boxes:  # box: [left, top, right, bottom] #type: ignore
+            for conf, box in zip(top_conf, top_boxes):  # box: [left, top, right, bottom] #type: ignore
                 left, top, right, bottom = box.astype(int)
                 t_len = dmt.tend - dmt.tstart
                 dm = ((top + bottom) / 2) * (
@@ -322,7 +324,7 @@ class CenterNetFrbDetector(FrbDetector):
                 toa = np.round(toa, 3)
                 dm = np.round(dm, 3)
                 if dm_flag:
-                    print(f"Confidence: {np.min(top_conf):.3f}")
-                    result.append([dm, toa, dmt.freq_start, dmt.freq_end])
+                    print(f"Confidence: {conf:.3f}")
+                    result.append([dm, toa, dmt.freq_start, dmt.freq_end, {"confidence": round(float(conf), 4)}])
 
         return result

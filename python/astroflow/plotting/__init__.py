@@ -7,6 +7,7 @@ from .pipeline import (
     plot_candidates_for_file,
     plot_candidates_for_path,
     save_candidate_metrics_for_path,
+    save_fast_candidate_info_for_path,
 )
 from .types import CandidateInfo, DmPlotConfig, SpecPlotConfig
 
@@ -19,6 +20,7 @@ __all__ = [
     "plot_candidates_for_path",
     "plot_candidate",
     "save_candidate_metrics_for_path",
+    "save_fast_candidate_info_for_path",
     "CandidateInfo",
     "DmPlotConfig",
     "SpecPlotConfig",

@@ -165,7 +165,8 @@ def muti_pulsar_search_detect(
         candinfo.append(ref_toa)
         
         onlycand = taskconfig.onlycand
-        if onlycand:
+        fastcand = taskconfig.fastcand
+        if onlycand or fastcand:
             if not _check_candidate_match(dm, toa, origin_dm, origin_toa, ref_toa):
                 continue
             else:

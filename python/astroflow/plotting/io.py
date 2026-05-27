@@ -34,8 +34,28 @@ def save_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None
         cand_info.get("plot_path", ""),
         cand_info.get("peak_toa", ""),
     ]
-    line = ",".join(map(str, values))
+    _append_csv_line(file_path, header, values)
 
+
+def save_fast_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None:
+    """Atomically appends fast candidate metadata without computed metrics."""
+    header = "file,dms,toa,toa_ref_freq_end,freq_start,freq_end,file_path,confidence"
+
+    values = [
+        cand_info.get("file", ""),
+        cand_info.get("dms", ""),
+        cand_info.get("toa", ""),
+        cand_info.get("toa_ref_freq_end", ""),
+        cand_info.get("freq_start", ""),
+        cand_info.get("freq_end", ""),
+        cand_info.get("file_path", ""),
+        cand_info.get("confidence", ""),
+    ]
+    _append_csv_line(file_path, header, values)
+
+
+def _append_csv_line(file_path: str, header: str, values: list[object]) -> None:
+    line = ",".join(map(str, values))
     with open(file_path, "a+") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX)

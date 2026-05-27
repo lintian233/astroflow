@@ -15,6 +15,7 @@ class CandidateInfo:
     dmt_idx: int
     ref_toa: float
     bbox: Optional[BBox] = None
+    confidence: Optional[float] = None
 
     @classmethod
     def from_tuple(cls, candinfo: Any) -> "CandidateInfo":
@@ -23,17 +24,32 @@ class CandidateInfo:
         except TypeError as exc:
             raise ValueError("candinfo must be a tuple-like object") from exc
 
-        if size == 7:
-            dm, toa, freq_start, freq_end, dmt_idx, bbox, ref_toa = candinfo
-            return cls(dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox)
-        if size == 6:
-            dm, toa, freq_start, freq_end, dmt_idx, ref_toa = candinfo
-            return cls(dm, toa, freq_start, freq_end, dmt_idx, ref_toa, None)
-        if size == 5:
-            dm, toa, freq_start, freq_end, dmt_idx = candinfo
-            return cls(dm, toa, freq_start, freq_end, dmt_idx, toa, None)
+        if size < 4:
+            raise ValueError(f"Unsupported candinfo length: {size}")
 
-        raise ValueError(f"Unsupported candinfo length: {size}")
+        dm, toa, freq_start, freq_end = candinfo[:4]
+        dmt_idx = 0
+        ref_toa = toa
+        bbox = None
+        confidence = None
+
+        extras = list(candinfo[4:])
+        if extras and isinstance(extras[0], (int, float)):
+            dmt_idx = int(extras.pop(0))
+
+        for extra in extras:
+            if _is_bbox(extra):
+                bbox = tuple(float(item) for item in extra)  # type: ignore[arg-type]
+                continue
+            if isinstance(extra, Mapping):
+                value = extra.get("confidence")
+                if value is not None:
+                    confidence = float(value)
+                continue
+            if isinstance(extra, (int, float)):
+                ref_toa = float(extra)
+
+        return cls(dm, toa, freq_start, freq_end, dmt_idx, ref_toa, bbox, confidence)
 
 
 @dataclass(frozen=True)
@@ -46,14 +62,14 @@ class DmPlotConfig:
 class SpecPlotConfig:
     minpercentile: float = 0.1
     maxpercentile: float = 99.99
-    tband: float = 50.0
+    tband: float = 300.0
     mode: str = "subband"
     subtsamp: int = 4
     subfreq: int = 128
     dtrend: bool = False
     norm: bool = True
     savetype: str = "png"
-    snr_boxcar_max_ms: float | None = 20.0
+    snr_boxcar_max_ms: float | None = 30.0
     onlyspec: bool = False
     gc_collect_every_files: int = 10
 
@@ -62,6 +78,15 @@ def ensure_candidate_info(candinfo: Any) -> CandidateInfo:
     if isinstance(candinfo, CandidateInfo):
         return candinfo
     return CandidateInfo.from_tuple(candinfo)
+
+
+def _is_bbox(value: Any) -> bool:
+    try:
+        if len(value) != 4:
+            return False
+    except TypeError:
+        return False
+    return not isinstance(value, (str, bytes, Mapping))
 
 
 def ensure_dmt_config(dmtconfig: Any) -> DmPlotConfig:

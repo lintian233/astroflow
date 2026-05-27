@@ -10,6 +10,7 @@ from .plotting.pipeline import pack_candidate as _pack_candidate
 from .plotting.pipeline import plot_candidate as _plot_candidate
 from .plotting.pipeline import plot_candidates_for_path as _plot_candidates_for_path
 from .plotting.pipeline import save_candidate_metrics_for_path as _save_candidate_metrics_for_path
+from .plotting.pipeline import save_fast_candidate_info_for_path as _save_fast_candidate_info_for_path
 from .plotting.types import (
     CandidateInfo,
     DmPlotConfig,
@@ -35,24 +36,32 @@ class PlotterManager:
     def __init__(self, dmtconfig=None, specconfig=None, max_worker=8):
         from .config.taskconfig import TaskConfig
 
-        self.onlycand = TaskConfig().onlycand
-        self.max_worker = 1 if self.onlycand else max_worker
+        taskconfig = TaskConfig()
+        self.onlycand = taskconfig.onlycand
+        self.fastcand = taskconfig.fastcand
+        self.max_worker = 1 if self.onlycand or self.fastcand else max_worker
         self.pool = multiprocessing.Pool(self.max_worker)
         self.dmtconfig = ensure_dmt_config(dmtconfig)
         self.specconfig = ensure_spec_config(specconfig)
         self.speconfig = self.specconfig
 
     def pack_background(self, dmt: DmTime, candinfo, save_path, file_path):
-        if self.onlycand:
+        if self.onlycand or self.fastcand:
             return
         self.pool.apply_async(_pack_background, args=(dmt, candinfo, save_path, file_path))
 
     def pack_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
-        if self.onlycand:
+        if self.onlycand or self.fastcand:
             return
         self.pool.apply_async(_pack_candidate, args=(dmt, candinfo, save_path, file_path))
 
     def plot_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
+        if self.fastcand:
+            self.pool.apply_async(
+                _save_fast_candidate_info_for_path,
+                args=(file_path, [(None, candinfo, save_path)]),
+            )
+            return
         if self.onlycand:
             self.pool.apply_async(
                 _save_candidate_metrics_for_path,
@@ -65,6 +74,12 @@ class PlotterManager:
         )
 
     def plot_candidates_for_file(self, file_path, candidates, dpi=100):
+        if self.fastcand:
+            self.pool.apply_async(
+                _save_fast_candidate_info_for_path,
+                args=(file_path, _strip_fastcand_candidates(candidates)),
+            )
+            return
         if self.onlycand:
             self.pool.apply_async(
                 _save_candidate_metrics_for_path,
@@ -107,12 +122,20 @@ def save_candidate_metrics_for_path(file_path, candidates, dmtconfig, specconfig
     return _save_candidate_metrics_for_path(file_path, candidates, dmtconfig, specconfig)
 
 
+def save_fast_candidate_info_for_path(file_path, candidates):
+    return _save_fast_candidate_info_for_path(file_path, candidates)
+
+
 def plot_candidates_for_file(file_path, candidates, dmtconfig, specconfig, dpi=150):
     return plot_candidates_for_path(file_path, candidates, dmtconfig, specconfig, dpi)
 
 
 def close_plot_sessions():
     return _close_plot_sessions()
+
+
+def _strip_fastcand_candidates(candidates):
+    return [(None, candinfo, save_path) for _dmt, candinfo, save_path in candidates]
 
 
 __all__ = [
@@ -129,4 +152,5 @@ __all__ = [
     "plot_candidates_for_path",
     "plot_candidate",
     "save_candidate_metrics_for_path",
+    "save_fast_candidate_info_for_path",
 ]

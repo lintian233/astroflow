@@ -13,7 +13,7 @@ from ..config.taskconfig import TaskConfig
 from ..dedispered import dedisperse_spec_with_dm
 from ..utils import get_freq_end_toa
 from .analysis import calculate_frb_snr, detrend, downsample_freq_weighted_vec
-from .io import load_data_file, save_candidate_info
+from .io import load_data_file, save_candidate_info, save_fast_candidate_info
 from .plots import _normalize_channels_for_display, calculate_spectrum_time_window, prepare_dm_data
 from .session import (
     CandidatePlotPayload,
@@ -90,6 +90,9 @@ def plot_candidates_for_file(origin_data, file_path, candidates, dmtconfig, spec
     Plot multiple candidates for the same file using a shared IO handle.
     candidates: iterable of (dmt, candinfo, save_path)
     """
+    if TaskConfig().fastcand:
+        return save_fast_candidate_info_for_path(file_path, candidates)
+
     if TaskConfig().onlycand:
         return save_candidate_metrics_for_file(origin_data, file_path, candidates, specconfig)
 
@@ -136,6 +139,28 @@ def save_candidate_metrics_for_path(file_path, candidates, dmtconfig, specconfig
     finally:
         _close_origin_data(origin_data)
         _collect_file_gc(specconfig)
+
+
+def save_fast_candidate_info_for_path(file_path, candidates):
+    for _dmt, candinfo, save_path in candidates:
+        cand = ensure_candidate_info(candinfo)
+        print(
+            f"Save fast cand: DM={cand.dm}, TOA={cand.toa}, "
+            f"Freq={cand.freq_start}-{cand.freq_end} MHz, confidence={cand.confidence}"
+        )
+        cand_info = {
+            "file": os.path.basename(file_path),
+            "dms": cand.dm,
+            "toa": round(cand.ref_toa, 3),
+            "toa_ref_freq_end": cand.toa,
+            "freq_start": cand.freq_start,
+            "freq_end": cand.freq_end,
+            "file_path": file_path,
+            "confidence": "" if cand.confidence is None else cand.confidence,
+        }
+        candsinfopath = os.path.join(save_path, "astroflow_cands.csv")
+        os.makedirs(save_path, exist_ok=True)
+        save_fast_candidate_info(candsinfopath, cand_info)
 
 
 def save_candidate_metrics_for_file(origin_data, file_path, candidates, specconfig):
