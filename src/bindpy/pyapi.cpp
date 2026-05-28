@@ -1,5 +1,6 @@
 #include "pyapi.h"
 #include "data.h"
+#include "psrfits.h"
 
 namespace py = pybind11;
 
@@ -235,6 +236,70 @@ void bind_filterbank(py::module &m) {
           throw py::value_error("Unsupported nbits value: " +
                                 std::to_string(nbits));
         }
+        }
+      });
+}
+
+void bind_psrfits(py::module &m) {
+  py::class_<PsrFits>(m, "PsrFits")
+      .def(py::init<>())
+      .def(py::init<const std::string &>())
+      .def("read_header", &PsrFits::read_header)
+      .def("read_data", &PsrFits::read_data)
+      .def("info", &PsrFits::info)
+      .def_readonly("filename", &PsrFits::filename)
+      .def_readonly("nchans", &PsrFits::nchans)
+      .def_readonly("nifs", &PsrFits::nifs)
+      .def_readonly("npol", &PsrFits::npol)
+      .def_readonly("nbits", &PsrFits::nbits)
+      .def_readonly("fch1", &PsrFits::fch1)
+      .def_readonly("foff", &PsrFits::foff)
+      .def_readonly("mjd", &PsrFits::mjd)
+      .def_readonly("tsamp", &PsrFits::tsamp)
+      .def_readonly("ndata", &PsrFits::ndata)
+      .def_readonly("nsubint", &PsrFits::nsubint)
+      .def_readonly("nsblk", &PsrFits::nsblk)
+      .def_property_readonly("data", [](PsrFits &fits) -> py::object {
+        switch (fits.nbits) {
+        case 8: {
+          auto data_ptr = fits.get_shared_ptr_data<uint8_t>();
+          auto capsule = py::capsule(new auto(data_ptr), [](void *p) {
+            delete static_cast<std::shared_ptr<uint8_t[]> *>(p);
+          });
+          vector<size_t> shape = {static_cast<size_t>(fits.ndata),
+                                  static_cast<size_t>(fits.nchans)};
+          vector<size_t> strides = {
+              static_cast<size_t>(fits.nchans) * sizeof(uint8_t),
+              sizeof(uint8_t)};
+          return py::array_t<uint8_t>(shape, strides, data_ptr.get(), capsule);
+        }
+        case 16: {
+          auto data_ptr = fits.get_shared_ptr_data<uint16_t>();
+          auto capsule = py::capsule(new auto(data_ptr), [](void *p) {
+            delete static_cast<std::shared_ptr<uint16_t[]> *>(p);
+          });
+          vector<size_t> shape = {static_cast<size_t>(fits.ndata),
+                                  static_cast<size_t>(fits.nchans)};
+          vector<size_t> strides = {
+              static_cast<size_t>(fits.nchans) * sizeof(uint16_t),
+              sizeof(uint16_t)};
+          return py::array_t<uint16_t>(shape, strides, data_ptr.get(), capsule);
+        }
+        case 32: {
+          auto data_ptr = fits.get_shared_ptr_data<uint32_t>();
+          auto capsule = py::capsule(new auto(data_ptr), [](void *p) {
+            delete static_cast<std::shared_ptr<uint32_t[]> *>(p);
+          });
+          vector<size_t> shape = {static_cast<size_t>(fits.ndata),
+                                  static_cast<size_t>(fits.nchans)};
+          vector<size_t> strides = {
+              static_cast<size_t>(fits.nchans) * sizeof(uint32_t),
+              sizeof(uint32_t)};
+          return py::array_t<uint32_t>(shape, strides, data_ptr.get(), capsule);
+        }
+        default:
+          throw py::value_error("Unsupported nbits value: " +
+                                std::to_string(fits.nbits));
         }
       });
 }

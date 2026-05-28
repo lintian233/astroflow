@@ -53,6 +53,8 @@ void bind_dedispersed_data_uint8(py::module &m, const char *class_name);
 
 void bind_filterbank(py::module &m);
 
+void bind_psrfits(py::module &m);
+
 void bind_rficonfig(py::module &m);
 
 void bind_iqrmcfg(py::module &m);

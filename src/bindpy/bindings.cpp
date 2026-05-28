@@ -2,6 +2,7 @@
 #include "data.h"
 #include "filterbank.h"
 #include "pyapi.h"
+#include "psrfits.h"
 #include <cstdint>
 #include <memory>
 #include <pybind11/numpy.h>
@@ -15,6 +16,7 @@ PYBIND11_MODULE(_astroflow_core, m) {
   bind_dedispersed_data<uint64_t>(m, "DedisperedData");
   bind_dedispersed_data_uint8(m, "DedispersedDataUint8");
   bind_filterbank(m);
+  bind_psrfits(m);
   bind_rficonfig(m);
   bind_iqrmcfg(m);
   bind_spectrum<uint8_t>(m, "Spectrum8");

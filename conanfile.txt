@@ -2,6 +2,7 @@
 pybind11/2.13.6
 gtest/1.16.0
 opencv/4.12.0   
+cfitsio/4.6.3
 
 [options]
 opencv/*:with_gtk=False

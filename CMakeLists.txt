@@ -65,6 +65,14 @@ message(STATUS "Python library: ${Python3_LIBRARIES}")
 find_package(CUDAToolkit)
 find_package(pybind11 REQUIRED CONFIG)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
+find_package(cfitsio REQUIRED CONFIG)
+if(TARGET cfitsio::cfitsio)
+  set(CFITSIO_TARGET cfitsio::cfitsio)
+elseif(TARGET CFITSIO::CFITSIO)
+  set(CFITSIO_TARGET CFITSIO::CFITSIO)
+else()
+  message(FATAL_ERROR "cfitsio package found, but no known cfitsio CMake target is available")
+endif()
 # 测试可选
 option(BUILD_TESTING "Build C++/CUDA tests with GTest" OFF)
 if(BUILD_TESTING)
@@ -181,6 +189,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
   CUDA::cudart_static
   pybind11::module
   Python3::Module
+  ${CFITSIO_TARGET}
   opencv_core
   opencv_imgproc
   opencv_imgcodecs
@@ -231,6 +240,7 @@ if(BUILD_TESTING)
   target_link_libraries(astroflow_test PRIVATE
     gtest::gtest
     pybind11::embed
+    ${CFITSIO_TARGET}
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
