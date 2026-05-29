@@ -154,6 +154,18 @@ class TaskConfig:
     #                 )
     #     else:
     #         raise ValueError("Invalid format for preprocess in config file.")
+    
+    @property
+    def psrfitsbackend(self):
+        psrfitsbackend = self._config_data.get("psrfitsbackend")
+        if psrfitsbackend is None:
+            psrfitsbackend = "cpp"
+        if not isinstance(psrfitsbackend, str):
+            raise ValueError("psrfitsbackend must be a string.")
+        if psrfitsbackend not in ["cpp", "python"]:
+            raise ValueError("psrfitsbackend must be either 'cpp' or 'python'.")
+        return psrfitsbackend
+    
     @property
     def gencand(self):
         gencand = self._config_data.get("gencand")

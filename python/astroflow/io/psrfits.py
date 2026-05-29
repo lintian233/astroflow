@@ -6,6 +6,7 @@ import time
 from .. import _astroflow_core as _astro_core  # type: ignore
 
 from .data import SpectrumBase, Header, SpectrumType
+from ..config import TaskConfig
 
 
 def iotimeit(func):
@@ -38,15 +39,18 @@ class PsrFits(SpectrumBase):
     
     @iotimeit
     def _load_data(self):
-        try:
-            # 尝试使用C++核心库
-            self._load_data_cpp()
-        except Exception as e:
-            # 回退到Python版本
-            print(f"[INFO] Falling back to Python implementation")
+        taskconfig = TaskConfig()
+        if taskconfig.psrfitsbackend == "cpp":
+            try:
+                self._load_data_cpp()
+            except Exception as e:
+                print(f"[Warning] C++ backend failed with error: {e}. Falling back to Python implementation.")
+                self._use_fallback = True
+                self._load_data_python()
+        else:
             self._use_fallback = True
             self._load_data_python()
-
+        
     def _load_data_cpp(self):
         """使用C++核心库加载PSRFITS文件"""
         self._core_instance = _astro_core.PsrFits(self.filename)
