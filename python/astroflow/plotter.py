@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+from collections.abc import Mapping, Sequence
 
 from .dmtime import DmTime
 from .plotting.analysis import calculate_frb_snr
@@ -19,6 +20,12 @@ from .plotting.types import (
     ensure_dmt_config,
     ensure_spec_config,
 )
+
+
+def _init_plot_worker(taskconfig_snapshot):
+    from .config.taskconfig import TaskConfig
+
+    TaskConfig.initialize_from_snapshot(taskconfig_snapshot)
 
 
 def error_tracer(func):
@@ -40,7 +47,12 @@ class PlotterManager:
         self.onlycand = taskconfig.onlycand
         self.fastcand = taskconfig.fastcand
         self.max_worker = 1 if self.onlycand or self.fastcand else max_worker
-        self.pool = multiprocessing.Pool(self.max_worker)
+        ctx = multiprocessing.get_context("spawn")
+        self.pool = ctx.Pool(
+            self.max_worker,
+            initializer=_init_plot_worker,
+            initargs=(taskconfig.snapshot(),),
+        )
         self.dmtconfig = ensure_dmt_config(dmtconfig)
         self.specconfig = ensure_spec_config(specconfig)
         self.speconfig = self.specconfig
@@ -48,14 +60,17 @@ class PlotterManager:
     def pack_background(self, dmt: DmTime, candinfo, save_path, file_path):
         if self.onlycand or self.fastcand:
             return
+        candinfo = _to_pickle_safe(candinfo)
         self.pool.apply_async(_pack_background, args=(dmt, candinfo, save_path, file_path))
 
     def pack_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
         if self.onlycand or self.fastcand:
             return
+        candinfo = _to_pickle_safe(candinfo)
         self.pool.apply_async(_pack_candidate, args=(dmt, candinfo, save_path, file_path))
 
     def plot_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
+        candinfo = _to_pickle_safe(candinfo)
         if self.fastcand:
             self.pool.apply_async(
                 _save_fast_candidate_info_for_path,
@@ -74,6 +89,7 @@ class PlotterManager:
         )
 
     def plot_candidates_for_file(self, file_path, candidates, dpi=100):
+        candidates = _to_pickle_safe(candidates)
         if self.fastcand:
             self.pool.apply_async(
                 _save_fast_candidate_info_for_path,
@@ -135,7 +151,36 @@ def close_plot_sessions():
 
 
 def _strip_fastcand_candidates(candidates):
-    return [(None, candinfo, save_path) for _dmt, candinfo, save_path in candidates]
+    return [(None, _to_pickle_safe(candinfo), save_path) for _dmt, candinfo, save_path in candidates]
+
+
+def _to_pickle_safe(value):
+    try:
+        import numpy as np
+    except Exception:
+        np = None
+    try:
+        import torch
+    except Exception:
+        torch = None
+
+    if torch is not None and isinstance(value, torch.Tensor):
+        if value.numel() == 1:
+            return value.detach().cpu().item()
+        return value.detach().cpu().numpy().tolist()
+    if np is not None and isinstance(value, np.generic):
+        return value.item()
+    if np is not None and isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, Mapping):
+        return {key: _to_pickle_safe(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_to_pickle_safe(item) for item in value)
+    if isinstance(value, list):
+        return [_to_pickle_safe(item) for item in value]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return type(value)(_to_pickle_safe(item) for item in value)
+    return value
 
 
 __all__ = [

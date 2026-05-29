@@ -1,4 +1,5 @@
 import os
+import copy
 from sympy import preorder_traversal
 import yaml
 import urllib.request
@@ -32,6 +33,26 @@ class TaskConfig:
         self._config_data = self._load_config()
         cputhread = self._config_data.get("cputhread", 16)
         os.environ['OMP_NUM_THREADS'] = f'{cputhread}'
+
+    def snapshot(self):
+        """Return a pickle-safe copy of this config for spawned workers."""
+        return {
+            "config_file": self.config_file,
+            "config_data": copy.deepcopy(self._config_data),
+        }
+
+    @classmethod
+    def initialize_from_snapshot(cls, snapshot):
+        """Initialize the process-local singleton from a parent-process snapshot."""
+        instance = cls.__new__(cls)
+        instance._initialized = True
+        instance._rficonfig = None
+        instance._iqrmcfg = None
+        instance.config_file = snapshot.get("config_file")
+        instance._config_data = copy.deepcopy(snapshot["config_data"])
+        cputhread = instance._config_data.get("cputhread", 16)
+        os.environ["OMP_NUM_THREADS"] = f"{cputhread}"
+        return instance
         
     def _load_config(self):
         # 定义默认配置，直接写死在代码里

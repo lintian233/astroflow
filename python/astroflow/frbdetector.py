@@ -18,6 +18,18 @@ from .model.centernetutils import get_res
 from .spectrum import Spectrum
 
 
+def _scalar(value):
+    if isinstance(value, torch.Tensor):
+        return float(value.detach().cpu().item())
+    if isinstance(value, np.generic):
+        return value.item()
+    return float(value)
+
+
+def _round_scalar(value, ndigits=3):
+    return round(_scalar(value), ndigits)
+
+
 class FrbDetector(ABC):
     def __init__(self, dm_limt, preprocess, confidence=0.5):
         self.confidence = confidence
@@ -131,22 +143,22 @@ class Yolo11nFrbDetector(FrbDetector):
                 for box, conf in zip(xywh, confidences):
                     x, y, w, h = box
                     # 直接使用x, y坐标，无需计算left, top, right, bottom
-                    x_norm = np.round(x.cpu() / 512, 2)
-                    y_norm = np.round(y.cpu() / 512, 2)
-                    w_norm = np.round(w.cpu() / 512, 2)
-                    h_norm = np.round(h.cpu() / 512, 2)
+                    x_norm = _round_scalar(x / 512, 2)
+                    y_norm = _round_scalar(y / 512, 2)
+                    w_norm = _round_scalar(w / 512, 2)
+                    h_norm = _round_scalar(h / 512, 2)
 
                     t_len = dmt.tend - dmt.tstart
 
-                    dm = y.cpu() * (dmt.dm_high - dmt.dm_low) / 512 + dmt.dm_low
+                    dm = _scalar(y) * (dmt.dm_high - dmt.dm_low) / 512 + dmt.dm_low
                     dm_flag = self.check_dm(dm)
 
-                    toa = x.cpu() * (t_len / 512) + dmt.tstart
-                    toa = np.round(toa.item(), 3)
-                    dm = np.round(dm.item(), 3)
+                    toa = _scalar(x) * (t_len / 512) + dmt.tstart
+                    toa = round(toa, 3)
+                    dm = round(dm, 3)
                     # print(f"DM: {dm}, TOA: {toa}")
                     if dm_flag:
-                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index, (x_norm, y_norm, w_norm, h_norm), {"confidence": round(conf.item(), 4)}])
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, dmt_index, (x_norm, y_norm, w_norm, h_norm), {"confidence": _round_scalar(conf, 4)}])
     
     @override
     def detect(self, dmt: DmTime):
@@ -165,15 +177,15 @@ class Yolo11nFrbDetector(FrbDetector):
                     # 直接使用x, y坐标，无需计算left, top, right, bottom
                     t_len = dmt.tend - dmt.tstart
                     # 直接使用y坐标计算dm
-                    dm = y * (dmt.dm_high - dmt.dm_low) / 512 + dmt.dm_low
+                    dm = _scalar(y) * (dmt.dm_high - dmt.dm_low) / 512 + dmt.dm_low
                     dm_flag = self.check_dm(dm)
 
                     # 直接使用x坐标计算toa
-                    toa = x * (t_len / 512) + dmt.tstart
-                    toa = np.round(toa, 3)
-                    dm = np.round(dm, 3)
+                    toa = _scalar(x) * (t_len / 512) + dmt.tstart
+                    toa = round(toa, 3)
+                    dm = round(dm, 3)
                     if dm_flag:
-                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, {"confidence": round(conf.item(), 4)}])
+                        candidate.append([dm, toa, dmt.freq_start, dmt.freq_end, {"confidence": _round_scalar(conf, 4)}])
         return candidate
 
 
