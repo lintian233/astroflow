@@ -6,7 +6,7 @@ This dataset comprises observations containing known FRBs with precursor emissio
 
 ## Prerequisites
 
-- **AstroFlow Installation**: Ensure `astroflow` is installed and executable. See the [installation guide](./README.md#methods).
+- **AstroFlow Installation**: Ensure `astroflow` is installed and executable. See the [installation guide](./installation.md).
 - **Disk Space**: Approximately **200 GB** of free disk space is required for the dataset.
 - **Dependencies**: `wget` and standard Unix command-line tools.
 
@@ -87,7 +87,7 @@ dedgpu: 0                 # GPU device ID for dedispersion
 detgpu: 0                 # GPU device ID for AI detection (use a different ID for multi-GPU)
 cputhread: 32             # Number of CPU threads for I/O and pre-processing
 plotworker: 2            # Number of parallel processes for generating candidate plots
-# onlycand: True          # Optional: Disable candidate plotting for benchmarking (reduces I/O) (TestPypi current)
+# onlycand: True          # Optional: disable candidate plotting for benchmarking (reduces I/O)
 
 # --- Detection Parameters ---
 modelname: yolov11n       # AI model for detection.
@@ -147,7 +147,7 @@ specconfig:
   savetype: png # optional: image format png/jpg
 ```
 
-Optional spectrum controls give you finer control over the plotting step—comment out any of the extra lines above to fall back to the defaults baked into the plotter.
+Optional spectrum controls provide finer control over candidate visualization. Remove any optional line to use the default plotting behavior.
 
 **Key Parameter Explanations:**
 - **`mode: dataset`**: This mode is designed to process a list of data files. It performs a blind search on each file and then uses the ground truth information (DM, time) from the `candpath` file to automatically classify the detected candidates (e.g., as `candidate`, `detect`, or `background`) and calculate performance metrics. It is ideal for validation, performance testing, and characterization of the pipeline.
@@ -192,8 +192,6 @@ Here is a detailed explanation of each directory's contents:
 -   **`candidate/`**: Contains candidates where both the DM and TOA **match** the ground truth from the input candidate list. These represent the successfully recovered known pulses.
 -   **`detect/`**: Contains newly detected pulses where the DM **matches** a known source, but the TOA does **not**. These could be previously unknown pulses from the same source.
 -   **`frb/`**: Contains a curated dataset constructed from the high-confidence detections. This data is structured to be suitable for **fine-tuning** the AI detection model with new, real-world examples.
-
-
 
 
 

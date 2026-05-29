@@ -1,0 +1,87 @@
+body {
+  color: #222;
+  font-family: "Times New Roman", Times, serif;
+}
+
+div.body,
+div.sphinxsidebar,
+div.related,
+div.footer {
+  font-family: "Times New Roman", Times, serif;
+}
+
+div.body {
+  max-width: 940px;
+}
+
+div.body h1 {
+  font-size: 2.25rem;
+  letter-spacing: 0;
+}
+
+div.body h2 {
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.25rem;
+}
+
+div.body p,
+div.body li {
+  line-height: 1.65;
+}
+
+div.sphinxsidebarwrapper h1.logo {
+  font-size: 1.7rem;
+  line-height: 1.2;
+}
+
+div.sphinxsidebarwrapper p.blurb {
+  color: #555;
+  line-height: 1.45;
+}
+
+div.sphinxsidebarwrapper ul {
+  line-height: 1.55;
+}
+
+table.docutils {
+  border: 1px solid #e5e7eb;
+  border-collapse: collapse;
+  font-size: 0.96rem;
+  table-layout: auto;
+  width: 100%;
+}
+
+table.docutils th {
+  background: #f6f8fa;
+}
+
+table.docutils td,
+table.docutils th {
+  border: 1px solid #e5e7eb;
+  padding: 0.62rem 0.8rem;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+table.docutils td:nth-child(1),
+table.docutils th:nth-child(1),
+table.docutils td:nth-child(2),
+table.docutils th:nth-child(2),
+table.docutils td:nth-child(3),
+table.docutils th:nth-child(3),
+table.docutils td:nth-child(4),
+table.docutils th:nth-child(4) {
+  white-space: nowrap;
+}
+
+table.docutils td:last-child,
+table.docutils th:last-child {
+  white-space: normal;
+}
+
+code.literal {
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 0.05rem 0.25rem;
+}

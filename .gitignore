@@ -34,6 +34,7 @@ ql/*
 *.txt
 *.csv
 *.yaml
+!.readthedocs.yaml
 **/*png
 astroflow_pulse/*
 frb180417/*

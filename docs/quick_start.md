@@ -44,7 +44,7 @@ cputhread: 8              # CPU workers (I/O, prep)
 
 plotworker: 1             # Plotting workers
 
-modelname: yolov11n       # Detection model (current: yolov11n)
+modelname: yolov11n       # Detection model; currently only yolov11n is supported
 
 # maskfile: none.txt      # RFI mask file (or  disable)
 gencand: true             # generate candidate info csv file
@@ -137,9 +137,10 @@ display frb180417/detect/*.png
 
 You should see png like:
 
-<div align="center">
-  <img src="./frb180417.png" width="100%" />
-</div>
+```{image} frb180417.png
+:alt: FRB180417 candidate plot
+:width: 100%
+```
 
 ---
 
