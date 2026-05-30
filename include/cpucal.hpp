@@ -197,7 +197,18 @@ dedispered_fil_omp(Filterbank &fil, float dm_low, float dm_high,
   result.filname = fil.filename;
   result.dm_ndata = dm_steps;
 
-  return preprocess_dedisperseddata(result, 512);
+  dedisperseddata_uint8 processed = preprocess_dedisperseddata(result, 512);
+  processed.tstarts.resize(total_slices);
+  processed.tends.resize(total_slices);
+  for (size_t slice_idx = 0; slice_idx < total_slices; ++slice_idx) {
+    const size_t start = slice_idx * samples_per_tsample;
+    const size_t end =
+        std::min(start + samples_per_tsample, static_cast<size_t>(fil.ndata));
+    processed.tstarts[slice_idx] = static_cast<float>(start) * fil.tsamp;
+    processed.tends[slice_idx] = static_cast<float>(end) * fil.tsamp;
+  }
+
+  return processed;
 }
 
 template <typename T>

@@ -51,6 +51,8 @@ struct Header {
 
 struct dedisperseddata_uint8 {
   std::vector<std::shared_ptr<uint8_t[]>> dm_times;
+  std::vector<float> tstarts;
+  std::vector<float> tends;
 
   std::vector<size_t> shape;
 
@@ -326,11 +328,15 @@ preprocess_dedisperseddata(const dedisperseddata& in,
     /* ---------- 预分配输出容器 ---------- */
     const size_t n_frames = in.dm_times.size();
     out.dm_times.resize(n_frames);
+    out.tstarts.resize(n_frames);
+    out.tends.resize(n_frames);
 
     /* ---------- OpenMP 并行处理 ---------- */
 #pragma omp parallel for schedule(dynamic)
     for (ptrdiff_t idx = 0; idx < static_cast<ptrdiff_t>(n_frames); ++idx)
     {
+        out.tstarts[idx] = static_cast<float>(idx) * in.tsample;
+        out.tends[idx] = static_cast<float>(idx + 1) * in.tsample;
         const auto& frame_ptr = in.dm_times[idx];
 
         /* 1) uint64 → float32  (并行像素拷贝) */
@@ -400,11 +406,15 @@ preprocess_typed_dedisperseddata(const DedispersedDataTyped<dedispersion_output_
     /* ---------- 预分配输出容器 ---------- */
     const size_t n_frames = in.dm_times.size();
     out.dm_times.resize(n_frames);
+    out.tstarts.resize(n_frames);
+    out.tends.resize(n_frames);
 
     /* ---------- OpenMP 并行处理 ---------- */
 #pragma omp parallel for schedule(dynamic)
     for (ptrdiff_t idx = 0; idx < static_cast<ptrdiff_t>(n_frames); ++idx)
     {
+        out.tstarts[idx] = static_cast<float>(idx) * in.tsample;
+        out.tends[idx] = static_cast<float>(idx + 1) * in.tsample;
         const auto& frame_ptr = in.dm_times[idx];
         using OutputType = dedispersion_output_t<InputType>;
 
@@ -474,11 +484,15 @@ preprocess_dedisperseddata_original(const dedisperseddata& in,
     /* ---------- 预分配输出容器 ---------- */
     const size_t n_frames = in.dm_times.size();
     out.dm_times.resize(n_frames);
+    out.tstarts.resize(n_frames);
+    out.tends.resize(n_frames);
 
     /* ---------- OpenMP 并行处理 ---------- */
 #pragma omp parallel for schedule(dynamic)
     for (ptrdiff_t idx = 0; idx < static_cast<ptrdiff_t>(n_frames); ++idx)
     {
+        out.tstarts[idx] = static_cast<float>(idx) * in.tsample;
+        out.tends[idx] = static_cast<float>(idx + 1) * in.tsample;
         const auto& frame_ptr = in.dm_times[idx];
 
         /* 1) uint64 → float32  (并行像素拷贝) */
@@ -562,6 +576,8 @@ preprocess_dedisperseddata_with_slicing(const dedisperseddata& in, Header header
 
     /* ---------- 预分配输出容器 ---------- */
     out.dm_times.resize(num_slices);
+    out.tstarts.resize(num_slices);
+    out.tends.resize(num_slices);
 
     // 获取原始数据指针
     const uint64_t* raw_data = in.dm_times[0].get();
@@ -574,6 +590,8 @@ preprocess_dedisperseddata_with_slicing(const dedisperseddata& in, Header header
         const int start_col = slice_idx * samples_per_slice;
         const int end_col = std::min(start_col + samples_per_slice, src_cols);
         const int actual_slice_cols = end_col - start_col;
+        out.tstarts[slice_idx] = static_cast<float>(start_col) * downsampled_tsamp;
+        out.tends[slice_idx] = static_cast<float>(end_col) * downsampled_tsamp;
 
         // printf("Processing slice %td: columns [%d, %d), actual width: %d\n", 
         //        slice_idx, start_col, end_col, actual_slice_cols);
@@ -644,14 +662,16 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     // 计算切片参数
     const float downsampled_tsamp = header.tsamp * time_downsample;
     const float total_time = static_cast<float>(src_cols) * downsampled_tsamp;
-    const size_t samples_per_slice = static_cast<size_t>(slice_duration / downsampled_tsamp);
-    const size_t num_slices = (src_cols + samples_per_slice - 1) / samples_per_slice;
+    const float step_duration = slice_duration * 0.9f;
+    const size_t samples_per_slice = std::max<size_t>(1, static_cast<size_t>(slice_duration / downsampled_tsamp));
+    const size_t samples_per_step = std::max<size_t>(1, static_cast<size_t>(step_duration / downsampled_tsamp));
+    const size_t num_slices = (src_cols + samples_per_step - 1) / samples_per_step;
     
     // printf("Typed data - Downsampled tsamp: %.6f s, Total time: %.3f s, Samples per slice: %zu, Number of slices: %zu\n", 
     //        downsampled_tsamp, total_time, samples_per_slice, num_slices);
     #ifdef AF_DEBUG
-    printf("[INFO]: INPUT SHAPE = [%zu, %zu], T: %.3f s, SDM1: %zu, ST2: %zu, N: %zu\n",
-           src_rows, src_cols, total_time, src_rows, samples_per_slice, num_slices);
+    printf("[INFO]: INPUT SHAPE = [%zu, %zu], T: %.3f s, SDM1: %zu, ST2: %zu, STEP: %zu, N: %zu\n",
+           src_rows, src_cols, total_time, src_rows, samples_per_slice, samples_per_step, num_slices);
     #endif
 
     /* ---------- 元数据填充 ---------- */
@@ -670,6 +690,8 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
 
     /* ---------- 预分配输出容器 ---------- */
     out.dm_times.resize(num_slices);
+    out.tstarts.resize(num_slices);
+    out.tends.resize(num_slices);
 
     // 获取原始数据指针
     using OutputType = dedispersion_output_t<InputType>;
@@ -680,9 +702,11 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     for (ptrdiff_t slice_idx = 0; slice_idx < static_cast<ptrdiff_t>(num_slices); ++slice_idx)
     {
         // 计算当前切片的时间范围
-        const size_t start_col = static_cast<size_t>(slice_idx) * samples_per_slice;
+        const size_t start_col = static_cast<size_t>(slice_idx) * samples_per_step;
         const size_t end_col = std::min(start_col + samples_per_slice, src_cols);
         const size_t actual_slice_cols = end_col - start_col;
+        out.tstarts[slice_idx] = static_cast<float>(start_col) * downsampled_tsamp;
+        out.tends[slice_idx] = static_cast<float>(end_col) * downsampled_tsamp;
 
         /* 1) 提取切片并转换为 float32 */
         cv::Mat1f slice32(static_cast<int>(src_rows), static_cast<int>(actual_slice_cols));
@@ -776,6 +800,8 @@ preprocess_dedisperseddata_with_slicing_original(const dedisperseddata& in, Head
 
     /* ---------- 预分配输出容器 ---------- */
     out.dm_times.resize(num_slices);
+    out.tstarts.resize(num_slices);
+    out.tends.resize(num_slices);
 
     // 获取原始数据指针
     const uint64_t* raw_data = in.dm_times[0].get();
@@ -788,6 +814,8 @@ preprocess_dedisperseddata_with_slicing_original(const dedisperseddata& in, Head
         const int start_col = slice_idx * samples_per_slice;
         const int end_col = std::min(start_col + samples_per_slice, src_cols);
         const int actual_slice_cols = end_col - start_col;
+        out.tstarts[slice_idx] = static_cast<float>(start_col) * downsampled_tsamp;
+        out.tends[slice_idx] = static_cast<float>(end_col) * downsampled_tsamp;
 
         // printf("Processing slice %td: columns [%d, %d), actual width: %d\n", 
         //        slice_idx, start_col, end_col, actual_slice_cols);

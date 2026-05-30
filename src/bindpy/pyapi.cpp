@@ -92,6 +92,8 @@ void bind_dedispersed_data_uint8(py::module &m, const char *class_name = "Dedisp
         .def_readonly("dm_high",             &Data::dm_high)
         .def_readonly("dm_step",             &Data::dm_step)
         .def_readonly("tsample",             &Data::tsample)
+        .def_readonly("tstarts",             &Data::tstarts)
+        .def_readonly("tends",               &Data::tends)
         .def_readonly("filname",             &Data::filname);
 }
 
