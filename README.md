@@ -11,10 +11,10 @@
     <img src="https://static.pepy.tech/badge/pulseflow" alt="Downloads"></a>
   <a href="https://hub.docker.com/r/lintian233/astroflow-build">
     <img src="https://img.shields.io/docker/pulls/lintian233/astroflow-build" alt="Docker pulls"></a>
+  <a href="https://lintian233.github.io/astroflow/">
+    <img src="https://img.shields.io/badge/Documentation-online-blue" alt="Documentation"></a>
   <a href="https://github.com/lintian233/astroflow/issues">
     <img src="https://img.shields.io/badge/contributions-welcome-green" alt="Contributions welcome"></a>
-  <a href="https://github.com/lintian233/astroflow/actions/workflows/docs.yml">
-    <img src="https://github.com/lintian233/astroflow/actions/workflows/docs.yml/badge.svg" alt="Documentation deployment"></a>
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/lintian233/astroflow" alt="License"></a>
 </p>
@@ -23,8 +23,12 @@
 
 AstroFlow is an end-to-end search pipeline for radio single pulses and fast radio bursts (FRBs). It combines CUDA-accelerated dedispersion, RFI mitigation, AI-assisted candidate detection, and publication-ready candidate visualization in a YAML-configured command-line workflow. The pipeline supports FILTERBANK (`.fil`) and PSRFITS (`.fits`) observations and is designed for high-throughput offline or near-real-time searches.
 
-> [!NOTE]
-> Full documentation is available in the Sphinx manual under [`docs/`](./docs/index.md).
+<div align="center">
+  <p>
+    <strong>Documentation:</strong>
+    <a href="https://lintian233.github.io/astroflow/">https://lintian233.github.io/astroflow/</a>
+  </p>
+</div>
 
 <div align="center">
   <img src="./docs/arch.png" width="100%" alt="AstroFlow architecture" />
@@ -44,7 +48,10 @@ Python 3.10 to 3.12 is recommended.
 pip install pulseflow
 ```
 
-Documentation will be published at [https://lintian233.github.io/astroflow/](https://lintian233.github.io/astroflow/).
+<p>
+  <strong>Read the full documentation:</strong>
+  <a href="https://lintian233.github.io/astroflow/">https://lintian233.github.io/astroflow/</a>
+</p>
 
 <details>
   <summary>Source Build</summary>
@@ -88,14 +95,9 @@ If AstroFlow is useful in your research, please cite:
 - Expand automated test coverage.
 
 ## Community
-
-Use [Issues](https://github.com/lintian233/astroflow/issues) for bug reports and feature requests, and [Discussions](https://github.com/lintian233/astroflow/discussions) for general questions.
-
-<div align="center">
-  <a href="https://github.com/lintian233/astroflow/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=lintian233/astroflow" alt="AstroFlow contributors" />
-  </a>
-</div>
+<a href="https://github.com/lintian233/astroflow/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=lintian233/astroflow" alt="AstroFlow contributors" width="48" />
+</a>
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/b68167f9b82d6200ed0da3f95fa021d1d989d978.svg)
 

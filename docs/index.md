@@ -7,7 +7,7 @@ AstroFlow is a GPU-accelerated single-pulse and fast radio burst search pipeline
 :width: 100%
 ```
 
-This is the official AstroFlow manual. The latest source version can be found at [github.com/lintian233/astroflow](https://github.com/lintian233/astroflow).
+This is the official AstroFlow manual. The online documentation is published at [lintian233.github.io/astroflow](https://lintian233.github.io/astroflow/), and the latest source version can be found at [github.com/lintian233/astroflow](https://github.com/lintian233/astroflow).
 
 ## Contents
 
@@ -38,6 +38,7 @@ If AstroFlow is useful in your research, cite:
 
 ## Project Links
 
-- Source: https://github.com/lintian233/astroflow
-- Issues: https://github.com/lintian233/astroflow/issues
-- Discussions: https://github.com/lintian233/astroflow/discussions
+- Documentation: [https://lintian233.github.io/astroflow/](https://lintian233.github.io/astroflow/)
+- Source: [https://github.com/lintian233/astroflow](https://github.com/lintian233/astroflow)
+- Issues: [https://github.com/lintian233/astroflow/issues](https://github.com/lintian233/astroflow/issues)
+- Discussions: [https://github.com/lintian233/astroflow/discussions](https://github.com/lintian233/astroflow/discussions)
