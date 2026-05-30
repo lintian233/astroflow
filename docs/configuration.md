@@ -85,8 +85,8 @@ specconfig:
 | `candpath` | string | Dataset mode only | none | Candidate CSV path for ground-truth matching in `dataset` mode. |
 | `psrfitsbackend` | string | No | `cpp` | PSRFITS reader backend. One of `cpp`, `python`. |
 | `gencand` | boolean | No | `false` | Write `astroflow_cands.csv` candidate summaries beside candidate outputs. |
-| `onlycand` | boolean | No | `false` | Save candidate metrics without generating full candidate plots. Useful for benchmarks. |
-| `fastcand` | boolean | No | `false` | Use the faster candidate-output path and reduce plotting worker usage. |
+| `onlycand` | boolean | No | `false` | Save candidate metrics without generating full candidate plots. Useful when metrics are needed but image products are not. |
+| `fastcand` | boolean | No | `false` | Use the lightweight candidate-output path and reduce plotting overhead. Recommended for high-throughput benchmarks. |
 | `include_last` | boolean | No | `false` | Include the final partial processing chunk when enabled. |
 | `minfileage` | number | No | `0` | In monitor mode, only process files older than this many seconds. Helps avoid reading files that are still being written. |
 

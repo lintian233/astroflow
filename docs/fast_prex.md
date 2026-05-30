@@ -87,7 +87,9 @@ dedgpu: 0                 # GPU device ID for dedispersion
 detgpu: 0                 # GPU device ID for AI detection (use a different ID for multi-GPU)
 cputhread: 32             # Number of CPU threads for I/O and pre-processing
 plotworker: 2            # Number of parallel processes for generating candidate plots
-# onlycand: True          # Optional: disable candidate plotting for benchmarking (reduces I/O)
+# fastcand: True          # Optional: disable candidate plotting for benchmarking (reduces I/O, for perfomance test)
+
+psrfitsbackend: python   # for fast-prex 
 
 # --- Detection Parameters ---
 modelname: yolov11n       # AI model for detection.
