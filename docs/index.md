@@ -41,4 +41,3 @@ If AstroFlow is useful in your research, cite:
 - Documentation: [https://lintian233.github.io/astroflow/](https://lintian233.github.io/astroflow/)
 - Source: [https://github.com/lintian233/astroflow](https://github.com/lintian233/astroflow)
 - Issues: [https://github.com/lintian233/astroflow/issues](https://github.com/lintian233/astroflow/issues)
-- Discussions: [https://github.com/lintian233/astroflow/discussions](https://github.com/lintian233/astroflow/discussions)
