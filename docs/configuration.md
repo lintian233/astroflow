@@ -24,6 +24,7 @@ modelname: yolov11n
 confidence: 0.4
 timedownfactor: 1
 gencand: true
+savedmt: false
 
 rfi:
   use_mask: false
@@ -87,6 +88,7 @@ specconfig:
 | `gencand` | boolean | No | `false` | Write `astroflow_cands.csv` candidate summaries beside candidate outputs. |
 | `onlycand` | boolean | No | `false` | Save candidate metrics without generating full candidate plots. Useful when metrics are needed but image products are not. |
 | `fastcand` | boolean | No | `false` | Use the lightweight candidate-output path and reduce plotting overhead. Recommended for high-throughput benchmarks. |
+| `savedmt` | boolean | No | `false` | Save detected candidate DMT images and label files for model finetune. |
 | `include_last` | boolean | No | `false` | Include the final partial processing chunk when enabled. |
 | `minfileage` | number | No | `0` | In monitor mode, only process files older than this many seconds. Helps avoid reading files that are still being written. |
 

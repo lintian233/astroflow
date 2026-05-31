@@ -662,7 +662,7 @@ preprocess_typed_dedisperseddata_with_slicing(const DedispersedDataTyped<dedispe
     // 计算切片参数
     const float downsampled_tsamp = header.tsamp * time_downsample;
     const float total_time = static_cast<float>(src_cols) * downsampled_tsamp;
-    const float step_duration = slice_duration * 0.9f;
+    const float step_duration = slice_duration * 0.8f;
     const size_t samples_per_slice = std::max<size_t>(1, static_cast<size_t>(slice_duration / downsampled_tsamp));
     const size_t samples_per_step = std::max<size_t>(1, static_cast<size_t>(step_duration / downsampled_tsamp));
     const size_t num_slices = (src_cols + samples_per_step - 1) / samples_per_step;

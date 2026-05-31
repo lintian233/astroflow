@@ -46,6 +46,7 @@ class PlotterManager:
         taskconfig = TaskConfig()
         self.onlycand = taskconfig.onlycand
         self.fastcand = taskconfig.fastcand
+        self.savedmt = taskconfig.savedmt
         self.max_worker = 1 if self.onlycand or self.fastcand else max_worker
         ctx = multiprocessing.get_context("spawn")
         self.pool = ctx.Pool(
@@ -64,7 +65,7 @@ class PlotterManager:
         self.pool.apply_async(_pack_background, args=(dmt, candinfo, save_path, file_path))
 
     def pack_candidate(self, dmt: DmTime, candinfo, save_path, file_path):
-        if self.onlycand or self.fastcand:
+        if not self.savedmt:
             return
         candinfo = _to_pickle_safe(candinfo)
         self.pool.apply_async(_pack_candidate, args=(dmt, candinfo, save_path, file_path))

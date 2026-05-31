@@ -634,7 +634,7 @@ class MultiViewImageGenerator:
         """
         Choose t_sample so dedisperse_spec's sliding chunks place TOA near a target fraction.
 
-        dedisperse_spec creates chunks [idx * 0.9 * t_sample, idx * 0.9 * t_sample + t_sample].
+        dedisperse_spec creates chunks [idx * 0.8 * t_sample, idx * 0.8 * t_sample + t_sample].
         This method adjusts t_sample to position the pulse near a target fraction
         within its chunk (e.g., 0.25 = 25% into the chunk, 0.75 = 75% into).
         
@@ -650,18 +650,18 @@ class MultiViewImageGenerator:
         
         Algorithm:
             For chunk idx containing toa_inject with target_fraction f:
-                toa_inject = (idx * 0.9 + f) * t_sample
-                t_sample = toa_inject / (idx * 0.9 + f)
+                toa_inject = (idx * 0.8 + f) * t_sample
+                t_sample = toa_inject / (idx * 0.8 + f)
             Searches idx ± 10 to find closest match to preferred_span.
         """
         if toa_inject <= 0 or preferred_span <= 0:
             return preferred_span
 
         target_fraction = float(np.clip(target_fraction, 0.05, 0.95))
-        approx_idx = max(int(toa_inject / (0.9 * preferred_span)), 0)
+        approx_idx = max(int(toa_inject / (0.8 * preferred_span)), 0)
         candidates = []
         for idx in range(max(0, approx_idx - 10), approx_idx + 11):
-            denom = idx * 0.9 + target_fraction
+            denom = idx * 0.8 + target_fraction
             if denom <= 0:
                 continue
             t_sample = toa_inject / denom

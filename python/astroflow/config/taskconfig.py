@@ -69,6 +69,7 @@ class TaskConfig:
             ],
             "confidence": 0.5,
             "fastcand": False,
+            "savedmt": False,
             "dedgpu": 0,
             "detgpu": 0,
             "rfi": {
@@ -202,6 +203,15 @@ class TaskConfig:
         if not isinstance(fastcand, bool):
             raise ValueError("fastcand must be a boolean.")
         return fastcand
+
+    @property
+    def savedmt(self):
+        savedmt = self._config_data.get("savedmt")
+        if savedmt is None:
+            savedmt = False
+        if not isinstance(savedmt, bool):
+            raise ValueError("savedmt must be a boolean.")
+        return savedmt
 
     def get_model(self):
         model_url_path = "https://github.com/lintian233/astroflow/releases/download/v0.1.1/yolo11n_0816_v1.pt"
