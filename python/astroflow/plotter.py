@@ -59,7 +59,7 @@ class PlotterManager:
         self.speconfig = self.specconfig
 
     def pack_background(self, dmt: DmTime, candinfo, save_path, file_path):
-        if self.onlycand or self.fastcand:
+        if not self.savedmt:
             return
         candinfo = _to_pickle_safe(candinfo)
         self.pool.apply_async(_pack_background, args=(dmt, candinfo, save_path, file_path))
