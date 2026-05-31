@@ -90,6 +90,7 @@ plotworker: 2            # Number of parallel processes for generating candidate
 # fastcand: True          # Optional: disable candidate plotting for benchmarking (reduces I/O, for perfomance test)
 
 psrfitsbackend: python   # for fast-prex 
+savedmt: True            # for finetune
 
 # --- Detection Parameters ---
 modelname: yolov11n       # AI model for detection.
@@ -134,8 +135,6 @@ freqrange:
 dmtconfig:
   minpercentile: 0
   maxpercentile: 100
-  meadianbulr: 1 3
-  guassion: 1 5
 
 specconfig:
   minpercentile: 0    
@@ -146,7 +145,7 @@ specconfig:
   norm: False   # optional: per-subband normalization (default true)
   subfreq: 256 # optional: number of subbands (default 128)
   subtsamp: 4  # optional: time binning factor (default 4)
-  savetype: png # optional: image format png/jpg
+  savetype: jpg # optional: image format png/jpg
 ```
 
 Optional spectrum controls provide finer control over candidate visualization. Remove any optional line to use the default plotting behavior.
