@@ -4,6 +4,8 @@ This tutorial provides a comprehensive, step-by-step guide to processing the FAS
 
 This dataset comprises observations containing known FRBs with precursor emissions, making it an excellent validation set for single-pulse and FRB search pipelines.
 
+**In the full FAST PREX test workflow, AstroFlow also found more than 30 new or weak pulse candidates that were not included in the input reference table.**
+
 ## Prerequisites
 
 - **AstroFlow Installation**: Ensure `astroflow` is installed and executable. See the [installation guide](./installation.md).
@@ -94,7 +96,7 @@ savedmt: True            # for finetune
 
 # --- Detection Parameters ---
 modelname: yolov11n       # AI model for detection.
-# modelpath: yolo11n_0816_v1.pt # Optional: path to a custom-trained model
+# modelpath: yoloV11n_20260604v0.pt # Optional: more sensitive model weights; see the Dataset and Model page
 confidence: 0.4           # Detection confidence threshold (0.0 to 1.0)
 timedownfactor: 8         # Time series down-sampling factor before detection. Increases sensitivity to wider pulses.
 
@@ -192,8 +194,4 @@ Here is a detailed explanation of each directory's contents:
 -   **`cached/`**: Stores intermediate info products.
 -   **`candidate/`**: Contains candidates where both the DM and TOA **match** the ground truth from the input candidate list. These represent the successfully recovered known pulses.
 -   **`detect/`**: Contains newly detected pulses where the DM **matches** a known source, but the TOA does **not**. These could be previously unknown pulses from the same source.
--   **`frb/`**: Contains a curated dataset constructed from the high-confidence detections. This data is structured to be suitable for **fine-tuning** the AI detection model with new, real-world examples.
-
-
-
-
+-   **`frb/`**: Contains a curated dataset constructed from the high-confidence detections. This data can be reviewed and packaged as detector training data.
