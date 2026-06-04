@@ -110,7 +110,7 @@ class Yolo11nFrbDetector(FrbDetector):
         if total_samples <= self.batch_size:
             # start_time = time.time()
             results = model(
-                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.45, stream=True, verbose=False
+                npy_dmt_list, conf=self.confidence, device=self.device, iou=0.35, stream=True, verbose=False
             )
             # end_time = time.time()
             # detect_time = (end_time - start_time) * 1000

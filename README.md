@@ -75,6 +75,10 @@ pip install --pre -i https://test.pypi.org/simple/ pulseflow --extra-index-url h
 
 </details>
 
+## Dataset and Model
+
+See the **[Dataset and Model page](https://lintian233.github.io/astroflow/dataset_model_release.html)** for the **public training dataset** and **released model weights**.
+
 ## Citation
 
 If AstroFlow is useful in your research, please cite:
@@ -91,7 +95,7 @@ If AstroFlow is useful in your research, please cite:
 
 - Add PSRDADA ingestion and zero-copy memory mapping for high-throughput streaming.
 - Reuse dedispersed data products across multi-parameter searches.
-- Complete the injection-pulse and model fine-tuning workflow.
+- Complete the injection-pulse dataset and model release workflow.
 - Expand automated test coverage.
 
 ## Community

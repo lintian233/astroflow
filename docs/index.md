@@ -18,6 +18,7 @@ installation
 quick_start
 configuration
 fast_prex
+dataset_model_release
 ```
 
 ## Overview
@@ -27,6 +28,7 @@ fast_prex
 - RFI mitigation through external masks, zero-DM filtering, and GPU-accelerated IQRM.
 - Batch, directory, monitor, and dataset-validation modes.
 - Candidate plots, logs, and optional CSV candidate summaries.
+- Public training dataset and separately versioned model checkpoints.
 
 
 ## Citation
