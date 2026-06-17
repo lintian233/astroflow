@@ -88,15 +88,8 @@ If AstroFlow is useful in your research, please cite:
 
 ## Limitations
 
-- For best throughput, keep individual observations below roughly 300 seconds and below 5 GB per input file. Larger files may become I/O-bound and increase memory pressure.
-- When a file produces more than roughly 50 candidates, Python-side candidate object construction and plotting can become the dominant runtime cost.
-
-## Roadmap
-
-- Add PSRDADA ingestion and zero-copy memory mapping for high-throughput streaming.
-- Reuse dedispersed data products across multi-parameter searches.
-- Complete the injection-pulse dataset and model release workflow.
-- Expand automated test coverage.
+- For best throughput, keep individual observations below 5 GB per input file. Larger files may become I/O-bound and increase memory pressure.
+- When a file produces more than roughly 50 candidates, Python-side candidate object construction and plotting May become the CPU dominant runtime cost.
 
 ## Community
 <a href="https://github.com/lintian233/astroflow/graphs/contributors">
