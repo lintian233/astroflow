@@ -86,11 +86,6 @@ If AstroFlow is useful in your research, please cite:
 > **ASTROFLOW: A Real-Time End-to-End Pipeline for Radio Single-Pulse Searches**  
 > [https://doi.org/10.3847/1538-4365/ae4a26](https://doi.org/10.3847/1538-4365/ae4a26)
 
-## Limitations
-
-- For best throughput, keep individual observations below 5 GB per input file. Larger files may become I/O-bound and increase memory pressure.
-- When a file produces more than roughly 50 candidates, Python-side candidate object construction and plotting May become the CPU dominant runtime cost.
-
 ## Community
 <a href="https://github.com/lintian233/astroflow/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=lintian233/astroflow" alt="AstroFlow contributors" width="48" />
