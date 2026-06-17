@@ -35,6 +35,8 @@ public:
   double tsamp;
   double fch1;
   double foff;
+  std::string raj;
+  std::string decj;
   void *data;
   std::shared_ptr<void> data_owner;
 

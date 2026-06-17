@@ -185,6 +185,8 @@ void bind_filterbank(py::module &m) {
       .def_readonly("tstart", &Filterbank::tstart)
       .def_readonly("tsamp", &Filterbank::tsamp)
       .def_readonly("ndata", &Filterbank::ndata)
+      .def_readonly("src_raj", &Filterbank::src_raj)
+      .def_readonly("src_dej", &Filterbank::src_dej)
       .def_property_readonly("data", [](Filterbank &fil) -> py::object {
         int nbits = fil.nbits;
         int nifs = fil.nifs;
@@ -257,6 +259,8 @@ void bind_psrfits(py::module &m) {
       .def_readonly("fch1", &PsrFits::fch1)
       .def_readonly("foff", &PsrFits::foff)
       .def_readonly("mjd", &PsrFits::mjd)
+      .def_readonly("raj", &PsrFits::raj)
+      .def_readonly("decj", &PsrFits::decj)
       .def_readonly("tsamp", &PsrFits::tsamp)
       .def_readonly("ndata", &PsrFits::ndata)
       .def_readonly("nsubint", &PsrFits::nsubint)
@@ -345,6 +349,8 @@ void bind_header(py::module &m) {
       .def_readonly("nbits", &Header::nbits)
       .def_readonly("nchans", &Header::nchans)
       .def_readonly("ndata", &Header::ndata)
+      .def_readonly("raj", &Header::raj)
+      .def_readonly("decj", &Header::decj)
       .def_readonly("filename", &Header::filename);
 }
 

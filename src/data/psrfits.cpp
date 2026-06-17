@@ -35,6 +35,17 @@ void read_key_or_default(fitsfile *fptr, int datatype, const char *key, T *value
   }
 }
 
+string read_string_key_or_default(fitsfile *fptr, const char *key,
+                                  const string &fallback = "") {
+  char value[FLEN_VALUE] = {0};
+  int status = 0;
+  fits_read_key(fptr, TSTRING, key, value, nullptr, &status);
+  if (status != 0) {
+    return fallback;
+  }
+  return string(value);
+}
+
 template <typename T>
 void combine_polarizations(const vector<T> &raw, T *dst, long row_offset,
                            long nsblk, int npol, int nchans,
@@ -83,7 +94,7 @@ void combine_float32_polarizations(const vector<float> &raw, uint32_t *dst,
 PsrFits::PsrFits()
     : filename(""), nifs(1), npol(0), nbits(0), nchans(0), nsubint(0),
       nsblk(0), ndata(0), mjd(0.0), tsamp(0.0), fch1(0.0), foff(0.0),
-      data(nullptr), data_owner(nullptr), flip_freq_(false) {}
+      raj(""), decj(""), data(nullptr), data_owner(nullptr), flip_freq_(false) {}
 
 PsrFits::PsrFits(const string &fname) : PsrFits() {
   filename = fname;
@@ -121,6 +132,8 @@ bool PsrFits::read_header() {
   read_key_or_default(fptr, TLONG, "STT_IMJD", &stt_imjd, 0L);
   read_key_or_default(fptr, TLONG, "STT_SMJD", &stt_smjd, 0L);
   read_key_or_default(fptr, TDOUBLE, "STT_OFFS", &stt_offs, 0.0);
+  raj = read_string_key_or_default(fptr, "RA");
+  decj = read_string_key_or_default(fptr, "DEC");
   mjd = static_cast<double>(stt_imjd) +
         (static_cast<double>(stt_smjd) + stt_offs) / 86400.0;
 
@@ -290,6 +303,8 @@ void PsrFits::info() const {
   cout << "-------------------" << endl;
   cout << left << setw(20) << "Filename:" << filename << endl;
   cout << left << setw(20) << "MJD:" << mjd << endl;
+  cout << left << setw(20) << "RAJ:" << raj << endl;
+  cout << left << setw(20) << "DECJ:" << decj << endl;
   cout << left << setw(20) << "Sample Time:" << tsamp << " s" << endl;
   cout << left << setw(20) << "Number of Bits:" << nbits << endl;
   cout << left << setw(20) << "Number of Channels:" << nchans << endl;

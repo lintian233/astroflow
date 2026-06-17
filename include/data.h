@@ -30,13 +30,16 @@ struct Header {
   int nchans;
   long int ndata;
   std::string filename;
+  std::string raj;
+  std::string decj;
 
   Header()
-      : mjd(0), tsamp(0), fch1(0), foff(0), nbits(0), nchans(0), ndata(0) {}
+      : mjd(0), tsamp(0), fch1(0), foff(0), nbits(0), nchans(0), ndata(0),
+        raj(""), decj("") {}
   Header(float mjd, float tsamp, float fch1, float foff, int nbits, int nchans,
          long int ndata, std::string filename)
       : mjd(mjd), tsamp(tsamp), fch1(fch1), foff(foff), nbits(nbits),
-        nchans(nchans), ndata(ndata), filename(filename) {}
+        nchans(nchans), ndata(ndata), filename(filename), raj(""), decj("") {}
   Header(py::object header) {
     filename = header.attr("filename").cast<std::string>();
     mjd = header.attr("mjd").cast<float>();
@@ -46,6 +49,12 @@ struct Header {
     nbits = header.attr("nbits").cast<int>();
     nchans = header.attr("nchans").cast<int>();
     ndata = header.attr("ndata").cast<long int>();
+    raj = py::hasattr(header, "raj") && !header.attr("raj").is_none()
+              ? py::str(header.attr("raj")).cast<std::string>()
+              : "";
+    decj = py::hasattr(header, "decj") && !header.attr("decj").is_none()
+               ? py::str(header.attr("decj")).cast<std::string>()
+               : "";
   }
 };
 

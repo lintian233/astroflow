@@ -9,7 +9,20 @@ uint8, uint16, uint32 = np.uint8, np.uint16, np.uint32
 
 
 class Header:
-    def __init__(self, mjd, filename, nifs, nchans, ndata, tsamp, fch1, foff, nbits):
+    def __init__(
+        self,
+        mjd,
+        filename,
+        nifs,
+        nchans,
+        ndata,
+        tsamp,
+        fch1,
+        foff,
+        nbits,
+        raj=None,
+        decj=None,
+    ):
         self.filename = filename
         self.mjd = mjd
         self.nifs = nifs
@@ -19,12 +32,18 @@ class Header:
         self.fch1 = fch1
         self.foff = foff
         self.nbits = nbits
+        self.raj = None if raj in ("", None) else str(raj)
+        self.decj = None if decj in ("", None) else str(decj)
         self._core_header = None
 
     def __str__(self):
         info = "--------------------------------\n"
         info += f"Filename: {self.filename}\n"
         info += f"MJD: {self.mjd}\n"
+        if self.raj is not None:
+            info += f"RAJ: {self.raj}\n"
+        if self.decj is not None:
+            info += f"DECJ: {self.decj}\n"
         info += f"Nr of IFs: {self.nifs}\n"
         info += f"Nr of channels: {self.nchans}\n"
         info += f"Nr of data points: {self.ndata}\n"

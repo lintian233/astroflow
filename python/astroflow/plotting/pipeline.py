@@ -301,7 +301,7 @@ def _prepare_candidate_plot_payload(
         print(f"Warning: Failed to process spectrum data: {exc}")
 
     basename = os.path.basename(file_path).split(".")[0]
-    title, title_y = _candidate_title(basename, cand, ref_toa, snr, pulse_width_ms, peak_time)
+    title, title_y = _candidate_title(basename, header, cand, ref_toa, snr, pulse_width_ms, peak_time)
     savetype = specconfig.savetype
     suffix = "jpg" if savetype == "jpg" else "png"
     base_name = f"{snr:.2f}_{pulse_width_ms:.2f}_{cand.dm}_{ref_toa:.3f}_{dmt.__str__()}"
@@ -623,6 +623,8 @@ def _prepare_subband_payload(
         f"FCH1={header.fch1:.3f} MHz",
         f"FOFF={header.foff:.3f} MHz",
         f"TSAMP={header.tsamp:.6e}s",
+        f"MJD={header.mjd + (round(ref_toa, 3) / 86400.0):.12f}",
+        *_position_info_lines(header),
         f"DM={dm:.2f}",
         f"ref TOA={ref_toa:.3f}s",
     ]
@@ -644,17 +646,16 @@ def _prepare_subband_payload(
     )
 
 
-def _candidate_title(basename, cand: CandidateInfo, ref_toa, snr, pulse_width_ms, peak_time):
+def _candidate_title(basename, header, cand: CandidateInfo, ref_toa, snr, pulse_width_ms, peak_time):
     confidence_text = _confidence_text(cand.confidence)
-    confidence_title = f" - Confidence: {confidence_text}" if confidence_text else ""
+    confidence_title = f" - Conf: {confidence_text}" if confidence_text else ""
+    mjd = header.mjd + (round(ref_toa, 3) / 86400.0)
     metrics_title = (
-        f"DM: {cand.dm} - TOA: {ref_toa:.3f}s - SNR: {snr:.2f} - "
-        f"Pulse Width: {pulse_width_ms:.2f} ms - Peak Time: {peak_time:.3f}s"
+        f"DM: {cand.dm} - SNR: {snr:.2f} - TOA: {ref_toa:.3f}s - MJD: {mjd:.12f} - "
+        f"PW: {pulse_width_ms:.2f} ms - PT: {peak_time:.3f}s"
         f"{confidence_title}"
     )
-    if len(basename) > 55:
-        return f"FILE: {basename}\n{metrics_title}", 0.985
-    return f"FILE: {basename} - {metrics_title}", 0.94
+    return f"FILE: {basename}\n{metrics_title}", 0.985
 
 
 def _spectrum_info_text(header, dm, ref_toa, prefix=None) -> str:
@@ -666,11 +667,24 @@ def _spectrum_info_text(header, dm, ref_toa, prefix=None) -> str:
             f"FCH1={header.fch1:.3f} MHz",
             f"FOFF={header.foff:.3f} MHz",
             f"TSAMP={header.tsamp:.6e}s",
+            f"MJD={header.mjd + (round(ref_toa, 3) / 86400.0):.12f}",
+            *_position_info_lines(header),
             f"DM={dm:.2f}",
             f"ref TOA={ref_toa:.3f}s",
         ]
     )
     return "\n".join(info_lines)
+
+
+def _position_info_lines(header) -> list[str]:
+    lines = []
+    raj = getattr(header, "raj", None)
+    decj = getattr(header, "decj", None)
+    if raj not in (None, ""):
+        lines.append(f"RAJ={raj}")
+    if decj not in (None, ""):
+        lines.append(f"DECJ={decj}")
+    return lines
 
 
 def _time_info_text(snr, pulse_width_ms, confidence, suffix=None) -> str:

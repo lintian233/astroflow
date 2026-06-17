@@ -66,6 +66,8 @@ class PsrFits(SpectrumBase):
             fch1=self._core_instance.fch1,
             foff=self._core_instance.foff,
             nbits=self._core_instance.nbits,
+            raj=self._core_instance.raj,
+            decj=self._core_instance.decj,
         )
 
     def _load_data_python(self):
@@ -90,6 +92,8 @@ class PsrFits(SpectrumBase):
         
         foff = header1["CHAN_BW"]
         nchans = header1["NCHAN"]
+        raj = header0.get("RA", header0.get("RAJ"))
+        decj = header0.get("DEC", header0.get("DECJ"))
 
         if foff < 0:
             foff = -foff
@@ -114,6 +118,8 @@ class PsrFits(SpectrumBase):
             fch1=fch1,
             foff=foff,
             nbits=header1["NBITS"],
+            raj=raj,
+            decj=decj,
         )
 
     def get_spectrum(self) -> np.ndarray:

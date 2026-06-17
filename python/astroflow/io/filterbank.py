@@ -85,6 +85,8 @@ class Filterbank(SpectrumBase):
                 fch1=self._fch1,
                 foff=self._foff,
                 nbits=self._nbits,
+                raj=self.core_instance.src_raj,
+                decj=self.core_instance.src_dej,
             )
         return self._header
 
@@ -134,6 +136,8 @@ class FilterbankPy(SpectrumBase):
             fch1=fch1,
             foff=foff,
             nbits=header.nbits,
+            raj=getattr(header, "src_raj", None),
+            decj=getattr(header, "src_dej", None),
         )
         
         if header.nbits == 8 and self._data.dtype != np.uint8:
