@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import gc
 import os
+from decimal import Decimal
 
 import cv2
 import numpy as np
 
 import matplotlib
 matplotlib.use('Agg')  # 使用非 GUI 后端，更快
+
+from astropy.time import Time
 
 from ..config.taskconfig import TaskConfig
 from ..dedispered import dedisperse_spec_with_dm
@@ -182,7 +185,9 @@ def save_candidate_metrics_for_file(origin_data, file_path, candidates, specconf
         )
         cand_info = {
             "file": os.path.basename(file_path),
-            "mjd": header.mjd + (round(metrics["ref_toa"], 3) / 86400.0),
+            "mjd": _candidate_mjd_text(header, metrics["ref_toa"]),
+            "raj": getattr(header, "raj", "") or "",
+            "decj": getattr(header, "decj", "") or "",
             "dms": cand.dm,
             "toa": round(metrics["ref_toa"], 3),
             "toa_ref_freq_end": cand.toa,
@@ -623,7 +628,7 @@ def _prepare_subband_payload(
         f"FCH1={header.fch1:.3f} MHz",
         f"FOFF={header.foff:.3f} MHz",
         f"TSAMP={header.tsamp:.6e}s",
-        f"MJD={header.mjd + (round(ref_toa, 3) / 86400.0):.12f}",
+        f"MJD={_candidate_mjd_text(header, ref_toa)}",
         *_position_info_lines(header),
         f"DM={dm:.2f}",
         f"ref TOA={ref_toa:.3f}s",
@@ -649,13 +654,14 @@ def _prepare_subband_payload(
 def _candidate_title(basename, header, cand: CandidateInfo, ref_toa, snr, pulse_width_ms, peak_time):
     confidence_text = _confidence_text(cand.confidence)
     confidence_title = f" - Conf: {confidence_text}" if confidence_text else ""
-    mjd = header.mjd + (round(ref_toa, 3) / 86400.0)
+    mjd = _candidate_mjd_text(header, ref_toa)
+    utc = _candidate_utc_text(header, ref_toa)
     metrics_title = (
-        f"DM: {cand.dm} - SNR: {snr:.2f} - TOA: {ref_toa:.3f}s - MJD: {mjd:.12f} - "
+        f"DM: {cand.dm} - SNR: {snr:.2f} - TOA: {ref_toa:.3f}s - MJD: {mjd} - "
         f"PW: {pulse_width_ms:.2f} ms - PT: {peak_time:.3f}s"
         f"{confidence_title}"
     )
-    return f"FILE: {basename}\n{metrics_title}", 0.985
+    return f"FILE: {basename} UTC: {utc}\n{metrics_title}", 0.985
 
 
 def _spectrum_info_text(header, dm, ref_toa, prefix=None) -> str:
@@ -667,7 +673,7 @@ def _spectrum_info_text(header, dm, ref_toa, prefix=None) -> str:
             f"FCH1={header.fch1:.3f} MHz",
             f"FOFF={header.foff:.3f} MHz",
             f"TSAMP={header.tsamp:.6e}s",
-            f"MJD={header.mjd + (round(ref_toa, 3) / 86400.0):.12f}",
+            f"MJD={_candidate_mjd_text(header, ref_toa)}",
             *_position_info_lines(header),
             f"DM={dm:.2f}",
             f"ref TOA={ref_toa:.3f}s",
@@ -685,6 +691,15 @@ def _position_info_lines(header) -> list[str]:
     if decj not in (None, ""):
         lines.append(f"DECJ={decj}")
     return lines
+
+
+def _candidate_mjd_text(header, ref_toa) -> str:
+    mjd = Decimal(str(header.mjd)) + (Decimal(str(round(ref_toa, 3))) / Decimal("86400"))
+    return f"{mjd:.12f}"
+
+
+def _candidate_utc_text(header, ref_toa) -> str:
+    return Time(float(_candidate_mjd_text(header, ref_toa)), format="mjd", scale="utc").isot + "Z"
 
 
 def _time_info_text(snr, pulse_width_ms, confidence, suffix=None) -> str:
@@ -794,7 +809,9 @@ def _save_candidate_metadata(taskconfig, header, file_path, payload: CandidatePl
         return
     cand_info = {
         "file": os.path.basename(file_path),
-        "mjd": header.mjd + (round(payload.ref_toa, 3) / 86400.0),
+        "mjd": _candidate_mjd_text(header, payload.ref_toa),
+        "raj": getattr(header, "raj", "") or "",
+        "decj": getattr(header, "decj", "") or "",
         "dms": cand.dm,
         "toa": round(payload.ref_toa, 3),
         "toa_ref_freq_end": cand.toa,

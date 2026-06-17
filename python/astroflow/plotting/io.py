@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+from decimal import Decimal
 from typing import Mapping
 
 from ..io.filterbank import Filterbank
@@ -18,11 +19,13 @@ def load_data_file(file_path: str):
 
 def save_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None:
     """Atomically appends candidate information to a CSV-like file."""
-    header = "file,mjd,dms,toa,toa_ref_freq_end,snr,pulse_width_ms,freq_start,freq_end,file_path,plot_path,peak_toa,confidence"
+    header = "file,mjd,raj,decj,dms,toa,toa_ref_freq_end,snr,pulse_width_ms,freq_start,freq_end,file_path,plot_path,peak_toa,confidence"
 
     values = [
         cand_info.get("file", ""),
-        cand_info.get("mjd", ""),
+        _format_mjd(cand_info.get("mjd", "")),
+        cand_info.get("raj", ""),
+        cand_info.get("decj", ""),
         cand_info.get("dms", ""),
         cand_info.get("toa", ""),
         cand_info.get("toa_ref_freq_end", ""),
@@ -36,6 +39,12 @@ def save_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None
         cand_info.get("confidence", ""),
     ]
     _append_csv_line(file_path, header, values)
+
+
+def _format_mjd(value: object) -> str:
+    if value in ("", None):
+        return ""
+    return f"{Decimal(str(value)):.12f}"
 
 
 def save_fast_candidate_info(file_path: str, cand_info: Mapping[str, object]) -> None:
